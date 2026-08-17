@@ -2,104 +2,93 @@
 
 ## Repo state
 
-- Python workflow app, skeleton scaffolded but no business logic yet.
-- `pyproject.toml` present (hatchling backend, Flask stack, dev deps).
-- No README.
-- No tests scaffolded.
-- `migrations/` empty.
-- Entrypoint: `app.py` (Flask factory, env loading wired up).
-- `.env` loading via `python-dotenv` already in `app.py`.
-- Frontend baseline scaffolded: `templates/`, `static/css/`, `static/js/`.
-  - `templates/base.html` loads Bulma CDN + HTMX.
-  - Extend by adding partials under `templates/` and JS/CSS assets under `static/`.
+- Vietnamese SME accounting app, Flask + Clean Architecture scaffold + Company module implemented.
+- Root entrypoint: `app.py` (`create_app()` factory, `python-dotenv` loading wired).
+- `.venv` managed by `uv`. Always activate it first: `source .venv/bin/activate`. No bare `pip` — use `uv pip install --python=.venv/bin/python`.
+- `pyproject.toml` present (hatchling, `src/` wheel). Python >= 3.11.
+- `pytest` configured (`testpaths=tests`, `pythonpath=src`). 47 tests: 32 unit + 15 integration.
+- `templates/base.html` uses local Bulma + HTMX (no CDN, offline-capable).
+- `docs/multi-company/` has research/BRD/specs/workflows (multi-company NOT ready per research report).
+
+## Company module status
+
+- Domain entity: `src/domain/entities/company.py` (Company aggregate root, 20+ fields, status lifecycle).
+- Domain enums: `CompanyType`, `CompanyStatus`, `AccountingRegime` in `src/domain/entities/base.py`.
+- Repository port: `CompanyRepositoryPort` in `src/application/ports/__init__.py`.
+- DB models: `CompanyModel`, `BankAccountModel` in `src/infrastructure/database/models.py`; `company_id` FK on `PartnerModel`, `InvoiceModel`, `VoucherModel`.
+- Repository adapter: `SQLAlchemyCompanyRepository` in `src/infrastructure/repositories/__init__.py` (`create` + `update`).
+- Unit tests: 32 passing (TDD red-green-refactor): `tests/unit/company/`.
+- Integration tests: 15 passing (in-memory SQLite, no Flask app context): `tests/integration/test_company_repository.py`.
+- Migration: `flask db migrate` not yet run (local SQLite; no env var file present per AGENTS.md).
 
 ## Toolchain
 
-- Venv: `/home/projects/sme_acct/.venv` (created by `uv`).
-- Install: `uv pip install --python=/home/projects/sme_acct/.venv/bin/python <package>`
+- Install deps: `uv pip install --python=/home/projects/sme_acct/.venv/bin/python <package>`
 - Editable install: `uv pip install --python=/home/projects/sme_acct/.venv/bin/python -e .`
-  - Adds `src/` to path so `src.domain.entities...` imports resolve.
-- Do not use bare `pip`.
-- Python path: code lives under `src/`.
-  - Imports written as `src.domain.entities...` — watch out for relative-import mistakes in tests.
+- Do NOT use bare `pip`.
+- Code imports use `src.` prefix (e.g. `src.domain.entities`). `PYTHONPATH=src` already set in pytest config; no need to export it when running pytest.
+
+## Commands
+
+- Run dev server: `PYTHONPATH=src flask run` (or `FLASK_APP=app.py flask run`)
+- Run tests: `uv run pytest` or `pytest` from venv
+- Run one test: `pytest tests/unit/test_partner.py -k test_name -v`
+- Lint: `ruff check src tests`
+- Format: `black src tests`
+- Typecheck: `mypy src`
+- Order for CI green: `ruff -> black --check -> mypy -> pytest`
+- Migrations: `flask db init|migrate|upgrade` requires `SQLALCHEMY_DATABASE_URI` in env
+- Supported DB URIs: `sqlite:///...`, `mysql://...`, `mariadb://...`, `postgresql://...`
 
 ## Architecture
 
 ```
 src/
-  domain/           # pure Python, no external deps
-    entities/       # Partner, Invoice, Voucher + value objects/validators
+  domain/           # pure Python, NO sqlalchemy / web imports
+    entities/       # Partner, Invoice, Voucher + value objects (TaxId, AccountCode)
+    exceptions/     # NotFoundError, AlreadyExistsError, InvalidVoucher, InvalidInvoice
+    repositories/   # ports (abc interfaces)
   application/
     ports/          # repository/service interfaces
-    services/       # use cases
+    services/       # PartnerService, InvoiceService, VoucherService
   infrastructure/
     database/
-      models.py     # SQLAlchemy 2.0 (DeclarativeBase, mapped_column, Mapped)
-    repositories/   # ORM implementations
+      models.py     # SQLAlchemy 2.0 DeclarativeBase models
+    repositories/   # SQLAlchemyRepo adapters
   presentation/
-    api/            # REST-ish layer
-    serializers/
-    forms/
-    ui/
+    api/            # REST-ish blueprints
+    ui/             # HTML blueprints
+    forms/          # WTForms
+    serializers/    # domain -> JSON
 ```
 
-- Domain layer must stay free of `sqlalchemy` and web imports.
-- Enums exist in both domain (`src/domain/entities/base.py`) AND SQLAlchemy models (`src/infrastructure/database/models.py`). Keep them in sync when adding states/types.
+- Domain layer MUST stay free of `sqlalchemy` and web imports.
+- Enums duplicated: domain (`src/domain/entities/base.py`) AND SQLAlchemy (`src/infrastructure/database/models.py`). Sync both when adding states/types.
 
 ## Domain rules (hard-coded)
 
-- Tax IDs validated: `^\d{10}$` or `^\d{10}-\d{3}$`.
-- Account codes validated: `^[1-9]\d{2}$` or `^[1-9]\d{3}$` (Vietnamese chart of accounts).
-- `Invoice` items auto-calc `subtotal`, `vat_total`, `grand_total`; `add_item()` recalculates.
-- `Voucher` must be balanced (≈equal debit/credit, tol 0.01) before `post()`.
-- `Partner.tax_id` joins invoices by value; model stores raw string, domain wraps `TaxId`.
+- Tax IDs: `^\d{10}$` or `^\d{10}-\d{3}$` (Vietnamese MST).
+- Account codes: `^[1-9]\d{2}$` or `^[1-9]\d{3}$` (Vietnamese chart of accounts per Thông tư 200/2014/TT-BTC).
+- `Invoice.add_item()` recalculates `subtotal`, `vat_total`, `grand_total`.
+- `Voucher.post()` requires balanced debit/credit (tol 0.01) and `DRAFT` status.
+- `Partner.tax_id` joins invoices by value; domain wraps raw string in `TaxId`.
 
 ## Framework / infra
 
-- Flask + `flask-migrate` + `Flask-Talisman` (configured in `app.py`).
-- `Flask-Talisman` enforces HTTPS in DEBUG=False; auto-disabled in DEBUG mode.
-  - Use `DEBUG=1` for local dev unless explicitly configuring origins.
-- `flask db init|migrate|upgrade` requires `SQLALCHEMY_DATABASE_URI` in env; run after entrypoint exists.
-- Supported databases: sqlite (latest, default), mariadb, mysql, postgresql v16+.
-  - URIs: `sqlite:///...`, `mysql://...`, `mariadb://...`, `postgresql://...`.
+- Flask + `flask-migrate` + `Flask-Talisman` + `Flask-Bcrypt` + `Flask-Login` + `Flask-Security-Too` + `pycasbin` + `Flask-Babel` + `Flask-Caching` + `Flask-Marshmallow` (extensions installed).
+- `Flask-Talisman` enforces HTTPS only when `DEBUG=False`. Use `DEBUG=1` for local dev.
+- `.env.example` not present — copy required vars from `app.py` config block if spinning up fresh.
 
-## Commands (pending)
+## Coding Convention (MUST read before coding)
 
-- Venv: `source /home/projects/sme_acct/.venv/bin/activate`
-- Install: `uv pip install --python=/home/projects/sme_acct/.venv/bin/python <package>`
-- Tests: none yet. First step is `pytest` + `tests/` scaffold.
-- Lint/format/typecheck: none yet. Plan `black` + `ruff` + `mypy` and expose explicit commands.
-- Migrations: `flask db ...` once env + entrypoint exist.
+`docs/CODING_CONVENTION.md` is the source of truth for style, naming, layer boundaries, commits, and review rules.
+When writing or modifying ANY code:
+1. Read and apply rules from that doc first.
+2. Use it as referee when choices conflict.
+3. If a rule must be bent, surface the tradeoff explicitly.
 
-## Skills reference (5W1H decision table)
+## What NOT to do
 
-Use this to pick the right skill. Current session has `caveman` active for compressed output.
-
-| Skill | WHO | WHAT | WHEN | WHERE | WHY | HOW invoke |
-|---|---|---|---|---|---|---|
-| **test-driven-development** | agent + user | red-green-refactor | before non-trivial code / bug fix | `tests/` + `src/` | prove behavior, catch regressions | "TDD" or load skill |
-| **planning-and-task-breakdown** | agent, user with spec | break work into ordered tasks | feature >1 step, estimating scope | planning phase | avoid large-blind leaps | "break this into tasks" |
-| **incremental-implementation** | agent | deliver changes incrementally | >1 file, large change | implementation | lower risk, easier review | "incremental" / invoke |
-| **code-review-and-quality** | agent, reviewer | multi-axis review (standards + spec) | before merge, PR / branch diff | PR / branch | catch issues before main | "review this PR" |
-| **caveman** | agent | ultra-compressed comms | token efficiency, any session | all output | save 60%+ context | `/caveman` / "caveman mode" |
-| **caveman-commit** | agent | concise conventional commits | staging changes | git | clean history, no noise | "write commit message" |
-| **caveman-review** | agent | compressed review comments | PR / diff review | code review | signal only, no praise | "review this diff" |
-| **domain-modeling** | agent + user | DDD ubiquitous language | terms ambiguous, architecture unclear | planning / design | shared vocab prevents mismatch | "domain model" / "ubiquitous language" |
-| **documentation-and-adrs** | agent | record architectural decisions | public API change, shipping feature | `docs/`, ADR files | future context | "record this decision" |
-| **security-and-hardening** | agent | harden against vulns | auth, user input, data storage, external integrations | feature code | prevent vulnerabilities | "security review" / load skill |
-| **context-engineering** | agent | optimize agent context setup | session start, output degrades, task switch | session config | agent needs good context | "context engineering" / invoke |
-| **git-workflow-and-versioning** | agent | structure git practices | commits, branches, conflicts, releases | git workflow | clean history, proper semver | "git workflow" / load skill |
-| **cavecrew** | agent (main thread) | delegate to subagents (investigator / builder / reviewer) | save context, large explore, 1-2 file edits, diff review | any task | subagent output ~60% smaller | "delegate to cavecrew" |
-| **api-and-interface-design** | agent + user | stable API / module boundaries | REST endpoints, module interfaces | `presentation/api/` | prevent breaking changes | "design the API" / invoke |
-| **debugging-and-error-recovery** | agent | systematic root-cause debugging | tests fail, builds break, unexpected behavior | any broken code | fix root cause, not symptoms | "debug this" / invoke |
-| **ci-cd-and-automation** | agent | CI / CD pipeline setup | build / deploy automation, quality gates | `.github/workflows/` | automate quality | "set up CI" / invoke |
-| **interview-me** | agent + user | extract actual requirements | underspecified ask ("build me X") | requirement gathering | avoid building wrong thing | "interview me" / invoke |
-| **handoff** | agent | compact conversation into handoff doc | passing work to agent, long session | handoff file | next agent picks up immediately | "handoff" / invoke |
-| **karpathy-guidelines** | agent | reduce LLM coding mistakes | writing / reviewing / refactoring code | all code | avoid overcomplication | auto-loaded session start |
-| **setup-pre-commit** | agent + user | pre-commit hooks (lint, typecheck, tests) | setting up quality gates | `.git/hooks/` | catch issues before commit | "set up pre-commit" / invoke |
-| **implement** | agent | implement from spec / tickets | spec exists, ready to code | `src/` | execute plan systematically | "implement this spec" |
-
-**Notes**
-- Variants: `caveman-commit` and `caveman-review` are commit / review submodes of `caveman`.
-- `interview-me` and `grill-me` share trigger phrases; both extract requirements.
-- Omitted from table: Obsidian, canvas, markdown-writing, TypeScript-only, and QA-only skills — not applicable to this repo.
+- Don't add SQLAlchemy or Flask imports inside `src/domain/`.
+- Don't use bare `pip`; use `uv pip install --python=.venv/bin/python`.
+- Don't add multi-company consolidation logic until Company entity + tenant isolation exist (research report flags 7 critical gaps).
