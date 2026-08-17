@@ -3,7 +3,7 @@
 | Field | Value |
 |-------|-------|
 | Version | 0.1.0 |
-| Status | DRAFT |
+| Status | SIGNED_OFF |
 | Owner | Product + Chief Accountant |
 | Date | 2026-08-17 |
 | Audience | Vietnamese SME accounting system — legal entity onboarding |

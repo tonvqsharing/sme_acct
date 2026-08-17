@@ -3,7 +3,7 @@
 | Field | Value |
 |-------|-------|
 | Version | 0.1.0 |
-| Status | DRAFT — pending stakeholder review |
+| Status | SIGNED_OFF — pending stakeholder review |
 | Owner | Product + Chief Accountant |
 | Date | 2026-08-17 |
 | Audience | Vietnamese SME accounting software, CFO/Accountant/Owner persona |
