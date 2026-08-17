@@ -1,0 +1,4 @@
+[     266ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ https://vbpl.vn/VanBanGoc/Pages/default.aspx?doccateid=64260:0
+[   27544ms] [LOG] isSmallMobile false @ https://vbpl.vn/_next/static/chunks/3239-1ca121ff341ae477.js:0
+[   28336ms] [LOG] isSmallMobile false @ https://vbpl.vn/_next/static/chunks/3239-1ca121ff341ae477.js:0
+[   30790ms] [LOG] isSmallMobile false @ https://vbpl.vn/_next/static/chunks/3239-1ca121ff341ae477.js:0

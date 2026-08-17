@@ -1,247 +1,125 @@
-# Data Flow Diagrams: System Settings Module
+# Data Flows: System Settings Module
+
+## DF-01: Config Initialization Data Flow
+**Trigger**: Chief Accountant first-time system setup  
+**Data Origin**: Domain defaults + Chief Accountant input  
+**Data Path**:  
+1. Domain layer provides default values for CompanyConfig fields (from base.py enums/constants)  
+2. Chief Accountant input via UI form → validated at boundary → stored in temp session  
+3. "Initialize System Settings" click → SystemSettingsService.initialize() called  
+4. Service creates CompanyConfig record with domain-derived defaults  
+5. AuditLogService emits CREATE event: {entity_type=CompanyConfig, entity_id=<id>, action=CREATE, new_value=<full config>, before_value=null, actor_id=<admin_id>, timestamp=now}  
+6. Record persisted to `company_configs` table via SQLAlchemy adapter  
+7. Response: confirmation + legal_reviewed_at=null notice  
+
+**Data Transformation**:  
+- Enum values (AccountingRegime, CompanyType) → stored as string in DB; domain layer converts back on read  
+- Frozen sets (vat_rates, ca_list) → stored as JSON string in DB; domain layer converts back on read  
+- Boolean flags (is_active, data_deletable) → stored as tinyint(1) in DB  
 
 ---
 
-## DFD-01: Config Read (Primary Path)
+## DF-02: Period Lock Data Flow
+**Trigger**: Chief Accountant locking/unlocking a period  
+**Data Origin**: Chief Accountant input + PeriodLockService validation  
+**Data Path**:  
+1. Chief Accountant inputs period_start, period_end via UI → validated (date format, not future of company existence)  
+2. PeriodLockService.is_locked(company_id, period_start, period_end) checked against `period_locks` table  
+3. If not locked: New PeriodLock record data prepared: {company_id, period_start, period_end, is_locked=True, locked_by_id=admin_id, reason=optional, created_at=now}  
+4. Record persisted to `period_locks` table via SQLAlchemy adapter  
+5. AuditLogService emits CREATE event: {entity_type=PeriodLock, entity_id=<id>, action=CREATE, new_value=<lock details>, before_value=null, actor_id=<admin_id>, timestamp=now}  
+6. Response: confirmation + period now locked at service layer  
 
-```
-User Request
-  GET /api/v1/companies/{id}/settings/config/flags
-  [JWT Auth → RBAC Check: ACCOUNTANT|ADMIN]
-  ↓
-API Handler
-  → SystemSettingsService.get_flags(company_id)
-    → SystemSettingsRepository.get_company_config(company_id)
-      → SQL: SELECT * FROM company_configs WHERE company_id = ?
-    ← CompanyConfig (or SystemSettingsError if not found)
-  → FlagMapper: transforms DB row → JSON response
-    (flag_type included; LAW flags marked non-editable)
-  ↓
-HTTP 200
-{
-  "company_id": "uuid",
-  "config_version": 3,
-  "flags": [ {name, value, type, editable, category, legal_basis}, ... ]
-}
-```
+**If locking fails** (period has vouchers):  
+- Error data: {period_start, period_end, existing_voucher_count, existing_invoice_count}  
+- Error raised to UI with actionable message  
 
-**Data mapping:**
-- DB `company_configs.vat_settlement_cycle` (VARCHAR) → JSON `"MONTHLY"` (enum display)
-- DB `accounting_regime` (VARCHAR) → JSON with description: `{"id": "tt200", "label": "Thông tư 200/2014/TT-BTC"}`
-- LAW flags: `editable=false`; CONFIG flags: `editable=true`, `requires_2nd_approval` if applicable
+**If unlocking**:  
+- Similar data path with is_locked=False + audit LOG DELETE event  
 
 ---
 
-## DFD-02: Config Update Flow (CONFIG Flag)
+## DF-03: Config Update Data Flow
+**Trigger**: Admin modifying a system configuration flag  
+**Data Origin**: Current CompanyConfig value + Admin new value  
+**Data Path**:  
+1. System reads current CompanyConfig value from `company_configs` table via SQLAlchemy adapter  
+2. Admin inputs new value via UI → validated against flag_type (LAW vs CONFIG)  
+3. If LAW: System raises FlagLockedError; no data mutation  
+4. If CONFIG:  
+   a. System emits AuditLogService event BEFORE mutation:  
+      {flag_name, old_value=<current DB value>, new_value=<admin input>, actor_id=<admin_id>, timestamp=now, table_name=CompanyConfig}  
+   b. System updates CompanyConfig record: UPDATE company_configs SET <field>=<new_value>, config_version=config_version+1 WHERE id=<id>  
+   c. System emits AuditLogService event AFTER mutation: {flag_name, new_value=<admin input>, actor_id=<admin_id>, timestamp=now, table_name=CompanyConfig, config_version=<new_version>}  
+5. Response: confirmation + new config_version displayed  
 
-```
-A (Admin)
-  PATCH /api/v1/companies/{id}/settings/flags/{flag_name}
-  Headers: X-Config-Version: 3
-  Body: { "value": "quarterly" }
-  ↓
-API Handler
-  → Auth: ADMIN role ✓
-  → SystemSettingsService.update_flag(company_id, flag_name, value, actor, v=3)
-    → Repository.get_company_config(company_id) + check version = 3
-    → FlagDefinition.lookup(flag_name) → type = CONFIG
-      found: vat_settlement_cycle, requires_2nd_approval = True
-    → If requires_2nd_approval AND not pre-approved:
-        → Create approval request; notify CA (async email)
-        → Return 202 Accepted with approval_id
-        [CA reviews → approves via /approvals/{id}/approve]
-        → ApprovalService.approve(approval_id, ca_actor)
-          → FlagApproval state = APPROVED
-          → Returns to caller
-    → [Service] EMIT config_changes INTO config_changes (before, after, actor, flag_type, version)
-    → [Service] EMIT audit_log INTO audit_log (before, after, actor, action=CONFIG_UPDATED)
-    → [Repository] UPDATE company_configs SET vat_settlement_cycle='quarterly', config_version=4
-      WHERE company_id=id AND config_version=3
-    → IF 0 rows affected → 409 CONFIG_VERSION_CONFLICT
-    → Cache.invalidate("config:{company_id}")
-  ↓
-HTTP 200
-{ "company_id": "uuid", "config_version": 4, "flag_name": "vat_settlement_cycle", "value": "quarterly" }
-```
-
-**Data mapping:**
-- `config_version` in DB: INT, incremented atomically in UPDATE WHERE clause
-- `before_value`: JSONB serialization of CompanyConfig keyword snapshot for changed flag
-- `after_value`: JSONB of new value
-- `change_reason`: captured from PATCH body or approval request
+**Data Transformation**:  
+- config_version: integer incremented by 1 each change  
+- LAW-type flags: mutation blocked; error raised instead  
+- CONFIG-type flags: mutation permitted with audit trail  
 
 ---
 
-## DFD-03: Period Lock Enforcement (at Invoice Creation)
+## DF-04: VAT Rate Validation Data Flow
+**Trigger**: User creating/editing invoice/voucher VAT rate  
+**Data Origin**: User input + CompanyConfig.vat_rates frozenset  
+**Data Path**:  
+1. User inputs VAT rate via invoice/voucher form  
+2. System reads CompanyConfig.vat_rates from `company_configs` table  
+3. System validates: rate ∈ vat_rates (i.e., rate ∈ {0, 5, 10})  
+4. If valid: Proceed with invoice/voucher creation; Invoice._recalculate() or Voucher post() computes totals  
+5. If invalid: System raises InvalidVATRateError; form field marked error; user must correct  
 
-```
-SA creates invoice with issue_date = 2026-03-15
-  → InvoiceService.create(invoice)
-    → SystemSettingsService.is_period_locked(company_id, issue_date)
-      → PeriodLockRepository.is_locked(company_id, "2026-03")
-        → SQL: SELECT 1 FROM period_locks
-                WHERE company_id=? AND fiscal_year=2026
-                  AND accounting_period = MONTH(issue_date)
-                  AND (lock_type='PERIOD' OR lock_type='FYEAR_CLOSED')
-      → EXISTS → return True
-    → IF locked → raise AccountingPeriodLockedError
-      → API returns 403 PERIOD_LOCKED
-    → IF not locked → continue CREATE
-      → SQLAlchemyInvoiceRepository.create(invoice)  [existing path]
-      → InvoiceService.emit_audit_event(invoice)
-  ↓
-HTTP 201 Created (if unlocked) or 403 (if locked)
-```
-
-**Data mapping:**
-- `invoice.issue_date` (DATE) → mapped to `fiscal_year` + `accounting_period` using CompanyConfig.fiscal_year_start_*
-- fiscal year derivation logic:
-  ```
-  if period_start_month=4, period_start_day=1:
-    fiscal_year = issue_date.year if issue_date.month >= 4 else issue_date.year - 1
-    accounting_period = (issue_date.month - 4 + 12) % 12 + 1
-  ```
+**Data Transformation**:  
+- vat_rates stored as JSON string "[0,5,10]" in DB  
+- Domain layer converts to frozenset{int} on read  
+- Validation error message: "Thuế GTGT {rate} không hợp lệ. Các mức được phép: {0, 5, 10}"
 
 ---
 
-## DFD-04: E-Invoice Number Sequence (Atomic Advance)
+## DF-05: E-Invoice Series Data Flow
+**Trigger**: Chief Accountant managing e-invoice series  
+**Data Origin**: Chief Accountant input + GDT constraints  
+**Data Path**:  
+1. Chief Accountant inputs series prefix via UI  
+2. System reads current series count from `e_invoice_series` table  
+3. If count < 15: New EInvoiceSeries record prepared: {series_prefix, next_sequence=1, is_active=True, ca_signer=<optional>, company_id=<current>, created_at=now}  
+4. Record persisted to `e_invoice_series` table via SQLAlchemy adapter  
+5. AuditLogService emits CREATE event: {entity_type=EInvoiceSeries, entity_id=<id>, action=CREATE, new_value=<series details>, before_value=null, actor_id=<admin_id>, timestamp=now}  
+6. Response: series added confirmation + current count + max limit warning  
 
-```
-SA requests invoice issuance for series "AA/2026"
-  ├─ Thread A                              ├─ Thread B (concurrent)
-  → SystemSettingsService
-      .advance_e_invoice_sequence(...)
-      → SQL (transaction):
-          SELECT next_sequence
-          FROM e_invoice_series
-          WHERE company_id=? AND prefix='AA/2026'
-            AND active=true
-          FOR UPDATE        ← row lock
-      → old_seq = 42
-      → UPDATE e_invoice_series
-          SET next_sequence = 43
-          WHERE id = series_id
-      → INSERT INTO invoice_series_log (series_id, seq_used, actor)
-          VALUES (series_id, 42, sa_user_id)
-      COMMIT
-  ← Returns 42                           ← Would block on SELECT FOR UPDATE
- arrives first                          → Returns 43
-```
+**If at limit** (count ≥ 15):  
+- Error: "Đã đạt giới hạn 15 series số hóa đơn điện tử.active"  
+- No data mutation  
 
-**Data mapping:**
-- `e_invoice_series.next_sequence` (INT, NOT NULL, ≥1)
-- `invoice_series_log` (proposed log table): id, series_id, seq_used, actor, created_at
-- Lock granularity: row-level on e_invoice_series; no table lock required
+**Data Transformation**:  
+- series_prefix: string (e.g., "AA/2026")  
+- next_sequence: integer, auto-incremented on each invoice within the series  
+- is_active: boolean; only one series typically active per prefix, but up to 15 total active series permitted  
+- ca_signer: optional string referencing GDT-approved CA identifier  
 
 ---
 
-## DFD-05: Audit Log Append (WORM)
+## DF-06: Config Change Audit Data Flow
+**Trigger**: Any CompanyConfig modification  
+**Data Origin**: System internal (SystemSettingsService)  
+**Data Path**:  
+1. SystemSettingsService.update_config() called  
+2. BEFORE mutation: AuditLogService.create({entity_type=CompanyConfig, entity_id=<id>, action=CREATE/UPDATE, field_name=<field>, old_value=<current>, new_value=<new>, actor_id=<admin_id>, timestamp=now})  
+3. CompanyConfig record updated: field=new_value, config_version=config_version+1  
+4. AuditLogService.create({entity_type=CompanyConfig, entity_id=<id>, action=UPDATE, field_name=<field>, old_value=<current>, new_value=<new>, actor_id=<admin_id>, timestamp=now, config_version=<new_version>})  
+5. Both events persisted to `audit_log` table via SQLAlchemy adapter  
 
-```
-System event (e.g., CONFIG_CHANGED)
-  → AuditLogService.emit(company_id, actor, action, entity_type, entity_id, before, after, ip, ua)
-    → [Non-blocking] Write to async queue
-    → [DB Writer - dedicated role with INSERT-only]
-        INSERT INTO audit_log (
-            company_id, actor_user_id, action, entity_type, entity_id,
-            before_value, after_value, ip_address, user_agent, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, now())
-    → INSERT succeeds (REVOKE DELETE prevents removal)
-  → [Background Worker - hourly]
-      ├─ Archive rows older than 2 years to cold storage (WORM)
-      └─ Mark archived in hot DB (still queryable, large blobs moved)
+**Data Fields in audit_log**:  
+- id: UUID primary key  
+- entity_type: "CompanyConfig"  
+- entity_id: CompanyConfig UUID  
+- action: "CREATE" or "UPDATE"  
+- field_name: e.g., "vat_method", "vat_rates", "e_invoice_mode"  
+- old_value: previous value (JSON-stringified where needed)  
+- new_value: new value (JSON-stringified where needed)  
+- actor_id: admin UUID who made the change  
+- changed_at: timestamp of change  
+- config_version: CompanyConfig config_version after change  
 
-  [DB constraint]
-  REVOKE DELETE, UPDATE ON audit_log FROM app_role;
-  GRANT INSERT, SELECT ON audit_log TO app_role;
-```
-
-**Data mapping:**
-- `before_value`, `after_value`: JSONB with full flag snapshot for CONFIG changes; minimal payload for high-volume events
-- `created_at`: set at DB level via `now()` NOT application; guarantees WORM
-
----
-
-## DFD-06: Company Setup (Init Flow)
-
-```
-[External] GDT issues MST
-  ↓
-[CA] POST /api/v1/companies/{new_id}/settings/init
-  Body: {
-    company_name, mst, address, legal_rep, company_type,
-    accounting_regime: "tt200",
-    fiscal_year_start: { month: 1, day: 1 },
-    vat_method: "deduction",
-    vat_cycle: "monthly",
-    e_invoice_mode: "software_cert"
-  }
-  ↓
-API Handler
-  → SystemSettingsService.init_company(company_id, company_info)
-    → Validate: MST format (TaxId value object)
-    → Validate: company_type in enum (ENTERPRISE, COMPANY, BRANCH, HQ)
-    → Validate: accounting_regime in enum
-    → Validate: fiscal_year_start {1,1} or valid Apr-1
-    → Validate: vat_method matches declared tax registration (TODO: reconcile with external source)
-    → Build CompanyConfig with all mandatory fields; config_version=1
-    → Repository.create_company_config(config)
-      → INSERT INTO company_configs (...) VALUES (...)
-    → Repository.append_audit_log(company_id, actor, 'CONFIG_CREATED', ..., before=null, after=config_json)
-  ↓
-HTTP 201 Created
-{ company_id, config_version: 1, legal_review_required: true }
-```
-
-**Data mapping:**
-- `company_info.company_type` → maps to DB `company_configs.company_type` + FK to future `companies` table
-- `accounting_regime` → maps to COA template; derived `coa_version` should match
-
----
-
-## DFD-07: Legal Review Stamp Flow
-
-```
-[System] Periodic task: identifies configs needing legal review
-  OR [CA] triggers: POST /config/legal-review
-  ↓
-API Handler
-  → SystemSettingsService.stamp_legal_review(company_id, ca_actor)
-    → Check: ca_actor role = CHIEF_ACCOUNTANT
-    → Build review_summary JSONB:
-        {
-          "config_version": 5,
-          "flags_since_last_review": [ ... ],
-          "changes": [ flag_name, before, after, actor, timestamp ],
-          "regime_matches_registration": true,
-          "retention_adequate": true,
-          "vat_method_declared_match": true
-        }
-    → Repository.update(
-        legal_reviewed_at=now(),
-        legal_reviewed_by=ca_actor.id,
-        ...
-      )
-    → Repository.append_audit_log(action=LEGAL_REVIEW_STAMPED,
-        after_value=review_summary)
-    → Repository.append_audit_log(action=AUDIT_LOG_EXPORT, ...)
-  ↓
-HTTP 200
-{ company_id, legal_reviewed_at, legal_reviewed_by, config_version }
-```
-
-**Data mapping:**
-- `review_summary` stored in audit_log only (not in company_configs — audit trail is primary record); compact JSONB
-- Reviewed flags snapshot extracted from config_changes WHERE config_version > last_review_version
-
----
-
-## Data Dictionary (Key Tables)
-
-| Table | Primary Key | Key Columns | Growth Rate | Retention |
-|-------|------------|-------------|-------------|-----------|
-| company_configs | id | company_id, config_version, accounting_regime, vat_rates | ~1 row/company | Immutable once set; updates rare |
-| audit_log | id | company_id, action, entity_type, created_at | ~100-1000 rows/day per active company | ≥10 years hot; archive after 2y |
-| period_locks | id | company_id, fiscal_year, accounting_period, lock_type | ~12 (periods) + 1 (fyear) per year per company | Retention = company lifetime |
-| e_invoice_series | id | company_id, prefix, next_sequence | ~2-15 per company | Retention = company lifetime |
-| config_changes | id | company_id, config_version, flag_name, actor | ~few per quarter per company | ≥10 years |
+**Postconditions**: Full audit trail of all config changes; auditors can export audit_log table without UI assistance

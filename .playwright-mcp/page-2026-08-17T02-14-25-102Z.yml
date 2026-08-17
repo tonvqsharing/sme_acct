@@ -1,0 +1,38 @@
+- generic [active] [ref=e1]:
+  - alert [ref=e2]: Trang chủ | CSDL quốc gia về pháp luật
+  - banner [ref=e3]:
+    - generic [ref=e4]:
+      - link [ref=e6] [cursor=pointer]:
+        - /url: /
+        - img "National Database on Legislation" [ref=e7]
+      - button "Cơ sở dữ liệu quốc gia về pháp luật" [ref=e9] [cursor=pointer]:
+        - heading "Cơ sở dữ liệu quốc gia về pháp luật" [level=1] [ref=e10]
+      - button "Open menu" [ref=e13] [cursor=pointer]
+  - main [ref=e16]:
+    - generic [ref=e65]:
+      - generic [ref=e66]:
+        - heading "Đang tải dữ liệu..." [level=2] [ref=e72]
+        - paragraph [ref=e73]: Vui lòng chờ trong giây lát
+      - paragraph [ref=e83]: Portal VBPL - Đang tải nội dung...
+  - contentinfo [ref=e29]:
+    - generic [ref=e30]:
+      - img "Cơ sở dữ liệu quốc gia về pháp luật" [ref=e32]
+      - paragraph [ref=e33]: CƠ SỞ DỮ LIỆU QUỐC GIA VỀ PHÁP LUẬT
+      - generic [ref=e34]:
+        - generic [ref=e35]:
+          - paragraph [ref=e36]: "Đơn vị chủ quản:"
+          - paragraph [ref=e37]: Bộ Tư pháp
+        - generic [ref=e38]:
+          - generic [ref=e39]:
+            - generic [ref=e40]: "Điện thoại:"
+            - generic [ref=e41]: 024.6273.9468 |
+          - generic [ref=e42]:
+            - generic [ref=e43]: "Fax:"
+            - generic [ref=e44]: 024.6273.9359
+        - generic [ref=e45]:
+          - generic [ref=e46]: "Địa chỉ:"
+          - generic [ref=e47]: Số 60 Trần Phú - Ba Đình - Thành phố Hà Nội
+  - iframe [ref=e50]:
+    - generic [ref=f1e6]:
+      - text: protected by
+      - strong [ref=f1e7]: reCAPTCHA

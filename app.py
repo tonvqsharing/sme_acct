@@ -1,9 +1,10 @@
-from flask import Flask, render_template
-from flask_sqlalchemy import SQLAlchemy
-from flask_migrate import Migrate
-from flask_talisman import Talisman
-from dotenv import load_dotenv
 import os
+
+from dotenv import load_dotenv
+from flask import Flask, render_template
+from flask_migrate import Migrate
+from flask_sqlalchemy import SQLAlchemy
+from flask_talisman import Talisman
 
 load_dotenv()
 
@@ -45,7 +46,7 @@ def create_app() -> Flask:
         )
 
     # Blueprints
-    from src.presentation.api import bp as api_bp
+    from src.presentation.api import api_bp
 
     app.register_blueprint(api_bp, url_prefix="/api")
 

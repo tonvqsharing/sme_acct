@@ -1,13 +1,9 @@
 """Infrastructure repository implementations (SQLAlchemy stubs)."""
-
 from __future__ import annotations
-
 import json
 from datetime import date
 from uuid import UUID
-
 from sqlalchemy import func, select
-
 from src.application.ports import (
     CompanyRepositoryPort,
     InvoiceRepositoryPort,
@@ -23,25 +19,27 @@ from src.infrastructure.database import db
 from src.infrastructure.database.models import (
     AccountingRegimeEnum,
     BankAccountModel,
+    CAListEntryModel,
     CompanyModel,
     CompanyStatusEnum,
     CompanyTypeEnum,
     DocumentTypeEnum,
     EntityTypeEnum,
+    EInvoiceSeriesModel,
+    FlagTypeEnum,
     InvoiceItemModel,
     InvoiceModel,
     InvoiceStatusEnum,
     InvoiceTypeEnum,
     PartnerModel,
+    PeriodLockModel,
     VoucherLineModel,
     VoucherModel,
     VoucherStatusEnum,
 )
 
-
 class SQLAlchemyPartnerRepository(PartnerRepositoryPort):
     """Maps domain Partner <-> SQLAlchemy PartnerModel."""
-
     def create(self, partner: Partner) -> Partner:
         model = PartnerModel(
             code=partner.code,
@@ -58,16 +56,13 @@ class SQLAlchemyPartnerRepository(PartnerRepositoryPort):
         db.session.add(model)
         db.session.commit()
         return self._to_domain(model)
-
     def get_by_id(self, partner_id: UUID) -> Partner | None:
         model = db.session.get(PartnerModel, partner_id)
         return self._to_domain(model) if model else None
-
     def get_by_code(self, code: str) -> Partner | None:
         stmt = select(PartnerModel).where(PartnerModel.code == code)
         model = db.session.scalars(stmt).first()
         return self._to_domain(model) if model else None
-
     def list_active(self, page: int = 1, page_size: int = 20):
         stmt = (
             select(PartnerModel)
@@ -77,11 +72,9 @@ class SQLAlchemyPartnerRepository(PartnerRepositoryPort):
         )
         models = db.session.scalars(stmt).all()
         return [self._to_domain(m) for m in models]
-
     @staticmethod
     def _to_domain(model: PartnerModel) -> Partner:
         from src.domain.entities.contact import Partner as PartnerEntity
-
         return PartnerEntity(
             code=model.code,
             name=model.name,
@@ -93,10 +86,8 @@ class SQLAlchemyPartnerRepository(PartnerRepositoryPort):
             tax_agency=model.tax_agency,
         )
 
-
 class SQLAlchemyInvoiceRepository(InvoiceRepositoryPort):
     """Maps Invoice domain entity <-> InvoiceModel."""
-
     def create(self, invoice: Invoice) -> Invoice:
         model = InvoiceModel(
             serial=invoice.serial,
@@ -135,11 +126,9 @@ class SQLAlchemyInvoiceRepository(InvoiceRepositoryPort):
             )
         db.session.commit()
         return self._to_domain(model)
-
     def get_by_id(self, invoice_id: UUID) -> Invoice | None:
         model = db.session.get(InvoiceModel, invoice_id)
         return self._to_domain(model) if model else None
-
     def list_by_partner(self, partner_id: UUID, page: int = 1, page_size: int = 20):
         stmt = (
             select(InvoiceModel)
@@ -150,12 +139,10 @@ class SQLAlchemyInvoiceRepository(InvoiceRepositoryPort):
         )
         models = db.session.scalars(stmt).all()
         return [self._to_domain(m) for m in models]
-
     @staticmethod
     def _to_domain(model: InvoiceModel) -> Invoice:
         from src.domain.entities.invoice import Invoice as InvoiceEntity
         from src.domain.entities.invoice import InvoiceItem, TaxRate
-
         invoice = InvoiceEntity(
             serial=model.serial,
             invoice_number=model.invoice_number,
@@ -184,10 +171,8 @@ class SQLAlchemyInvoiceRepository(InvoiceRepositoryPort):
         invoice._recalculate()
         return invoice
 
-
 class SQLAlchemyVoucherRepository(VoucherRepositoryPort):
     """Maps Voucher domain entity <-> VoucherModel."""
-
     def create(self, voucher: Voucher) -> Voucher:
         model = VoucherModel(
             voucher_number=voucher.voucher_number,
@@ -214,16 +199,13 @@ class SQLAlchemyVoucherRepository(VoucherRepositoryPort):
             )
         db.session.commit()
         return self._to_domain(model)
-
     def get_by_id(self, voucher_id: UUID) -> Voucher | None:
         model = db.session.get(VoucherModel, voucher_id)
         return self._to_domain(model) if model else None
-
     def get_by_number(self, voucher_number: str) -> Voucher | None:
         stmt = select(VoucherModel).where(VoucherModel.voucher_number == voucher_number)
         model = db.session.scalars(stmt).first()
         return self._to_domain(model) if model else None
-
     def lock(self, voucher_id: UUID) -> Voucher:
         model = db.session.get(VoucherModel, voucher_id)
         if not model:
@@ -231,12 +213,10 @@ class SQLAlchemyVoucherRepository(VoucherRepositoryPort):
         model.status = VoucherStatusEnum.LOCKED
         db.session.commit()
         return self._to_domain(model)
-
     @staticmethod
     def _to_domain(model: VoucherModel) -> Voucher:
         from src.domain.entities.voucher import Voucher as VoucherEntity
         from src.domain.entities.voucher import VoucherLine
-
         voucher = VoucherEntity(
             voucher_number=model.voucher_number,
             voucher_type=model.voucher_type.value,
@@ -249,10 +229,8 @@ class SQLAlchemyVoucherRepository(VoucherRepositoryPort):
         voucher.approved_by = model.approved_by_id
         return voucher
 
-
 class SQLAlchemyCompanyRepository(CompanyRepositoryPort):
     """Maps Company domain entity <-> CompanyModel."""
-
     def create(self, company: Company) -> Company:
         existing = db.session.scalars(
             select(CompanyModel).where(CompanyModel.mst == str(company.mst))
@@ -261,7 +239,6 @@ class SQLAlchemyCompanyRepository(CompanyRepositoryPort):
             raise DuplicateMSTError(
                 f"Mã số thuế '{company.mst}' đã được sử dụng bởi đơn vị '{existing.legal_name}'"
             )
-
         model = CompanyModel(
             legal_name=company.legal_name,
             mst=str(company.mst),
@@ -309,13 +286,11 @@ class SQLAlchemyCompanyRepository(CompanyRepositoryPort):
         db.session.add(model)
         db.session.commit()
         return self._to_domain(model)
-
     def update(self, company: Company) -> Company:
         """Persist state changes to an existing company (matched by id)."""
         model = db.session.get(CompanyModel, company.id)
         if not model:
             raise NotFoundError(f"Company {company.id} not found")
-
         # Guard against MST collision with another company
         if model.mst != str(company.mst):
             existing = db.session.scalars(
@@ -327,7 +302,6 @@ class SQLAlchemyCompanyRepository(CompanyRepositoryPort):
                 raise DuplicateMSTError(
                     f"Mã số thuế '{company.mst}' đã được sử dụng bởi đơn vị '{existing.legal_name}'"
                 )
-
         model.legal_name = company.legal_name
         model.mst = str(company.mst)
         model.headquarters_address = company.headquarters_address
@@ -353,7 +327,6 @@ class SQLAlchemyCompanyRepository(CompanyRepositoryPort):
         model.mst_changed_at = company.mst_changed_at
         model.updated_at = company.updated_at
         model.updated_by = company.updated_by
-
         # Replace bank accounts
         db.session.query(BankAccountModel).filter(BankAccountModel.company_id == model.id).delete(
             synchronize_session=False
@@ -371,16 +344,13 @@ class SQLAlchemyCompanyRepository(CompanyRepositoryPort):
             )
         db.session.commit()
         return self._to_domain(model)
-
     def get_by_id(self, company_id: UUID) -> Company | None:
         model = db.session.get(CompanyModel, company_id)
         return self._to_domain(model) if model else None
-
     def get_by_mst(self, mst: str) -> Company | None:
         stmt = select(CompanyModel).where(CompanyModel.mst == mst)
         model = db.session.scalars(stmt).first()
         return self._to_domain(model) if model else None
-
     def get_active(self) -> Company | None:
         stmt = (
             select(CompanyModel)
@@ -390,7 +360,6 @@ class SQLAlchemyCompanyRepository(CompanyRepositoryPort):
         )
         model = db.session.scalars(stmt).first()
         return self._to_domain(model) if model else None
-
     def list_active(self, page: int = 1, page_size: int = 20) -> list[Company]:
         stmt = (
             select(CompanyModel)
@@ -401,7 +370,6 @@ class SQLAlchemyCompanyRepository(CompanyRepositoryPort):
         )
         models = db.session.scalars(stmt).all()
         return [self._to_domain(m) for m in models]
-
     def _get_bank_accounts(self, model: CompanyModel) -> list[BankAccount]:
         return [
             BankAccount(
@@ -413,7 +381,6 @@ class SQLAlchemyCompanyRepository(CompanyRepositoryPort):
             )
             for ba in (model.bank_account_models or [])
         ]
-
     def _to_domain(self, model: CompanyModel) -> Company:
         from src.domain.entities.base import TaxId
         from src.domain.entities.company import (
@@ -423,7 +390,6 @@ class SQLAlchemyCompanyRepository(CompanyRepositoryPort):
             CompanyStatus,
             CompanyType,
         )
-
         bf = []
         if model.business_fields:
             try:

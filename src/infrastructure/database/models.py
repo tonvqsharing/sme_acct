@@ -267,3 +267,68 @@ class BankAccountModel(Base):
     company: Mapped[CompanyModel] = relationship(
         back_populates="bank_account_models", lazy="selectin"
     )
+
+
+class FlagTypeEnum(enum.Enum):
+    LAW = "law"
+    CONFIG = "config"
+
+
+class FlagScopeEnum(enum.Enum):
+    COMPANY = "company"
+    SYSTEM = "system"
+
+
+class PeriodLockModel(Base):
+    __tablename__ = "period_locks"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    company_id: Mapped[UUID] = mapped_column(
+        ForeignKey("companies.id"), nullable=False, index=True
+    )
+    period_start: Mapped[date] = mapped_column(Date, nullable=False)
+    period_end: Mapped[date] = mapped_column(Date, nullable=False)
+    is_locked: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    locked_at: Mapped[date | None] = mapped_column(Date, nullable=True, default=None)
+    locked_by_id: Mapped[UUID | None] = mapped_column(nullable=True, default=None)
+    reason: Mapped[str | None] = mapped_column(String(200), nullable=True)
+
+
+class SystemAuditLogModel(Base):
+    __tablename__ = "audit_log"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    entity_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    entity_id: Mapped[UUID] = mapped_column(nullable=True)
+    action: Mapped[str] = mapped_column(String(20), nullable=False)  # CREATE | UPDATE | DELETE
+    field_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    before_value: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    after_value: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    actor_id: Mapped[UUID] = mapped_column(nullable=False, default=uuid4)
+    changed_at: Mapped[date] = mapped_column(Date, nullable=False, default=date.today)
+
+
+class EInvoiceSeriesModel(Base):
+    __tablename__ = "e_invoice_series"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    series_prefix: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
+    next_sequence: Mapped[int] = mapped_column(nullable=False, default=1)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    ca_signer: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    company_id: Mapped[UUID] = mapped_column(
+        ForeignKey("companies.id"), nullable=False, index=True
+    )
+
+
+class CAListEntryModel(Base):
+    __tablename__ = "ca_list_entries"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    ca_identifier: Mapped[str] = mapped_column(String(100), nullable=False, unique=True, index=True)
+    ca_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="ACTIVE")
+    cert_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    expired_at: Mapped[date | None] = mapped_column(Date, nullable=True)
+    created_at: Mapped[date] = mapped_column(Date, nullable=False, default=date.today)
+

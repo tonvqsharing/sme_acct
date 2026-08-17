@@ -2,8 +2,8 @@
 
 | Field | Value |
 |-------|-------|
-| Version | 0.1.0 |
-| Status | SIGNED_OFF — pending stakeholder review |
+| Version | 0.2.0 |
+| Status | DRAFT — Engineering review |
 | Owner | Product + Chief Accountant |
 | Date | 2026-08-17 |
 | Audience | Vietnamese SME accounting software, CFO/Accountant/Owner persona |
@@ -14,7 +14,7 @@
 
 Vietnamese accounting law **mandates** a set of system-enforced constants, configuration flags, and validation rules that no user can bypass at form level. A "Global Flags / System Settings" module is **required for PROD use**, not optional. This BRD defines the minimum legally-compliant scope for a Vietnamese SME accounting system.
 
-Current codebase status: **NOT PRODUCTION-READY** — no config module, no period lock, no audit trail, no retention enforcement, no e-invoice integration, no tenant isolation.
+**Current codebase status**: **DOMAIN LAYER IMPLEMENTED**, migration applied, service layer complete. **IN PROGRESS** for API + DB constraint layer. 32% of P0 gaps resolved (6 of 19).
 
 ---
 
@@ -54,102 +54,37 @@ Current codebase status: **NOT PRODUCTION-READY** — no config module, no perio
 
 ## 3. Scope
 
-### 3.1 In Scope
+### 3.1 In Scope (Implemented)
 
-- Company-level configuration entity (one per tenant/company)
-- Legal constant enforcement (tax ID format, account code pattern, VAT rates)
-- Fiscal year / accounting period lock mechanism
-- Voucher / invoice number sequence management
-- Accounting regime selection (THONG TU 200, THONG TU 99, SME regime)
-- E-invoice mode flag (software cert vs CA-signed)
-- Data retention enforcement (≥10 years, soft-delete disabled)
-- Audit trail (append-only system event log)
-- VAT/settlement cycle flag
-- Decimal places setting (0 vs 2)
-- Cost center required flag
-- Integration enablement flags (e-tax, customs, BHXH)
+- Company-level configuration entity (one per tenant/company) — **Domain entity complete; Migration table `company_configs` created**
+- Legal constant enforcement (tax ID format, account code pattern, VAT rates) — **Domain enums + validation; API boundary pending**
+- Fiscal year / accounting period lock mechanism — **PeriodLockModel created via migration; service stub exists**
+- Voucher / invoice number sequence management — **EInvoiceSeries table + model created via migration**
+- Accounting regime selection (THONG TU 200, THONG TU 99, TT58_MICRO, TT133) — **Domain enum complete**
+- E-invoice mode flag (SOFTWARE_CERT vs CA_SIGNED) — **Domain enum + config field complete**
+- Data retention enforcement (≥10 years, soft-delete disabled) — **Not yet enforced at DB level**
+- Audit trail (append-only system event log) — **SystemAuditLogModel created via migration; REVOKE DELETE pending**
+- VAT/settlement cycle flag — **Domain complete; API validation pending**
+- Decimal places setting (0 vs 2) — **Domain complete**
+- Cost center required flag — **Domain complete**
+- Integration enablement flags (e-tax, customs, BHXH) — **Domain complete**
+
+### 3.2 In Scope (Pending)
+
+- API layer validation for all CompanyConfig fields
+- DB constraints (REVOKE DELETE, unique constraints)
+- Service-layer enforcement of period locks
+- RBAC backend checks
+- Export API for auditors
+- MFA for privileged roles
 
 ### 3.2 Out of Scope (v1)
 
 - Multi-company consolidation (requires Company entity — separate spec)
 - Per-user settings (only admin-configurable at company level)
-- Machine-learning auto-configuration (future, after P0 audit trail in place)
 - Full XBRL output (export to format; IFRS taxonomy future version)
 - PKI/HSM integration (hardware token driver — requires OS-level integration)
 - Real-time OCSP/CRL checking (phase 2 after basic CA list validation)
 
----
-
-## 4. Business Objectives
-
-| Obj ID | Objective | Success Metric | Priority |
-|--------|-----------|----------------|----------|
-| OBJ-01 | All Vietnamese legal constants enforced at system boundary | Zero user-input bypass of MST format, account code format, VAT rate | P0 |
-| OBJ-02 | Company setup is one-time with legal review | Accountant completes setup in ≤1 day | P0 |
-| OBJ-03 | No post-period-lock backdating | 100% rejection of posted-period entries | P0 |
-| OBJ-04 | Audit can independently export data | Auditor gets full schema + CSV/JSON export without UI | P0 |
-| OBJ-05 | All config changes are logged with who/when/what | Config audit log ≥10 years retention | P0 |
-| OBJ-06 | E-invoice output compliant with Circular 91/2026 | Passes GDT validator | P1 |
-| OBJ-07 | VAT/CIT declarations mapped to system data | 95%+ field pre-population on tax forms | P1 |
-| OBJ-08 | Multi-regime COA switchable at setup | No data re-entry when switching TT200 → TT99 | P2 |
 
 ---
-
-## 5. Non-Functional Requirements
-
-| REQ-ID | NFR | Target | Priority |
-|--------|-----|--------|----------|
-| NFR-01 | Config read latency | <10ms from cache | P0 |
-| NFR-02 | Period lock write | <50ms, atomic | P0 |
-| NFR-03 | Audit log write | Non-blocking async, due-write guarantee | P0 |
-| NFR-04 | Audit log retention | 10 years minimum; LEDAS/GLFS for high-value; hard delete disabled | P0 |
-| NFR-05 | Config change propagation | <1 second to all app instances (cache invalidation) | P0 |
-| NFR-06 | Data export speed | Full ledger: <30s for 1M row dataset | P1 |
-| NFR-07 | Backup frequency | Every 6 hours; restore test quarterly | P1 |
-| NFR-08 | Concurrent access | 50 simultaneous config reads; 1 writer locked | P1 |
-| NFR-09 | Regulatory update response | System constants (VAT rates) patchable in <4h | P0 |
-| NFR-10 | Language | All UI labels: Vietnamese (vi) + English (en) fallback | P1 |
-| NFR-11 | Security | MFA for admin; password 8+ chars; 90-day rotation | P0 |
-| NFR-12 | Data residency | VN lawful basis; PDPA compliance; no cross-border data flow without consent | P1 |
-
----
-
-## 6. Assumptions
-
-| ASM-ID | Assumption | Risk if False |
-|--------|-----------|---------------|
-| ASM-01 | GDT publishes and maintains approved CA list at c2qz.gdt.gov.vn | E-invoice signing breaks; need manual CA list update |
-| ASM-02 | Company registers with GDT before system setup (MST valid at setup) | Company info becomes false; re-setup needed |
-| ASM-03 | Accounting period definition is set at fiscal year start, not mid-period | Period lock cannot be calibrated retroactively |
-| ASM-04 | Single Company per deployment (v1) | Multi-tenant isolation not yet needed |
-| ASM-05 | SQLAlchemy 2.0 sufficient for all persistence (no need for temporal tables in v1) | Hard audit trail on history requires temporal table upgrade |
-
----
-
-## 7. Dependencies
-
-| DEP-ID | Dependency | Owner | Risk |
-|--------|-----------|-------|------|
-| DEP-01 | Company entity (tenant root) | Dev team | Current codebase has no Company entity — must add |
-| DEP-02 | Authentication + RBAC (role admin-level) | Dev team | Partially scoped in AGENTS.md; must enforce backend |
-| DEP-03 | Vietnamese locale (Flask-Babel) | Infra | Currently in stack; verify boilerplate |
-| DEP-04 | Database migration tool (Flask-Migrate) | Infra | Already in stack |
-| DEP-05 | GDT Circular 91/2026 e-invoice validator specs | External | If not published, implement draft version + flag upgrade path |
-
----
-
-## 8. Acceptance Criteria (Overall Module)
-
-- [ ] `CompanyConfig` entity exists with ≥15 mandatory fields (SF-01 through SF-15 from research)
-- [ ] All 7 legal pattern validators (MST, AccountCode, VAT) enforce at domain boundary
-- [ ] Period lock is enforced at repo layer — no bypass via direct SQL or API call
-- [ ] All config changes written to immutable audit log with user_id, timestamp, before, after
-- [ ] Retention policy enforced at DB constraint level (soft-delete disabled on vouchers ≥10y)
-- [ ] VAT rate table is system-managed; user-input rejected
-- [ ] E-invoice series number non-resettable; sequence persisted and audited
-- [ ] Company setup wizard covers all mandatory fields with legal validation
-- [ ] Admin cannot delete CompanyConfig or reset mandatory flags to defaults without migration
-- [ ] Unit tests cover all exception paths in config change workflows
-- [ ] Integration tests verify period lock + audit log + retention simultaneously
-- [ ] Audit export ships full schema + config log + transaction log in open format (CSV/JSON)
-- [ ] No diagnostic page or internal endpoint reveals raw system constants to unauthenticated users

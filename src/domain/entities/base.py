@@ -95,6 +95,63 @@ class AccountingRegime(Enum):
     TT133 = "tt133"  # Thông tư 133/2016/TT-BTC (SME alternative)
 
 
+class FlagType(Enum):
+    """Loại cờ hệ thống per quy định Luật Kế toán 2015."""
+
+    LAW = "law"          # Luôn không thay đổi без migration patch
+    CONFIG = "config"    # Thay đổi có thể bởi admin có役 2nd approval
+
+
+class FlagScope(Enum):
+    """ Phạm vi cờ hệ thống."""
+
+    COMPANY = "company"  # Một giá trị cho mỗi công ty
+    SYSTEM = "system"    # Giá trị đơn nhất cho tất cả công ty (hiếm trong sản xuất)
+
+
+class FlagCategory(Enum):
+    """Danh mục cờ hệ thống."""
+
+    LEGAL = "legal"
+    TAX = "tax"
+    ACCOUNTING = "accounting"
+    E_INVOICE = "e_invoice"
+    INTEGRATION = "integration"
+    SECURITY = "security"
+    UI = "ui"
+
+
+class AccountingPeriodType(Enum):
+    """Loại năm tài chính."""
+
+    CALENDAR = "calendar"         # Jan 1 – Dec 31
+    FISCAL_APR = "fiscal_apr"     # Apr 1 – Mar 31 (thường cho doanh nghiệp kế thừa)
+    FISCAL_15 = "fiscal_15"       # Jul 15 – Jul 14 (khiếm nhięu; phải khai báo)
+
+
+@dataclass
+class EInvoiceSeries:
+    """Serie số hóa đơn điện tử."""
+    prefix: str                   # e.g., "AA/2026"
+    next_sequence: int            # số nguyên tiếp theo phát hành; không thể reset
+    active: bool                  # tối đa 15 series active
+    ca_signer: str | None         # Identifier of CA for this series
+
+
+class VATMethod(Enum):
+    """Thuế suất VAT theo quy định Việt Nam."""
+
+    DEDUCTION = "deduction"       # Khấu trừ — chuẩn mực
+    OUTPUT_ONLY = "output_only"   # Đầu ra — thuế cả bộ (doanh thu nhỏ/KKDV)
+
+
+class EInvoiceMode(Enum):
+    """Chế độ ký hóa đơn điện tử."""
+
+    SOFTWARE_CERT = "software_cert"   # Self-signed cert; giai đoạn chuyển dịch
+    CA_SIGNED = "ca_signed"          # GDT-approved CA; bắt buộc sau 2026
+
+
 @dataclass
 class TaxId:
     """Mã số thuế (MST) value object."""

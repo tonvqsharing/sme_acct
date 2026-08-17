@@ -36,7 +36,7 @@ Organization:
 | C-01 | Accounting regime (TT200, TT99, TT58_MICRO, TT133) selectable at setup only; not changeable mid-period without filing accounting policy change | Legal | Config check + audit log | YES (CHIEF_ACCOUNTANT) | LKT 2015 |
 | C-02 | VAT settlement cycle: MONTHLY (default) or QUARTERLY (opt-in if revenue ≤ VND 1B/year) | Tax | Config validation | YES | TT 92/2015 |
 | C-03 | VAT method: DEDUCTION or OUTPUT_ONLY — declared at tax registration; changes require tax authority approval | Tax | Config validation | YES | Luật Quản lý thuế 2019 |
-| C-04 | Fiscal year start month/day — default 1/1 but may select 4/1 | Accounting | Config validation | NO | LKT 2015 |
+| C-03 | Fiscal year start month/day — default 1/1 but may select 4/1 | Accounting | Config validation | NO | LKT 2015 |
 | C-05 | Decimal places: must be 0 or 2 | Accounting | Config validation | NO | LKT 2015 |
 | C-06 | E-invoice mode: SOFTWARE_CERT or CA_SIGNED | Legal | Config validation | YES | NĐ 123/2020 |
 | C-07 | CA list — populate from GDT published list | Legal | Config validation | NO at runtime | GDT c2qz.gdt.gov.vn |

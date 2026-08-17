@@ -1,0 +1,309 @@
+- generic [active] [ref=e1]:
+  - alert [ref=e2]
+  - banner [ref=e3]:
+    - generic [ref=e4]:
+      - link [ref=e6] [cursor=pointer]:
+        - /url: /
+        - img "National Database on Legislation" [ref=e7]
+      - button "Cơ sở dữ liệu quốc gia về pháp luật" [ref=e9] [cursor=pointer]:
+        - heading "Cơ sở dữ liệu quốc gia về pháp luật" [level=1] [ref=e10]
+      - button "Open menu" [ref=e13] [cursor=pointer]
+  - main [ref=e16]:
+    - generic [ref=e21]:
+      - generic [ref=e22]:
+        - img "banner" [ref=e27]
+        - button "Cơ sở dữ liệu quốc gia về pháp luật" [ref=e28] [cursor=pointer]:
+          - img "National Database on Legislation" [ref=e30]
+          - heading "Cơ sở dữ liệu quốc gia về pháp luật" [level=1] [ref=e31]
+        - generic [ref=e34]:
+          - generic [ref=e38]:
+            - generic [ref=e45]:
+              - textbox "Nhập từ khóa tìm kiếm" [ref=e47]
+              - button "Tìm kiếm" [ref=e49] [cursor=pointer]
+            - button "Tìm kiếm nâng cao" [ref=e54] [cursor=pointer]
+          - generic [ref=e60]:
+            - generic [ref=e62]:
+              - generic [ref=e63]:
+                - generic [ref=e64]: "Tìm kiếm trong:"
+                - generic [ref=e70]:
+                  - generic [ref=e71] [cursor=pointer]:
+                    - radio "Nội dung" [ref=e73]
+                    - generic [ref=e75]: Nội dung
+                  - generic [ref=e76] [cursor=pointer]:
+                    - radio "Tiêu đề" [checked] [ref=e78]
+                    - generic [ref=e80]: Tiêu đề
+                  - generic [ref=e81] [cursor=pointer]:
+                    - radio "Số hiệu" [ref=e83]
+                    - generic [ref=e85]: Số hiệu
+              - generic [ref=e86] [cursor=pointer]:
+                - checkbox "Chính xác cụm từ trên" [ref=e88]
+                - generic [ref=e90]: Chính xác cụm từ trên
+            - generic [ref=e91]: Hướng dẫn tra cứu
+      - generic [ref=e93]:
+        - generic [ref=e95]:
+          - generic [ref=e96]:
+            - heading "Văn bản mới" [level=2] [ref=e97]
+            - generic [ref=e98]:
+              - generic [ref=e99]:
+                - generic [ref=e100]: Số ký hiệu
+                - generic [ref=e102]: Ngày ban hành
+                - generic [ref=e104]: Tên văn bản
+              - list [ref=e109]:
+                - listitem [ref=e110]:
+                  - generic [ref=e120]:
+                    - heading [level=3] [ref=e121]
+                    - list [ref=e122]:
+                      - listitem [ref=e123]
+                      - listitem [ref=e124]
+                - listitem [ref=e125]:
+                  - generic [ref=e135]:
+                    - heading [level=3] [ref=e136]
+                    - list [ref=e137]:
+                      - listitem [ref=e138]
+                      - listitem [ref=e139]
+                - listitem [ref=e140]:
+                  - generic [ref=e150]:
+                    - heading [level=3] [ref=e151]
+                    - list [ref=e152]:
+                      - listitem [ref=e153]
+                      - listitem [ref=e154]
+                - listitem [ref=e155]:
+                  - generic [ref=e165]:
+                    - heading [level=3] [ref=e166]
+                    - list [ref=e167]:
+                      - listitem [ref=e168]
+                      - listitem [ref=e169]
+                - listitem [ref=e170]:
+                  - generic [ref=e180]:
+                    - heading [level=3] [ref=e181]
+                    - list [ref=e182]:
+                      - listitem [ref=e183]
+                      - listitem [ref=e184]
+                - listitem [ref=e185]:
+                  - generic [ref=e195]:
+                    - heading [level=3] [ref=e196]
+                    - list [ref=e197]:
+                      - listitem [ref=e198]
+                      - listitem [ref=e199]
+                - listitem [ref=e200]:
+                  - generic [ref=e210]:
+                    - heading [level=3] [ref=e211]
+                    - list [ref=e212]:
+                      - listitem [ref=e213]
+                      - listitem [ref=e214]
+                - listitem [ref=e215]:
+                  - generic [ref=e225]:
+                    - heading [level=3] [ref=e226]
+                    - list [ref=e227]:
+                      - listitem [ref=e228]
+                      - listitem [ref=e229]
+                - listitem [ref=e230]:
+                  - generic [ref=e240]:
+                    - heading [level=3] [ref=e241]
+                    - list [ref=e242]:
+                      - listitem [ref=e243]
+                      - listitem [ref=e244]
+                - listitem [ref=e245]:
+                  - generic [ref=e255]:
+                    - heading [level=3] [ref=e256]
+                    - list [ref=e257]:
+                      - listitem [ref=e258]
+                      - listitem [ref=e259]
+          - generic [ref=e260]:
+            - heading "Văn bản được xem nhiều" [level=2] [ref=e261]
+            - generic [ref=e264]:
+              - button [expanded] [ref=e265] [cursor=pointer]:
+                - heading "Văn bản được xem nhiều" [level=2] [ref=e267]
+              - complementary [ref=e272]:
+                - generic [ref=e273]:
+                  - generic [ref=e276]:
+                    - heading [level=3] [ref=e277]
+                    - list [ref=e278]:
+                      - listitem [ref=e279]
+                  - generic [ref=e282]:
+                    - heading [level=3] [ref=e283]
+                    - list [ref=e284]:
+                      - listitem [ref=e285]
+                  - generic [ref=e288]:
+                    - heading [level=3] [ref=e289]
+                    - list [ref=e290]:
+                      - listitem [ref=e291]
+                  - generic [ref=e294]:
+                    - heading [level=3] [ref=e295]
+                    - list [ref=e296]:
+                      - listitem [ref=e297]
+                  - generic [ref=e300]:
+                    - heading [level=3] [ref=e301]
+                    - list [ref=e302]:
+                      - listitem [ref=e303]
+                  - generic [ref=e306]:
+                    - heading [level=3] [ref=e307]
+                    - list [ref=e308]:
+                      - listitem [ref=e309]
+                  - generic [ref=e312]:
+                    - heading [level=3] [ref=e313]
+                    - list [ref=e314]:
+                      - listitem [ref=e315]
+                  - generic [ref=e318]:
+                    - heading [level=3] [ref=e319]
+                    - list [ref=e320]:
+                      - listitem [ref=e321]
+                  - generic [ref=e324]:
+                    - heading [level=3] [ref=e325]
+                    - list [ref=e326]:
+                      - listitem [ref=e327]
+                  - generic [ref=e330]:
+                    - heading [level=3] [ref=e331]
+                    - list [ref=e332]:
+                      - listitem [ref=e333]
+          - generic [ref=e335]:
+            - generic [ref=e336]:
+              - tab [selected] [ref=e337] [cursor=pointer]:
+                - heading "Sắp có hiệu lực trong 30 ngày" [level=2] [ref=e339]
+              - tab [ref=e340] [cursor=pointer]:
+                - heading "Sắp hết hiệu lực trong 30 ngày" [level=2] [ref=e342]
+            - tabpanel [ref=e343]:
+              - list [ref=e347]:
+                - listitem [ref=e348]:
+                  - generic [ref=e351] [cursor=pointer]:
+                    - button "Mới" [ref=e353]
+                    - generic [ref=e355]:
+                      - generic [ref=e356]:
+                        - generic [ref=e357]: Thông tư số 32/2026/TT-NHNN Quy định về hoạt động cho vay để đầu tư ra nước ngoài của tổ chức tín dụng, chi nhánh ngân hàng nước ngoài đối với khách hàng
+                        - generic [ref=e360]:
+                          - button "PDF" [ref=e362]
+                          - button "Lược đồ" [ref=e368]
+                          - button "Tải về" [ref=e374]
+                      - generic [ref=e380]:
+                        - generic [ref=e381]:
+                          - generic [ref=e382]: "Trạng thái:"
+                          - generic [ref=e383]: Chưa có hiệu lực
+                        - generic [ref=e384]:
+                          - generic [ref=e385]: "Ngày ban hành:"
+                          - generic [ref=e386]: 30/06/2026
+                        - generic [ref=e387]:
+                          - generic [ref=e388]: "Ngày hiệu lực:"
+                          - generic [ref=e389]: 18/08/2026
+                - listitem [ref=e390]:
+                  - generic [ref=e393] [cursor=pointer]:
+                    - button "Mới" [ref=e395]
+                    - generic [ref=e397]:
+                      - generic [ref=e398]:
+                        - generic [ref=e399]: Thông tư số 38/2026/TT-NHNN Quy định về quản lý ngoại hối đối với hoạt động đầu tư nước ngoài tại Việt Nam
+                        - generic [ref=e402]:
+                          - button "PDF" [ref=e404]
+                          - button "Lược đồ" [ref=e410]
+                          - button "Tải về" [ref=e416]
+                      - generic [ref=e422]:
+                        - generic [ref=e423]:
+                          - generic [ref=e424]: "Trạng thái:"
+                          - generic [ref=e425]: Chưa có hiệu lực
+                        - generic [ref=e426]:
+                          - generic [ref=e427]: "Ngày ban hành:"
+                          - generic [ref=e428]: 31/07/2026
+                        - generic [ref=e429]:
+                          - generic [ref=e430]: "Ngày hiệu lực:"
+                          - generic [ref=e431]: 18/08/2026
+                - listitem [ref=e432]:
+                  - generic [ref=e435] [cursor=pointer]:
+                    - button "Mới" [ref=e437]
+                    - generic [ref=e439]:
+                      - generic [ref=e440]:
+                        - generic [ref=e441]: Nghị định số 274/2026/NĐ-CP Quy định chi tiết một số điều và biện pháp thi hành Luật Đấu thầu về lựa chọn nhà đầu tư thực hiện dự án đầu tư kinh doanh
+                        - generic [ref=e444]:
+                          - button "PDF" [ref=e446]
+                          - button "Lược đồ" [ref=e452]
+                          - button "Tải về" [ref=e458]
+                      - generic [ref=e464]:
+                        - generic [ref=e465]:
+                          - generic [ref=e466]: "Trạng thái:"
+                          - generic [ref=e467]: Chưa có hiệu lực
+                        - generic [ref=e468]:
+                          - generic [ref=e469]: "Ngày ban hành:"
+                          - generic [ref=e470]: 07/07/2026
+                        - generic [ref=e471]:
+                          - generic [ref=e472]: "Ngày hiệu lực:"
+                          - generic [ref=e473]: 21/08/2026
+                - listitem [ref=e474]:
+                  - generic [ref=e477] [cursor=pointer]:
+                    - button "Mới" [ref=e479]
+                    - generic [ref=e481]:
+                      - generic [ref=e482]:
+                        - generic [ref=e483]: Nghị định số 273/2026/NĐ-CP Về kinh doanh hàng miễn thuế
+                        - generic [ref=e486]:
+                          - button "PDF" [ref=e488]
+                          - button "Lược đồ" [ref=e494]
+                          - button "Tải về" [ref=e500]
+                      - generic [ref=e506]:
+                        - generic [ref=e507]:
+                          - generic [ref=e508]: "Trạng thái:"
+                          - generic [ref=e509]: Chưa có hiệu lực
+                        - generic [ref=e510]:
+                          - generic [ref=e511]: "Ngày ban hành:"
+                          - generic [ref=e512]: 07/07/2026
+                        - generic [ref=e513]:
+                          - generic [ref=e514]: "Ngày hiệu lực:"
+                          - generic [ref=e515]: 21/08/2026
+                - listitem [ref=e516]:
+                  - generic [ref=e519] [cursor=pointer]:
+                    - button "Mới" [ref=e521]
+                    - generic [ref=e523]:
+                      - generic [ref=e524]:
+                        - generic [ref=e525]: Thông tư Quy định về thực hành công tác xã hội và cập nhật kiến thức công tác xã hội
+                        - generic [ref=e528]:
+                          - button "PDF" [ref=e530]
+                          - button "Lược đồ" [ref=e536]
+                          - button "Tải về" [ref=e542]
+                      - generic [ref=e548]:
+                        - generic [ref=e549]:
+                          - generic [ref=e550]: "Trạng thái:"
+                          - generic [ref=e551]: Chưa có hiệu lực
+                        - generic [ref=e552]:
+                          - generic [ref=e553]: "Ngày ban hành:"
+                          - generic [ref=e554]: 06/07/2026
+                        - generic [ref=e555]:
+                          - generic [ref=e556]: "Ngày hiệu lực:"
+                          - generic [ref=e557]: 25/08/2026
+        - generic [ref=e560]:
+          - link [ref=e561] [cursor=pointer]:
+            - /url: https://phapluat.gov.vn/
+            - img "Bộ Pháp điển<br/>điện tử" [ref=e562]
+          - link [ref=e563] [cursor=pointer]:
+            - /url: https://moj.gov.vn/portal/trang-chu.html
+            - img "Cổng Thông tin điện tử <br/> Bộ Tư pháp" [ref=e564]
+          - link [ref=e565] [cursor=pointer]:
+            - /url: https://congbao.chinhphu.vn
+            - img "Cổng Thông tin điện tử<br/>Công báo" [ref=e566]
+          - link [ref=e567] [cursor=pointer]:
+            - /url: https://treaty.mofa.gov.vn
+            - img "Cổng Thông tin điện tử<br/>Bộ Ngoại giao" [ref=e568]
+          - link [ref=e569] [cursor=pointer]:
+            - /url: https://anle.toaan.gov.vn/webcenter/portal/anle/home
+            - img "Cổng Thông tin điện tử<br/>Tòa án Nhân dân Tối cao" [ref=e570]
+          - link [ref=e571] [cursor=pointer]:
+            - /url: https://phapdien.moj.gov.vn/Pages/home.aspx
+            - img "Cổng Dịch vụ công <br/> Quốc gia" [ref=e572]
+          - link [ref=e573] [cursor=pointer]:
+            - /url: https://paknvbqppl.moj.gov.vn
+            - img "PHẢN ÁNH, KIẾN NGHỊ VĂN BẢN QPPL" [ref=e574]
+          - link [ref=e575] [cursor=pointer]:
+            - /url: https://dichvucong.gov.vn/p/home/dvc-trang-chu.html
+            - img "Cổng Pháp luật<br/>Quốc gia" [ref=e576]
+  - contentinfo [ref=e577]:
+    - generic [ref=e578]:
+      - img "Cơ sở dữ liệu quốc gia về pháp luật" [ref=e580]
+      - paragraph [ref=e581]: CƠ SỞ DỮ LIỆU QUỐC GIA VỀ PHÁP LUẬT
+      - generic [ref=e582]:
+        - generic [ref=e583]:
+          - paragraph [ref=e584]: "Đơn vị chủ quản:"
+          - paragraph [ref=e585]: Bộ Tư pháp
+        - generic [ref=e586]:
+          - generic [ref=e587]:
+            - generic [ref=e588]: "Điện thoại:"
+            - generic [ref=e589]: 024.6273.9468 |
+          - generic [ref=e590]:
+            - generic [ref=e591]: "Fax:"
+            - generic [ref=e592]: 024.6273.9359
+        - generic [ref=e593]:
+          - generic [ref=e594]: "Địa chỉ:"
+          - generic [ref=e595]: Số 60 Trần Phú - Ba Đình - Thành phố Hà Nội

@@ -11,6 +11,7 @@ from src.domain.entities.company import Company
 from src.domain.entities.contact import Partner
 from src.domain.entities.invoice import Invoice, InvoiceItem, InvoiceStatus, InvoiceType
 from src.domain.entities.voucher import DocumentType, Voucher, VoucherLine, VoucherStatus
+from src.domain.entities.company_config import CompanyConfig
 
 
 class CompanyRepositoryPort(ABC):
@@ -102,4 +103,26 @@ class VoucherRepositoryPort(ABC):
 class AccountChartRepositoryPort(ABC):
     @abstractmethod
     def get_balance(self, account_code: str, from_date: date, to_date: date) -> dict:
+        pass
+
+
+class SystemSettingsRepositoryPort(ABC):
+    @abstractmethod
+    def get_config(self, company_id: UUID) -> CompanyConfig | None:
+        pass
+
+    @abstractmethod
+    def update_config(self, config: CompanyConfig) -> CompanyConfig:
+        pass
+
+    @abstractmethod
+    def lock_period(self, company_id: UUID, period_start: date, period_end: date) -> None:
+        pass
+
+    @abstractmethod
+    def unlock_period(self, company_id: UUID, period_start: date, period_end: date) -> None:
+        pass
+
+    @abstractmethod
+    def audit_log(self, entity_type: str, entity_id: UUID, action: str, field_name: str | None, before_value: str | None, after_value: str | None) -> None:
         pass
