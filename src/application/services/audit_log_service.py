@@ -172,3 +172,77 @@ class AuditLogService:
             page=page,
             page_size=page_size,
         )
+    
+    # ── Retention Policy ───────────────────────────────────────────────────
+    
+    def _get_retention_years(self) -> int:
+        """Get the minimum retention years (immutable: 10 per Luật Kế toán 2015)."""
+        return 10
+    
+    def get_retention_status(self) -> dict:
+        """Get current retention policy status.
+    
+        Returns:
+            dict with {current_retention_years, next_archival, next_deletion, compliance_status}
+        """
+        retention_years = self._get_retention_years()
+        from datetime import date
+    
+        today = date.today()
+        next_archival = today.replace(year=today.year + 3) if today.year + 3 <= 9999 else None
+        next_deletion = today.replace(year=today.year + 10) if today.year + 10 <= 9999 else None
+    
+        return {
+            "current_retention_years": retention_years,
+            "next_archival": next_archival.isoformat() if next_archival else None,
+            "next_deletion": next_deletion.isoformat() if next_deletion else None,
+            "compliance_status": "COMPLIANT" if retention_years >= 10 else "NON_COMPLIANT",
+        }
+    
+    def verify_retention_compliance(self, records) -> dict:
+        """Verify that all records comply with the minimum retention policy.
+    
+        Args:
+            records: list of audit record dicts with 'changed_at' field
+    
+        Returns:
+            dict with {compliant, non_compliant_count, details}
+        """
+        from datetime import date
+    
+        retention_years = self._get_retention_years()
+        cutoff_date = date.today().replace(year=date.today().year - retention_years)
+    
+        compliant = True
+        non_compliant = []
+        details = []
+    
+        for record in records:
+            record_date = record.get("changed_at")
+            if record_date:
+                try:
+                    from datetime import datetime
+                    record_dt = datetime.fromisoformat(record_date).date()
+                    if record_dt > cutoff_date:
+                        compliant = False
+                        non_compliant.append(record.get("id"))
+                        details.append({
+                            "record_id": record.get("id"),
+                            "record_date": record_date,
+                            "cutoff_date": cutoff_date.isoformat(),
+                            "years_elapsed": (date.today() - record_dt).days // 365,
+                        })
+                except (ValueError, AttributeError):
+                    non_compliant.append(record.get("id"))
+                    details.append({
+                        "record_id": record.get("id"),
+                        "reason": "invalid_date_format",
+                    })
+    
+        return {
+            "compliant": compliant,
+            "non_compliant_count": len(non_compliant),
+            "details": details
+        }
+    
+
