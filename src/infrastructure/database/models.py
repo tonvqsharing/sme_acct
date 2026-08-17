@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import enum
-from datetime import date
+from datetime import date, datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import Boolean, Date, ForeignKey, MetaData, Numeric, String
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, MetaData, Numeric, String, func
 from sqlalchemy import Enum as SQLEnum
 from sqlalchemy.orm import (
     DeclarativeBase,
@@ -300,12 +300,14 @@ class SystemAuditLogModel(Base):
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
     entity_type: Mapped[str] = mapped_column(String(50), nullable=False)
     entity_id: Mapped[UUID] = mapped_column(nullable=True)
-    action: Mapped[str] = mapped_column(String(20), nullable=False)  # CREATE | UPDATE | DELETE
+    action: Mapped[str] = mapped_column(String(20), nullable=False)  # CREATE | UPDATE | DELETE | APPROVE | REJECT | SUSPEND | REACTIVATE | DISSOLVE
     field_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
     before_value: Mapped[str | None] = mapped_column(String(500), nullable=True)
     after_value: Mapped[str | None] = mapped_column(String(500), nullable=True)
     actor_id: Mapped[UUID] = mapped_column(nullable=False, default=uuid4)
-    changed_at: Mapped[date] = mapped_column(Date, nullable=False, default=date.today)
+    actor_ip: Mapped[str | None] = mapped_column(String(45), nullable=True)  # Client IP (IPv4/IPv6)
+    actor_user_agent: Mapped[str | None] = mapped_column(String(255), nullable=True)  # Browser/APP version
+    changed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=func.now())
 
 
 class EInvoiceSeriesModel(Base):

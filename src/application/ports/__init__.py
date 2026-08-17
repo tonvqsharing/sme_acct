@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from datetime import date
+from datetime import date, datetime
 from typing import List, Optional
 from uuid import UUID
 
@@ -125,4 +125,33 @@ class SystemSettingsRepositoryPort(ABC):
 
     @abstractmethod
     def audit_log(self, entity_type: str, entity_id: UUID, action: str, field_name: str | None, before_value: str | None, after_value: str | None) -> None:
+        pass
+
+
+class AuditLogRepositoryPort(ABC):
+    """Port for audit log persistence operations.
+
+    Abstract interface separating audit log storage concerns from
+    application service logic. Implementations handle INSERT-only
+    write paths with immutability enforcement at the database level.
+    """
+
+    @abstractmethod
+    def create(self, entity_type: str, entity_id: UUID, action: str, field_name: str | None, before_value: str | None, after_value: str | None, actor_id: UUID) -> object:
+        """Create a new audit log record.
+
+        INSERT-only operation; no UPDATE/DELETE permitted on core audit table.
+        Returns the created record entity for service-layer response mapping.
+        """
+
+    @abstractmethod
+    def get_filtered(self, entity_type: str | None, entity_id: UUID | None, action: str | None, field_name: str | None, start_date: datetime | None, end_date: datetime | None, actor_id: UUID | None, page: int, page_size: int) -> dict:
+        """Query audit records with filtering and pagination.
+
+        Returns paged result dict with items and total_count.
+        """
+
+    @abstractmethod
+    def get_all_ordered(self) -> list:
+        """Get all audit records ordered by changed_at (for integrity verification)."""
         pass
