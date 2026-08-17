@@ -47,8 +47,13 @@ def create_app() -> Flask:
 
     # Blueprints
     from src.presentation.api import api_bp
-
     app.register_blueprint(api_bp, url_prefix="/api")
+
+    from src.presentation.api.audit_log_bp import api_bp as audit_bp
+    app.register_blueprint(audit_bp, url_prefix="/api")
+
+    from src.presentation.api.system_settings_bp import api_bp as system_settings_bp
+    app.register_blueprint(system_settings_bp, url_prefix="/api")
 
     @app.route("/")
     def index():
