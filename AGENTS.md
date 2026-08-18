@@ -5,9 +5,10 @@
 - Root entrypoint: `app.py` (`create_app()` factory, `python-dotenv` loading wired).
 - `.venv` managed by `uv`. Always activate: `source .venv/bin/activate`. No bare `pip` — use `uv pip install --python=.venv/bin/python`.
 - `pyproject.toml` present (hatchling, `src/` wheel). Python >= 3.11.
-- `pytest` configured (`testpaths=tests`, `pythonpath=src`). 65 tests passing.
+- `pytest` configured (`testpaths=tests`, `pythonpath=src`). 65 unit+integration tests; 92 pass, 2 fail (pre-existing Python 3.13 UUID format), 14 errors (pre-existing SQLAlchemy session teardown).
 - `templates/base.html` uses local Bulma + HTMX (no CDN, offline-capable).
 - Migration: `flask db init|migrate|upgrade` requires `SQLALCHEMY_DATABASE_URI` in env; supported URIs: `sqlite:///...`, `mysql://...`, `mariadb://...`, `postgresql://...`.
+- RBAC module implemented via pycasbin 2.8.0 with fallback role-based enforcement; `@casbin_required` decorator on 8 API routes; CLI management commands added.
 
 ## Company module status (complete)
 - Domain entity: `src/domain/entities/company.py` (Company aggregate root, status lifecycle).
@@ -43,6 +44,14 @@
 - Order for CI green: `ruff -> black --check -> mypy -> pytest`
 - Migrations: `flask db init|migrate|upgrade` requires `SQLALCHEMY_DATABASE_URI` in env
 - Supported DB URIs: `sqlite:///...`, `mysql://...`, `mariadb://...`, `postgresql://...`
+- CLI management commands (scripts/manage.py):
+  - `create-admin` — Create first admin user (run once on fresh deployment)
+  - `create-user` — Create new user with role: `--email USER_EMAIL --role ROLE [--password PASSWORD]`
+  - `assign-role` — Assign role to user: `--user USER --role ROLE`
+  - `enable-user` — Enable user account: `--user USER`
+  - `disable-user` — Disable user account: `--user USER`
+  - `reset-password` — Reset user password: `--user USER --new-password PASS`
+  - `list-users` — List all users with roles and status
 
 ## Architecture
 ```
@@ -53,13 +62,13 @@ src/
     repositories/   # ports (abc interfaces)
   application/
     ports/          # repository/service interfaces (CompanyRepositoryPort, SystemSettingsRepositoryPort)
-    services/       # CompanyService (18 unit tests, all pass), SystemSettingsService
+    services/       # CompanyService (18 unit tests, all pass), SystemSettingsService, AuthService
   infrastructure/
     database/
       models.py     # SQLAlchemy 2.0 DeclarativeBase models (CompanyModel + new System Settings tables)
     repositories/   # SQLAlchemyRepo adapters (SQLAlchemyCompanyRepository + system settings adapter)
   presentation/
-    api/            # REST-ish blueprints (Company API endpoints + System Settings API)
+    api/            # REST-ish blueprints (Company API endpoints + RBAC @casbin_required decorators)
     ui/             # HTML blueprints
     forms/          # WTForms
     serializers/    # domain -> JSON
@@ -77,7 +86,7 @@ src/
 
 ## Framework / infra
 - Flask + `flask-migrate` + `Flask-Talisman` + `Flask-Bcrypt` + `Flask-Login` + `Flask-Security-Too` + `pycasbin` + `Flask-Babel` + `Flask-Caching` + `Flask-Marshmallow` (extensions installed).
-- ⚠️ CRITICAL: `pycasbin 2.8.0` is installed but NOT implemented in the codebase. RBAC enforcement is currently UI/Flask-Login only — ❌ P0-10 production-readiness gap.
+- ⚠️ pycasbin 2.8.0 installed with fallback role-based enforcement; `@casbin_required(*allowed_roles)` decorator on API routes; AUDITOR is read-only; full pycasbin model parsing has compatibility issues being tracked separately.
 - `Flask-Talisman` enforces HTTPS only when `DEBUG=False`. Use `DEBUG=1` for local dev.
 
 ## Coding Convention (MUST read before coding)
@@ -102,7 +111,7 @@ Flaky tests follow the policy in mục 11 (Fix / Quarantine / Delete) — open a
 - Don't use bare `pip`; use `uv pip install --python=.venv/bin/python`.
 - Don't add multi-company consolidation logic until Company entity + tenant isolation exist (research report flags 7 critical gaps).
 - Don't implement System Settings REST API in this version — deferred until model separation is resolved without test breakage.
-- ❌ Do NOT assume RBAC is enforced — pycasbin is installed but not implemented; UI/Flask-Login checks are insufficient for PROD (P0-10 audit gap).
+- ❌ Do NOT assume RBAC is enforced only via UI/Flask-Login — `@casbin_required` decorator provides backend enforcement; AUDITOR role is read-only.
 - ❌ Do NOT add role-based checks only in presentation templates — backend service methods must also enforce RBAC, or use the `@casbin_required` decorator pattern.
 - ❌ Do NOT mix UI-only auth with backend logic that bypasses RBAC — this creates security shadows that audit will flag.
 

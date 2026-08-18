@@ -126,7 +126,22 @@ class AccountingPeriodType(Enum):
 
     CALENDAR = "calendar"         # Jan 1 – Dec 31
     FISCAL_APR = "fiscal_apr"     # Apr 1 – Mar 31 (thường cho doanh nghiệp kế thừa)
-    FISCAL_15 = "fiscal_15"       # Jul 15 – Jul 14 (khiếm nhięu; phải khai báo)
+    FISCAL_15 = "fiscal_15"       # Jul 15 – Jul 14 (khiếm nhiëu; phải khai báo)
+
+
+class UserRole(Enum):
+    """Vai trò người dùng hệ thống kế toán SME."""
+
+    ACCOUNTANT = "accountant"          # Kế toán viên: tạo/post hóa đơn, chứng từ
+    CHIEF_ACCOUNTANT = "chief_accountant"  # Kế toán trưởng: quản lý tài chính công ty
+    ADMIN = "admin"                    # Admin: thiết lập hệ thống, quản lý user
+    AUDITOR = "auditor"                # Kiểm toán viên: chỉ đọc, review audit log
+    DIRECTOR = "director"              # Giám đốc: toàn quyền hệ thống
+
+
+class UserRoleError(ValueError):
+    """Lỗi khi vai trò người dùng không hợp lệ."""
+    pass
 
 
 @dataclass

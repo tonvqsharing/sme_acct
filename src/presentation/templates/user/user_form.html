@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}
+{% if form.instance and form.instance.id %}Sửa user{% else %}Tạo user mới{% endif %}
+{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2>{% if form.instance and form.instance.id %}Sửa user{% else %}Tạo user mới{% endif %}</h2>
+    
+    <form method="POST" novalidate>
+        {{ form.hidden_tag() }}
+        
+        <div class="mb-3">
+            <label for="email">Email <span class="text-danger">*</span></label>
+            {{ form.email(class="form-control", placeholder="user@don-vi.vn") }}
+            {% if form.errors.get('email') %}
+                <div class="text-danger small">{{ form.errors['email'][0] }}</div>
+            {% endif %}
+        </div>
+        
+        <div class="mb-3">
+            <label for="role">Vai trò <span class="text-danger">*</span></label>
+            {{ form.role(class="form-select") }}
+            {% if form.errors.get('role') %}
+                <div class="text-danger small">{{ form.errors['role'][0] }}</div>
+            {% endif %}
+        </div>
+        
+        <div class="mb-3">
+            <label for="password">Mật khẩu <span class="text-danger">*</span></label>
+            {{ form.password(class="form-control", placeholder="TempPass123!") }}
+            {% if form.errors.get('password') %}
+                <div class="text-danger small">{{ form.errors['password'][0] }}</div>
+            {% endif %}
+        </div>
+        
+        <div class="mb-3 form-check">
+            {{ form.is_active(class="form-check-input") }}
+            <label class="form-check-label" for="is_active">
+                Kích hoạt tài khoản
+            </label>
+        </div>
+        
+        {{ form.submit(class="btn btn-primary") }}
+        <a href="/users" class="btn btn-link">Huỷ bỏ</a>
+    </form>
+</div>
+{% endblock %}

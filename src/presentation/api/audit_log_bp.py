@@ -7,19 +7,18 @@ standards (ISO 27001, SOC 2, IFRS S2).
 
 Follows Clean Architecture: service layer, NO Flask/SQLAlchemy imports.
 """
-
 from __future__ import annotations
 
 import logging
 
-from flask import Blueprint
-
+from flask import Blueprint, request, jsonify
 from src.application.services.audit_log_service import AuditLogService
 from src.infrastructure.database import db
 
 api_bp = Blueprint("audit", __name__, url_prefix="/api/audit")
 
 logger = logging.getLogger(__name__)
+
 
 # ── Test engine hook (set by tests before making requests) ─────────────────
 _test_engine = None
@@ -49,6 +48,19 @@ def _service() -> AuditLogService:
     from src.infrastructure.repositories import SQLAlchemyAuditLogRepository
     repo = SQLAlchemyAuditLogRepository()
     return AuditLogService(audit_log_repo=repo)
+
+
+# ── Health ──────────────────────────────────────────────────────────────────
+
+
+@api_bp.get("/health")
+def health():
+    return {"status": "ok", "module": "audit"}
+
+
+# ── Retention Status ───────────────────────────────────────────────────────
+
+
 @api_bp.post("/retention-status")
 def retention_status():
     """Get certificate of destruction retention status per Luật Kế toán 2015.
@@ -60,10 +72,13 @@ def retention_status():
         service = _service()
         status = service.get_retention_status()
         return {"data": status}, 200
-    except Exception as exc:  # noqa: BLE001
+    except Exception:  # noqa: BLE001
         import traceback; traceback.print_exc()
         logger.exception("retention_status failed")
         return {"error": str(exc), "code": "SERVER_ERROR"}, 500
+
+
+# ── Verify Destruction ─────────────────────────────────────────────────────
 
 
 @api_bp.post("/verify-destruction/<uuid:record_id>")
@@ -82,10 +97,13 @@ def verify_destruction(record_id):  # noqa: F811
         service = _service()
         result = service.verify_destruction_eligibility(record_id, changed_at or "")
         return {"data": result}, 200
-    except Exception as exc:  # noqa: BLE001
+    except Exception:  # noqa: BLE001
         import traceback; traceback.print_exc()
         logger.exception("verify_destruction failed")
         return {"error": str(exc), "code": "SERVER_ERROR"}, 500
+
+
+# ── Destroy Records ────────────────────────────────────────────────────────
 
 
 @api_bp.post("/destroy", endpoint="destroy_records")
@@ -104,9 +122,7 @@ def destroy_records_endpoint():  # noqa: F811
         service = _service()
         result = service.destroy_records(record_ids, UUID(actor))
         return {"data": result}, 200
-    except Exception as exc:  # noqa: BLE001
+    except Exception:  # noqa: BLE001
         import traceback; traceback.print_exc()
         logger.exception("destroy_records failed")
         return {"error": str(exc), "code": "SERVER_ERROR"}, 500
-
-@api_bp.post("/retention-status")

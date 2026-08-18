@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}Chi tiết user: {{ user.email }}{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2>Chi tiết user: {{ user.email }}</h2>
+    
+    <div class="row">
+        <div class="col-md-4">
+            <p><strong>Email:</strong> {{ user.email }}</p>
+            <p><strong>Vai trò:</strong> 
+                <span class="badge bg-primary">
+                    {{ user.role | title }}
+                </span>
+            </p>
+            <p><strong>Trạng thái:</strong> 
+                <span class="badge bg-{{ user.is_active | success_inverse_class }}">
+                    {% if user.is_active %}ACTIVE{% else %}DISABLED{% endif %}
+                </span>
+            </p>
+            <p><strong>Created at:</strong> {{ user.created_at }}</p>
+            <p><strong>Created by:</strong> {{ user.created_by_name | user_name }}</p>
+            <p><strong>Last login:</strong> {{ user.last_login or 'Chưa ever login' }}</p>
+            <p><strong>Config version:</strong> {{ user.config_version }}</p>
+        </div>
+        
+        <div class="col-md-4">
+            <p><strong>Updated at:</strong> {{ user.updated_at | default('Chưa bao giờ update') }}</p>
+            <p><strong>Updated by:</strong> {{ user.updated_by_name | user_name | default('Chưa bao giờ') }}</p>
+            <hr>
+            <h5>Hoạt động gần đây:</h5>
+            <ul class="list-unstyled">
+                {% for action in user.recent_actions %}
+                    <li>
+                        <strong>{{ action.action | upper }}</strong> 
+                        vào lúc {{ action.changed_at | default(action.created_at) }}
+                        {% if action.actor_id %}bởi user {{ action.actor_id }}{% endif %}
+                        {% if action.before_value %}(từ: {{ action.before_value }}){% endif %}
+                        {% if action.after_value %}(thành: {{ action.after_value }}){% endif %}
+                    </li>
+                {% empty %}
+                    <li class="text-muted">Chưa có hoạt động logged.</li>
+                {% endfor %}
+            </ul>
+        </div>
+        
+        <div class="col-md-4">
+            <hr>
+            <h5>Hành động có thể thực hiện:</h5>
+            <ul class="list-unstyled">
+                {% if current_user.is_admin or current_user.is_director %}
+                    <li><a href="/users/{{ user.id }}/edit">Sửa user</a></li>
+                    <li><a href="/users/{{ user.id }}/reset-password">Đặt lại mật khẩu</a></li>
+                    {% if user.id != current_user.id %}
+                        <li><a href="/users/{{ user.id }}/suspend">Vô hiệu hóa tài khoản</a></li>
+                        {% if not user.is_active %}
+                            <li><a href="/users/{{ user.id }}/reactivate">Kích hoạt lại</a></li>
+                        {% endif %}
+                    {% endif %}
+                {% endif %}
+                {% if current_user.is_director %}
+                    <li><a href="/users/{{ user.id }}/delete">Xóa vĩnh viễn</a></li>
+                {% endif %}
+            </ul>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -128,6 +128,44 @@ class SystemSettingsRepositoryPort(ABC):
         pass
 
 
+class UserRepositoryPort(ABC):
+    @abstractmethod
+    def create(self, user: User) -> User:
+        pass
+
+    @abstractmethod
+    def get_by_id(self, user_id: UUID) -> User | None:
+        pass
+
+    @abstractmethod
+    def get_by_email(self, email: str) -> User | None:
+        pass
+
+    @abstractmethod
+    def update(self, user: User, actor: UUID) -> User:
+        pass
+
+    @abstractmethod
+    def deactivate(self, user_id: UUID, actor: UUID) -> User:
+        pass
+
+    @abstractmethod
+    def activate(self, user_id: UUID, actor: UUID) -> User:
+        pass
+
+    @abstractmethod
+    def list_active(self) -> list[User]:
+        pass
+
+    @abstractmethod
+    def list_by_role(self, role: UserRole) -> list[User]:
+        pass
+
+    @abstractmethod
+    def exists_by_email(self, email: str) -> bool:
+        pass
+
+
 class AuditLogRepositoryPort(ABC):
     """Port for audit log persistence operations.
 

@@ -12,6 +12,7 @@ from src.application.ports import (
     CompanyRepositoryPort,
     InvoiceRepositoryPort,
     PartnerRepositoryPort,
+    UserRepositoryPort,
     VoucherRepositoryPort,
 )
 from src.domain.entities.company import AccountingRegime, BankAccount, Company
@@ -546,3 +547,104 @@ class SQLAlchemyAuditLogRepository(AuditLogRepositoryPort):
             db.select(SystemAuditLogModel).order_by(SystemAuditLogModel.changed_at)
         )
         return result.scalars().all()
+
+class SQLAlchemyUserRepository(UserRepositoryPort):
+    """Maps User domain entity <-> UserModel."""
+    def create(self, user: User) -> User:
+        from src.domain.value_objects import TaxId as _TaxId
+        existing = db.session.scalars(
+            select(UserModel).where(UserModel.email == user.email.lower())
+        ).first()
+        if existing:
+            from src.domain.exceptions import UserNotFoundError
+            raise ValueError(f"Email '{user.email}' đã được đăng ký")
+        model = UserModel(
+            email=user.email.lower(),
+            password=user.password,
+            role=UserRoleEnum(user.role.value),
+            is_active=user.is_active,
+            last_login=user.last_login,
+            created_at=user.created_at,
+            updated_at=user.updated_at,
+            created_by_id=user.created_by,
+        )
+        db.session.add(model)
+        db.session.commit()
+        return self._to_domain(model)
+
+    def get_by_id(self, user_id: UUID) -> User | None:
+        model = db.session.get(UserModel, user_id)
+        return self._to_domain(model) if model else None
+
+    def get_by_email(self, email: str) -> User | None:
+        model = db.session.scalars(
+            select(UserModel).where(UserModel.email == email.lower())
+        ).first()
+        return self._to_domain(model) if model else None
+
+    def update(self, user: User, actor: UUID) -> User:
+        model = db.session.get(UserModel, user.id)
+        if not model:
+            raise ValueError(f"User {user.id} not found")
+        model.email = user.email.lower()
+        model.password = user.password
+        model.role = UserRoleEnum(user.role.value)
+        model.is_active = user.is_active
+        model.updated_at = user.updated_at
+        model.updated_by = actor
+        db.session.commit()
+        return self._to_domain(model)
+
+    def deactivate(self, user_id: UUID, actor: UUID) -> User:
+        model = db.session.get(UserModel, user_id)
+        if not model:
+            raise ValueError(f"User {user_id} not found")
+        model.is_active = False
+        model.updated_at = datetime.now()
+        model.updated_by = actor
+        db.session.commit()
+        return self._to_domain(model)
+
+    def activate(self, user_id: UUID, actor: UUID) -> User:
+        model = db.session.get(UserModel, user_id)
+        if not model:
+            raise ValueError(f"User {user_id} not found")
+        model.is_active = True
+        model.updated_at = datetime.now()
+        model.updated_by = actor
+        db.session.commit()
+        return self._to_domain(model)
+
+    def list_active(self) -> list[User]:
+        stmt = select(UserModel).where(UserModel.is_active.is_(True)).order_by(UserModel.email)
+        models = db.session.scalars(stmt).all()
+        return [self._to_domain(m) for m in models]
+
+    def list_by_role(self, role: UserRole) -> list[User]:
+        stmt = select(UserModel).where(UserModel.role == UserRoleEnum(role.value)).order_by(UserModel.email)
+        models = db.session.scalars(stmt).all()
+        return [self._to_domain(m) for m in models]
+
+    def exists_by_email(self, email: str) -> bool:
+        stmt = select(UserModel).where(UserModel.email == email.lower())
+        model = db.session.scalars(stmt).first()
+        return model is not None
+
+    @staticmethod
+    def _to_domain(model: UserModel) -> User:
+        from src.domain.entities.user import User as UserEntity
+        from src.domain.entities.base import UserRole
+        return UserEntity(
+            id=model.id,
+            email=model.email,
+            password=model.password,
+            role=UserRole(model.role.value),
+            is_active=model.is_active,
+            last_login=model.last_login,
+            created_at=model.created_at,
+            created_by=model.created_by_id,
+            updated_at=model.updated_at,
+            updated_by=model.updated_by,
+            config_version=1,
+        )
+

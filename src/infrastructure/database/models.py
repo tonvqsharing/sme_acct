@@ -279,6 +279,14 @@ class FlagScopeEnum(enum.Enum):
     SYSTEM = "system"
 
 
+class UserRoleEnum(enum.Enum):
+    ACCOUNTANT = "accountant"
+    CHIEF_ACCOUNTANT = "chief_accountant"
+    ADMIN = "admin"
+    AUDITOR = "auditor"
+    DIRECTOR = "director"
+
+
 class PeriodLockModel(Base):
     __tablename__ = "period_locks"
 
@@ -335,4 +343,28 @@ class CAListEntryModel(Base):
     cert_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     expired_at: Mapped[date | None] = mapped_column(Date, nullable=True)
     created_at: Mapped[date] = mapped_column(Date, nullable=False, default=date.today)
+
+
+class UserModel(Base):
+    __tablename__ = "users"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    email: Mapped[str] = mapped_column(String(120), unique=True, nullable=False, index=True)
+    password: Mapped[str] = mapped_column(String(255), nullable=False)  # hashed
+    role: Mapped[UserRoleEnum] = mapped_column(
+        SQLEnum(UserRoleEnum), nullable=False, default=UserRoleEnum.ACCOUNTANT
+    )
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    last_login: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=func.now(), onupdate=func.now()
+    )
+    created_by_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("users.id"), nullable=True
+    )
 
