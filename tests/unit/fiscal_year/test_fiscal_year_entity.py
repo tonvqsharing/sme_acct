@@ -78,7 +78,7 @@ class TestFiscalYearConstruction:
 
     def test_u08_periods_contiguous_non_overlapping(self):
         fy = _cal_fy(date(2026, 1, 1))
-        for prev, cur in zip(fy.periods, fy.periods[1:]):
+        for prev, cur in zip(fy.periods, fy.periods[1:], strict=False):
             assert prev.end_date + (date(2026, 1, 2) - date(2026, 1, 1)) == cur.start_date
         assert fy.periods[0].start_date == fy.start_date
         assert fy.periods[-1].end_date == fy.end_date

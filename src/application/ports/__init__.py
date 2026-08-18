@@ -11,6 +11,11 @@ from src.domain.entities.company import Company
 from src.domain.entities.contact import Partner
 from src.domain.entities.currency import Currency, ExchangeRate, FXDifference, RevaluationRun
 from src.domain.entities.base import RateType
+from src.domain.entities.fiscal_year import (
+    AccountingPeriod,
+    FiscalYear,
+    PeriodLockEvent,
+)
 from src.domain.entities.invoice import Invoice, InvoiceItem, InvoiceStatus, InvoiceType
 from src.domain.entities.voucher import DocumentType, Voucher, VoucherLine, VoucherStatus
 from src.domain.entities.company_config import CompanyConfig
@@ -262,4 +267,57 @@ class RevaluationRepositoryPort(ABC):
 
     @abstractmethod
     def list_fx_differences(self, company_id: UUID, period_start: date, period_end: date) -> list[FXDifference]:
+        pass
+
+
+class FiscalYearRepositoryPort(ABC):
+    """Port for fiscal years (specs §4.1)."""
+
+    @abstractmethod
+    def save(self, fiscal_year: FiscalYear) -> FiscalYear:
+        pass
+
+    @abstractmethod
+    def get_active(self, company_id: UUID, entry_date: date) -> FiscalYear | None:
+        """FY whose range contains entry_date, with periods loaded."""
+        pass
+
+    @abstractmethod
+    def get_by_id(self, fiscal_year_id: UUID) -> FiscalYear | None:
+        pass
+
+    @abstractmethod
+    def list_by_company(self, company_id: UUID) -> list[FiscalYear]:
+        pass
+
+
+class PeriodLockRepositoryPort(ABC):
+    """Port for period lock state + append-only lock events (R-08).
+
+    Adapter dual-writes legacy period_locks rows (currencies D8 path)
+    and the new accounting_periods.status truth.
+    """
+
+    @abstractmethod
+    def get_period(self, period_id: UUID) -> AccountingPeriod | None:
+        pass
+
+    @abstractmethod
+    def find_period(self, company_id: UUID, entry_date: date) -> AccountingPeriod | None:
+        pass
+
+    @abstractmethod
+    def is_locked(self, company_id: UUID, entry_date: date) -> bool:
+        pass
+
+    @abstractmethod
+    def lock(self, period_id: UUID, actor: UUID, reason: str) -> PeriodLockEvent:
+        pass
+
+    @abstractmethod
+    def reopen(self, period_id: UUID, actor: UUID, reason: str) -> PeriodLockEvent:
+        pass
+
+    @abstractmethod
+    def history(self, period_id: UUID) -> list[PeriodLockEvent]:
         pass

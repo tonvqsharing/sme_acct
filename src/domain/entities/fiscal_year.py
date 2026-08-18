@@ -9,10 +9,10 @@ from __future__ import annotations
 
 import calendar as _cal
 from dataclasses import dataclass, field
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from uuid import UUID, uuid4
 
-from src.domain.entities.base import AccountingPeriodType, PeriodStatus
+from src.domain.entities.base import AccountingPeriodType, PeriodLockAction, PeriodStatus
 from src.domain.exceptions import InvalidFiscalYearError, PeriodTransitionError
 
 # ── Legal anchors (Luật 88/2015 Đ12 — R-01) ────────────────────────────────
@@ -84,7 +84,7 @@ class AccountingPeriod:
             )
         self.status = PeriodStatus.LOCKED
         self.locked_by = actor
-        self.locked_at = datetime.now(timezone.utc)
+        self.locked_at = datetime.now(UTC)
         self.lock_reason = reason
 
     def reopen(self, actor: UUID, reason: str) -> None:
@@ -135,7 +135,8 @@ class FiscalYear:
         self.start_date, self.end_date = start, end
         if self.year_code is None:
             self.year_code = str(self.start_date.year)
-        self._build_periods(start, end)
+        if not self.periods:
+            self._build_periods(start, end)
 
     @property
     def label(self) -> str:
@@ -223,3 +224,22 @@ class FiscalYear:
         return len(self.periods) > 0 and all(
             p.status != PeriodStatus.OPEN for p in self.periods
         )
+
+
+@dataclass
+class PeriodLockEvent:
+    """Append-only khóa/mở khóa event (period_lock_events, R-08/F-08).
+
+    Checksum chain (SHA-256) mirrors audit-log module — tamper-evident.
+    """
+
+    period_id: UUID
+    action: PeriodLockAction
+    requested_by: UUID
+    reason: str
+    requested_at: datetime
+    approved_by: UUID | None = None
+    approved_at: datetime | None = None
+    prev_checksum: str | None = None
+    checksum: str | None = None
+    id: UUID = field(default_factory=uuid4)

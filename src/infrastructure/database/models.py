@@ -311,6 +311,105 @@ class PeriodLockModel(Base):
     reason: Mapped[str | None] = mapped_column(String(200), nullable=True)
 
 
+class AccountingPeriodTypeEnum(enum.Enum):
+    CALENDAR = "calendar"
+    FISCAL_APR = "fiscal_apr"
+    FISCAL_JUL = "fiscal_jul"
+    FISCAL_OCT = "fiscal_oct"
+
+
+class PeriodStatusEnum(enum.Enum):
+    OPEN = "OPEN"
+    LOCKED = "LOCKED"
+    YEAR_CLOSED = "YEAR_CLOSED"
+
+
+class PeriodLockActionEnum(enum.Enum):
+    CLOSE = "CLOSE"
+    REOPEN = "REOPEN"
+    YEAR_END = "YEAR_END"
+
+
+class FiscalYearModel(Base):
+    """Năm tài chính (specs §4.1). Legal quarter-aligned start (Luật 88/2015 Đ12)."""
+
+    __tablename__ = "fiscal_years"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    company_id: Mapped[UUID] = mapped_column(ForeignKey("companies.id"), nullable=False, index=True)
+    year_code: Mapped[str] = mapped_column(String(20), nullable=False)
+    period_type: Mapped[AccountingPeriodTypeEnum] = mapped_column(
+        SQLEnum(AccountingPeriodTypeEnum), nullable=False
+    )
+    start_date: Mapped[date] = mapped_column(Date, nullable=False)
+    end_date: Mapped[date] = mapped_column(Date, nullable=False)
+    is_first_period: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    status: Mapped[PeriodStatusEnum] = mapped_column(
+        SQLEnum(PeriodStatusEnum), nullable=False, default=PeriodStatusEnum.OPEN
+    )
+    opening_balance_posted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    closed_by: Mapped[UUID | None] = mapped_column(nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=func.now(), onupdate=func.now()
+    )
+    __table_args__ = (UniqueConstraint("company_id", "year_code", name="uq_fiscal_year_company_code"),)
+
+    periods: Mapped[list[AccountingPeriodModel]] = relationship(
+        back_populates="fiscal_year", cascade="all, delete-orphan"
+    )
+
+
+class AccountingPeriodModel(Base):
+    """Kỳ kế toán trong năm tài chính (specs §4.1)."""
+
+    __tablename__ = "accounting_periods"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    fiscal_year_id: Mapped[UUID] = mapped_column(
+        ForeignKey("fiscal_years.id"), nullable=False, index=True
+    )
+    period_number: Mapped[int] = mapped_column(nullable=False)
+    label: Mapped[str] = mapped_column(String(40), nullable=False)
+    start_date: Mapped[date] = mapped_column(Date, nullable=False)
+    end_date: Mapped[date] = mapped_column(Date, nullable=False)
+    status: Mapped[PeriodStatusEnum] = mapped_column(
+        SQLEnum(PeriodStatusEnum), nullable=False, default=PeriodStatusEnum.OPEN
+    )
+    locked_by: Mapped[UUID | None] = mapped_column(nullable=True)
+    locked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    lock_reason: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    __table_args__ = (
+        UniqueConstraint("fiscal_year_id", "period_number", name="uq_period_fy_number"),
+    )
+
+    fiscal_year: Mapped[FiscalYearModel] = relationship(back_populates="periods")
+
+
+class PeriodLockEventModel(Base):
+    """Append-only khóa/mở khóa lịch sử (R-08): checksum chain SHA-256."""
+
+    __tablename__ = "period_lock_events"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    period_id: Mapped[UUID] = mapped_column(
+        ForeignKey("accounting_periods.id"), nullable=False, index=True
+    )
+    action: Mapped[PeriodLockActionEnum] = mapped_column(
+        SQLEnum(PeriodLockActionEnum), nullable=False
+    )
+    requested_by: Mapped[UUID] = mapped_column(nullable=False)
+    approved_by: Mapped[UUID | None] = mapped_column(nullable=True)
+    requested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    reason: Mapped[str] = mapped_column(String(500), nullable=False)
+    prev_checksum: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    checksum: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+
 class SystemAuditLogModel(Base):
     __tablename__ = "audit_log"
 
