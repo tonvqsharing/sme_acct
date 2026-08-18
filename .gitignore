@@ -48,3 +48,6 @@ instance/
 
 # CodeGraph index
 .codegraph/
+
+# Playwright MCP artifacts
+.playwright-mcp/

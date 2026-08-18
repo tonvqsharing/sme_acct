@@ -28,12 +28,13 @@ Current codebase has zero System Settings implementation. This folder contains c
 | Source | Status |
 |--------|--------|
 | Luật Kế toán 2015 (Law 88/2015/QH13) | ✅ Verified via professional knowledge |
-| Thông tư 200/2014/TT-BTC (Chart of Accounts) | ✅ Already implemented in domain |
-| NĐ 123/2020/NĐ-CP (E-invoice regime) | ✅ Verified via professional knowledge |
+| Thông tư 200/2014/TT-BTC (Chart of Accounts) | ✅ Already implemented in domain — LEGACY from 01/01/2026 (superseded by TT 99/2025) |
+| Thông tư 99/2025/TT-BTC (new enterprise accounting regime) | ✅ Effective 01/01/2026 — see docs/currencies-exchange/ |
+| NĐ 123/2020/NĐ-CP (E-invoice regime) | ⚠️ Replaced 01/07/2026 by NĐ 254/2026/NĐ-CP (implements Luật 108/2025/QH15) |
 | NĐ 13/2023/NĐ-CP (PDPA) | ✅ Verified via professional knowledge |
 | Thông tư 119/2014/TT-BTC (Accounting vouchers) | ✅ Verified via professional knowledge |
 | Thông tư 100/2019/TT-BTC (SME regime) | ✅ Verified via professional knowledge |
-| Luật Quản lý thuế 2019 (Law 38/2019/QH14) | ✅ Verified via professional knowledge |
+| Luật Quản lý thuế 2019 (Law 38/2019/QH14) | ⚠️ Replaced 01/07/2026 by Luật Quản lý thuế 108/2025/QH15 |
 | PwC Circular 91/2026 e-invoice guidance | ⚠️ Confirmed via PwC VN research; verify gdt.gov.vn |
 | Fast Accounting (100+ parameters model) | ✅ Confirmed via ketoanthienung research |
 | MISA AMIS (multi-regime COA) | ✅ Confirmed via MISA product research |

@@ -112,8 +112,8 @@ class AccountingPeriodType(Enum):
     FISCAL_15 = "fiscal_15"       # Jul 15 – Jul 14 (rare; must be declared)
 
 class AccountingRegime(Enum):
-    TT200 = "tt200"               # Thông tư 200/2014/TT-BTC (enterprise, current standard)
-    TT99_NEW = "tt99"             # Thông tư 99/2025/TT-BTC (new, effective 2026)
+    TT200 = "tt200"               # Thông tư 200/2014/TT-BTC (enterprise, LEGACY — replaced 01/01/2026 by TT 99/2025)
+    TT99_NEW = "tt99"             # Thông tư 99/2025/TT-BTC (enterprise, current standard effective 01/01/2026)
     TT58_MICRO = "tt58_micro"     # Thông tư 58/2026/TT-BTC (micro-enterprise)
     TT133 = "tt133"               # Thông tư 133/2016/TT-BTC (sme alternative, being replaced)
 
