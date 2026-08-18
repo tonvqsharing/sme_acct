@@ -159,12 +159,15 @@ def list_currencies():
 def create_currency():
     try:
         data = request.get_json(silent=True) or {}
+        is_base = data.get("is_base", False)
+        if not isinstance(is_base, bool):
+            raise InvalidCurrencyError("is_base phải là boolean")
         currency = Currency(
             code=data.get("code", ""),
             name=data.get("name", ""),
             symbol=data.get("symbol", ""),
             decimal_places=int(data.get("decimal_places", 2)),
-            is_base=bool(data.get("is_base", False)),
+            is_base=is_base,
             display_format=data.get("display_format", "{symbol} {amount:,.2f}"),
         )
         saved = _service().create_currency(currency)
@@ -189,14 +192,20 @@ def update_currency(code: str):
         if data.get("is_active") is False or data.get("deactivate"):
             saved = service.deactivate_currency(code, actor=_actor(data) or UUID(int=0))
         else:
+            is_base = data.get("is_base", existing.is_base)
+            if not isinstance(is_base, bool):
+                raise InvalidCurrencyError("is_base phải là boolean")
+            is_active = data.get("is_active", existing.is_active)
+            if not isinstance(is_active, bool):
+                raise InvalidCurrencyError("is_active phải là boolean")
             saved = service.update_currency(
                 Currency(
                     code=code,
                     name=data.get("name", existing.name),
                     symbol=data.get("symbol", existing.symbol),
                     decimal_places=int(data.get("decimal_places", existing.decimal_places)),
-                    is_base=bool(data.get("is_base", existing.is_base)),
-                    is_active=True,
+                    is_base=is_base,
+                    is_active=is_active,
                     display_format=data.get("display_format", existing.display_format),
                 )
             )

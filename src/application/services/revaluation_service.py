@@ -178,6 +178,8 @@ class RevaluationService:
     def approve_run(self, run_id: UUID, approver: UUID) -> RevaluationRun:
         """Approve a run (CHIEF_ACCOUNTANT, 2nd-approval pattern)."""
         run = self._get_run(run_id)
+        if run.actor == approver:
+            raise RevaluationError("Người tạo đợt đánh giá lại không được tự duyệt (SOD, D9)")
         if run.status == RevaluationStatus.DRAFT:
             run.submit_for_approval()  # convenience: DRAFT → PENDING → APPROVED
         run.approve(approver)

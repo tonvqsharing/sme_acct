@@ -90,6 +90,14 @@ class TestCurrenciesAPI:
         )
         assert resp.status_code == 422
 
+    def test_create_string_false_is_base_rejected(self, client):
+        """Type-coercion guard: \"false\" string must NOT set is_base=True."""
+        resp = client.post(
+            "/api/v1/currencies",
+            json={"code": "EUR", "name": "Euro", "symbol": "€", "is_base": "false"},
+        )
+        assert resp.status_code == 422
+
     def test_list_currencies(self, client, seed_currency):
         resp = client.get("/api/v1/currencies")
         assert resp.status_code == 200

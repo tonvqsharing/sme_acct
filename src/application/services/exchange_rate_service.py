@@ -122,8 +122,18 @@ class ExchangeRateService:
         """
         rows = self._parse_csv(content)
         errors: list[dict] = []
+        seen: set[tuple[str, str, str]] = set()
         for i, row in enumerate(rows, start=2):  # row 1 = header
             error = self._validate_row(row)
+            if not error:
+                key = (row["currency"], row["rate_date"], row["rate_type"].lower())
+                if key in seen:
+                    error = (
+                        f"trùng lặp dòng (currency, rate_date, rate_type): "
+                        f"{row['currency']} / {row['rate_date']} / {row['rate_type']}"
+                    )
+                else:
+                    seen.add(key)
             if error:
                 errors.append({"row": i, "error": error})
 

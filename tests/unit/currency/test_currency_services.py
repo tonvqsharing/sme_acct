@@ -223,6 +223,23 @@ class TestExchangeRateService:
         with pytest.raises(FXImportError):
             svc.import_csv(csv_content, actor=FIXED_ACTOR)
 
+    def test_import_csv_duplicate_rows_rejected(self):
+        """§7 atomic: duplicate (currency, rate_date, rate_type) rows must
+        fail validation — otherwise first row commits and second hits the
+        DB unique constraint → partial import."""
+        cur_repo = MagicMock()
+        cur_repo.exists.return_value = True
+        rate_repo = MagicMock()
+        svc = self._service(rate_repo, cur_repo)
+        csv_content = (
+            "rate_date,currency,rate_type,rate,source,note\n"
+            "2026-08-01,USD,BUY,24700,CSV_IMPORT,first\n"
+            "2026-08-01,USD,BUY,24800,CSV_IMPORT,duplicate\n"
+        )
+        with pytest.raises(FXImportError):
+            svc.import_csv(csv_content, actor=FIXED_ACTOR)
+        rate_repo.create.assert_not_called()
+
 
 # ── RevaluationService ──────────────────────────────────────────────────────
 
@@ -370,7 +387,7 @@ class TestRevaluationService:
         )
         reval_repo.get_run.return_value = run
         svc = self._service(reval_repo)
-        svc.approve_run(run.id, approver=FIXED_ACTOR)
+        svc.approve_run(run.id, approver=uuid4())
         assert run.status == RevaluationStatus.APPROVED
         reval_repo.save_run.assert_called_with(run)
 
@@ -380,6 +397,23 @@ class TestRevaluationService:
         svc = self._service(reval_repo)
         with pytest.raises(RevaluationError):
             svc.approve_run(uuid4(), approver=FIXED_ACTOR)
+
+    def test_approve_self_approval_blocked(self):
+        """D9 SOD: run creator (actor) must not approve own run."""
+        reval_repo = MagicMock()
+        run = RevaluationRun(
+            id=uuid4(),
+            company_id=FIXED_COMPANY,
+            period_start=date(2026, 8, 1),
+            period_end=date(2026, 8, 31),
+            rate_date=date(2026, 8, 31),
+            actor=FIXED_ACTOR,
+        )
+        reval_repo.get_run.return_value = run
+        svc = self._service(reval_repo)
+        with pytest.raises(RevaluationError):
+            svc.approve_run(run.id, approver=FIXED_ACTOR)
+        reval_repo.save_run.assert_not_called()
 
     def test_post_requires_balanced_entries(self):
         reval_repo = MagicMock()
