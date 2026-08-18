@@ -55,6 +55,9 @@ def create_app() -> Flask:
     from src.presentation.api.system_settings_bp import api_bp as system_settings_bp
     app.register_blueprint(system_settings_bp, url_prefix="/api")
 
+    from src.presentation.api.currencies_bp import api_bp as currencies_bp
+    app.register_blueprint(currencies_bp, url_prefix="/api")
+
     @app.route("/")
     def index():
         return render_template("base.html")

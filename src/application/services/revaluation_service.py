@@ -25,7 +25,7 @@ from src.application.ports import (
     RevaluationRepositoryPort,
 )
 from src.domain.entities.base import PostingSide, RateType, RevaluationStatus
-from src.domain.entities.currency import RevaluationEntry, RevaluationRun
+from src.domain.entities.currency import FXDifference, RevaluationEntry, RevaluationRun
 from src.domain.exceptions import (
     PeriodLockedError,
     RateNotFoundError,
@@ -197,6 +197,12 @@ class RevaluationService:
 
     def get_run(self, run_id: UUID) -> RevaluationRun:
         return self._get_run(run_id)
+
+    def list_fx_differences(
+        self, company_id: UUID, period_start: date, period_end: date
+    ) -> list[FXDifference]:
+        """FX difference report rows for the period."""
+        return self._revaluation_repo.list_fx_differences(company_id, period_start, period_end)
 
     def _get_run(self, run_id: UUID) -> RevaluationRun:
         run = self._revaluation_repo.get_run(run_id)
