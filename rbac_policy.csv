@@ -1,0 +1,30 @@
+; Resource Pattern,Action,Role
+; ===== COMPANY (doanh nghiệp) =====
+p, /api/v1/companies, DIRECTOR
+p, /api/v1/companies/{id}, CHIEF_ACCOUNTANT
+p, /api/v1/companies/{id}/suspend, CHIEF_ACCOUNTANT|ADMIN
+p, /api/v1/companies/{id}/reactivate, CHIEF_ACCOUNTANT|ADMIN
+p, /api/v1/companies/{id}/dissolve, ADMIN|DIRECTOR
+
+; ===== INVOICE (hóa đơn) =====
+p, /api/v1/invoices, ACCOUNTANT
+p, /api/v1/invoices/{id}, CHIEF_ACCOUNTANT
+p, /api/v1/invoices/{id}/post, CHIEF_ACCOUNTANT
+p, /api/v1/invoices/{id}/cancel, ADMIN
+
+; ===== VOUCHER (chứng từ) =====
+p, /api/v1/vouchers, ACCOUNTANT
+p, /api/v1/vouchers/{id}, CHIEF_ACCOUNTANT
+p, /api/v1/vouchers/{id}/post, CHIEF_ACCOUNTANT|ACCOUNTANT
+
+; ===== SYSTEM CONFIG (cấu hình hệ thống) =====
+p, /api/v1/system-config, ADMIN
+p, /api/v1/system-config/vat-rates, ADMIN
+
+; ===== AUDIT LOG (nhật ký audit) =====
+p, /api/v1/audit-log, AUDITOR
+p, /api/v1/audit-log, CHIEF_ACCOUNTANT
+
+; ===== ROLE HIERARCHY (must match role_definition) =====
+g, ACCOUNTANT, CHIEF_ACCOUNTANT
+g, CHIEF_ACCOUNTANT, ADMIN

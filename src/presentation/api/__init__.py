@@ -19,6 +19,7 @@ from src.domain.exceptions import (
 from src.infrastructure.database import db
 from src.infrastructure.database.models import Base
 from src.infrastructure.repositories import SQLAlchemyCompanyRepository
+from src.presentation.rbac import casbin_required
 
 api_bp = Blueprint("api", __name__)
 
@@ -119,6 +120,7 @@ def health():
 
 
 @api_bp.post("/v1/companies")
+@casbin_required("DIRECTOR")
 def create_company():
     """Create a new company record."""
     try:
@@ -144,6 +146,7 @@ def create_company():
 
 
 @api_bp.get("/v1/companies")
+@casbin_required("CHIEF_ACCOUNTANT", "ADMIN", "DIRECTOR")
 def list_companies():
     """List active companies."""
     try:
@@ -160,6 +163,7 @@ def list_companies():
 
 
 @api_bp.get("/v1/companies/<uuid:company_id>")
+@casbin_required("CHIEF_ACCOUNTANT", "ADMIN", "DIRECTOR")
 def get_company(company_id: UUID):
     """Retrieve a single company by id."""
     try:
@@ -173,6 +177,7 @@ def get_company(company_id: UUID):
 
 
 @api_bp.patch("/v1/companies/<uuid:company_id>")
+@casbin_required("CHIEF_ACCOUNTANT", "ADMIN", "DIRECTOR")
 def update_company(company_id: UUID):
     """Partially update a company."""
     try:
@@ -193,6 +198,7 @@ def update_company(company_id: UUID):
 
 
 @api_bp.post("/v1/companies/<uuid:company_id>/suspend")
+@casbin_required("CHIEF_ACCOUNTANT", "ADMIN")
 def suspend_company(company_id: UUID):
     try:
         data = request.get_json(silent=True) or {}
@@ -209,6 +215,7 @@ def suspend_company(company_id: UUID):
 
 
 @api_bp.post("/v1/companies/<uuid:company_id>/reactivate")
+@casbin_required("CHIEF_ACCOUNTANT", "ADMIN")
 def reactivate_company(company_id: UUID):
     try:
         data = request.get_json(silent=True) or {}
@@ -229,6 +236,7 @@ def reactivate_company(company_id: UUID):
 
 
 @api_bp.post("/v1/companies/<uuid:company_id>/dissolve")
+@casbin_required("ADMIN", "DIRECTOR")
 def dissolve_company_endpoint(company_id: UUID):
     try:
         data = request.get_json(silent=True) or {}
