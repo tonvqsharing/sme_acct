@@ -73,6 +73,25 @@ class TestCurrencyService:
         with pytest.raises(InvalidCurrencyError):
             svc.deactivate_currency("VND", actor=FIXED_ACTOR)
 
+    def test_update_base_flag_blocked(self):
+        """D4: is_base immutable — PATCH cannot flip base on/off."""
+        repo = MagicMock()
+        repo.get.return_value = Currency(code="VND", name="Đồng", symbol="₫", is_base=True)
+        svc = self._service(repo)
+        with pytest.raises(InvalidCurrencyError):
+            svc.update_currency(Currency(code="VND", name="Đồng", symbol="₫", is_base=False))
+
+    def test_create_second_base_blocked(self):
+        """D4: only one base currency allowed."""
+        repo = MagicMock()
+        repo.exists.return_value = False
+        repo.list_active.return_value = [
+            Currency(code="VND", name="Đồng", symbol="₫", is_base=True)
+        ]
+        svc = self._service(repo)
+        with pytest.raises(InvalidCurrencyError):
+            svc.create_currency(Currency(code="USD", name="US Dollar", symbol="$", is_base=True))
+
 
 # ── ExchangeRateService ─────────────────────────────────────────────────────
 
@@ -374,6 +393,51 @@ class TestRevaluationService:
         )
         assert prior.status == RevaluationStatus.REVERSED
         reval_repo.save_run.assert_called_with(prior)
+
+    def test_create_run_no_reverse_when_new_run_fails(self):
+        """D7 safety: failed new run must NOT destroy prior POSTED run."""
+        reval_repo = MagicMock()
+        reval_repo.period_is_locked.return_value = False
+        prior = RevaluationRun(
+            company_id=FIXED_COMPANY,
+            period_start=date(2026, 8, 1),
+            period_end=date(2026, 8, 31),
+            rate_date=date(2026, 8, 31),
+            actor=FIXED_ACTOR,
+            status=RevaluationStatus.POSTED,
+        )
+        reval_repo.get_posted_run.return_value = prior
+        rate_repo = MagicMock()
+        rate_repo.get_latest.return_value = None  # no closing rate → new run fails
+        svc = self._service(reval_repo, rate_repo)
+        with pytest.raises(RateNotFoundError):
+            svc.create_run(
+                company_id=FIXED_COMPANY,
+                period_start=date(2026, 8, 1),
+                period_end=date(2026, 8, 31),
+                rate_date=date(2026, 8, 31),
+                monetary_items=MONETARY_ITEMS,
+                actor=FIXED_ACTOR,
+            )
+        # prior run must remain POSTED — nothing reversed, nothing saved
+        assert prior.status == RevaluationStatus.POSTED
+        reval_repo.save_run.assert_not_called()
+
+    def test_create_run_malformed_item_raises_value_error(self):
+        """Missing monetary_item key → ValueError (API maps to 400), not KeyError."""
+        reval_repo = MagicMock()
+        reval_repo.period_is_locked.return_value = False
+        reval_repo.get_posted_run.return_value = None
+        svc = self._service(reval_repo, self._rate_repo_with_rate())
+        with pytest.raises(ValueError):
+            svc.create_run(
+                company_id=FIXED_COMPANY,
+                period_start=date(2026, 8, 1),
+                period_end=date(2026, 8, 31),
+                rate_date=date(2026, 8, 31),
+                monetary_items=[{"account_code": "1122"}],  # missing currency_code
+                actor=FIXED_ACTOR,
+            )
 
     def test_approve_persists(self):
         reval_repo = MagicMock()

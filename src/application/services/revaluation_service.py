@@ -77,12 +77,15 @@ class RevaluationService:
                 f"Kỳ kế toán {period_start} → {period_end} đang khóa; không thể đánh giá lại"
             )
 
+        # Compute entries FIRST: if any rate is missing the new run fails
+        # before we destroy the prior POSTED run (D7 — no data loss on error).
+        entries = self._compute_entries(monetary_items, rate_date)
+
         prior = self._revaluation_repo.get_posted_run(company_id, period_start, period_end)
         if prior is not None:
             prior.reverse()
             self._revaluation_repo.save_run(prior)
 
-        entries = self._compute_entries(monetary_items, rate_date)
         run = RevaluationRun(
             company_id=company_id,
             period_start=period_start,
@@ -97,8 +100,12 @@ class RevaluationService:
         self, monetary_items: list[dict], rate_date: date
     ) -> list[RevaluationEntry]:
         """Build balanced journal entries from monetary items (spec §4.4-4.5)."""
+        required = ("account_code", "currency_code", "balance_original", "old_vnd")
         entries: list[RevaluationEntry] = []
         for item in monetary_items:
+            missing = [k for k in required if not item.get(k)]
+            if missing:
+                raise ValueError(f"monetary_items thiếu trường: {', '.join(missing)}")
             currency_code = item["currency_code"]
             closing_rate = self._resolve_closing_rate(currency_code, rate_date)
             balance = Decimal(item["balance_original"])

@@ -42,6 +42,8 @@ class CurrencyService:
         """Create a new currency. Code must be valid ISO 4217 (D1)."""
         if self._currency_repo.exists(currency.code):
             raise InvalidCurrencyError(f"Tiền tệ '{currency.code}' đã tồn tại")
+        if currency.is_base and self._base_currency_exists():
+            raise InvalidCurrencyError("Đã có tiền tệ gốc; không thể tạo tiền tệ gốc thứ hai (D4)")
         return self._currency_repo.save(currency)
 
     def update_currency(self, currency: Currency) -> Currency:
@@ -49,6 +51,8 @@ class CurrencyService:
         existing = self._currency_repo.get(currency.code)
         if existing is None:
             raise CurrencyNotFoundError(f"Tiền tệ '{currency.code}' không tồn tại")
+        if currency.is_base != existing.is_base:
+            raise InvalidCurrencyError("Không thể đổi trạng thái tiền tệ gốc (D4, LAW-immutable)")
         return self._currency_repo.save(currency)
 
     def deactivate_currency(self, code: str, actor: UUID) -> Currency:
@@ -68,3 +72,6 @@ class CurrencyService:
             display_format=currency.display_format,
         )
         return self._currency_repo.save(deactivated)
+
+    def _base_currency_exists(self) -> bool:
+        return any(c.is_base for c in self._currency_repo.list_active())

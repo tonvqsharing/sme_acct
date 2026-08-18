@@ -242,6 +242,23 @@ class TestRevaluationsAPI:
         # gain: 1000*(24700-24000) = 700,000 on 1122 + offset credit
         assert len(body["revaluation_run"]["entries"]) == 2
 
+    def test_create_run_malformed_item(self, client, seed_currency):
+        """Missing monetary_item field → 400 INVALID_PARAM, not 500."""
+        self._create_rate(client)
+        resp = client.post(
+            "/api/v1/revaluations",
+            json={
+                "company_id": str(COMPANY),
+                "period_start": "2026-08-01",
+                "period_end": "2026-08-31",
+                "rate_date": "2026-08-31",
+                "monetary_items": [{"account_code": "1122"}],  # missing currency_code
+                "actor": str(ACTOR),
+            },
+        )
+        assert resp.status_code == 400
+        assert resp.get_json()["code"] == "INVALID_PARAM"
+
     def test_create_run_period_locked(self, client, seed_currency):
         from src.infrastructure.database.models import PeriodLockModel
 
