@@ -68,9 +68,7 @@ class AccountingPeriod:
 
     def __post_init__(self) -> None:
         if self.end_date < self.start_date:
-            raise PeriodTransitionError(
-                f"Kỳ kế toán {self.label} kết thúc trước khi bắt đầu"
-            )
+            raise PeriodTransitionError(f"Kỳ kế toán {self.label} kết thúc trước khi bắt đầu")
 
     def contains(self, d: date) -> bool:
         """Boundary dates inclusive (U-16)."""
@@ -140,7 +138,11 @@ class FiscalYear:
 
     @property
     def label(self) -> str:
-        return "Kỳ kế toán đầu tiên" if self.is_first_period else f"Năm tài chính {self.start_date} – {self.end_date}"
+        return (
+            "Kỳ kế toán đầu tiên"
+            if self.is_first_period
+            else f"Năm tài chính {self.start_date} – {self.end_date}"
+        )
 
     # ── Validation (R-01, R-02) ──────────────────────────────────────────
 
@@ -221,9 +223,7 @@ class FiscalYear:
         return period is not None and period.status != PeriodStatus.OPEN
 
     def all_periods_locked(self) -> bool:
-        return len(self.periods) > 0 and all(
-            p.status != PeriodStatus.OPEN for p in self.periods
-        )
+        return len(self.periods) > 0 and all(p.status != PeriodStatus.OPEN for p in self.periods)
 
 
 @dataclass

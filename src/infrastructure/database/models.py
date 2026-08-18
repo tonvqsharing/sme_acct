@@ -356,7 +356,9 @@ class FiscalYearModel(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=func.now(), onupdate=func.now()
     )
-    __table_args__ = (UniqueConstraint("company_id", "year_code", name="uq_fiscal_year_company_code"),)
+    __table_args__ = (
+        UniqueConstraint("company_id", "year_code", name="uq_fiscal_year_company_code"),
+    )
 
     periods: Mapped[list[AccountingPeriodModel]] = relationship(
         back_populates="fiscal_year", cascade="all, delete-orphan"

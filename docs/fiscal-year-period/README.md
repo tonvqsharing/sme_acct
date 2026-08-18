@@ -1,12 +1,45 @@
 # Fiscal Years & Accounting Periods Module — README
 
-## Status: 📋 SPEC APPROVED — NOT IMPLEMENTED — NOT PROD-READY
+## Status: ✅ IMPLEMENTED (v1) — reviewed vs Fast/MISA/BravoERP patterns
 
 Doc set **signed off 2026-08-18** (SIGN-OFF.md) — BA lead + chief accountant.
-Tech lead + security review pending. Spec baseline for implementation.
+Implemented end-to-end 2026-08-18 (TDD, 8 slices): domain enums/entities →
+models/ports/adapters → PeriodLockService → REST API → migration. Dual-write
+bridge keeps legacy currencies D8 path green.
 
-**Verdict: codebase has stub-only support (period_locks table + PeriodLockService no-op).
-Cannot operate in PROD ENV.** See `production-readiness-audit-fiscal-year-period.md`.
+**What landed (v1)**
+- Legal enums: `AccountingPeriodType` CALENDAR/FISCAL_APR/FISCAL_JUL/FISCAL_OCT
+  (FISCAL_15 removed — illegal under Luật Kế toán 88/2015 Đ12); `PeriodStatus`;
+  `PeriodLockAction`.
+- Domain: `FiscalYear` + `AccountingPeriod` (+ ≤15-month first-period rule,
+  partial first month, leap-year-safe period math), `PeriodLockEvent` with
+  SHA-256 checksum chain (mirrors audit-log tamper evidence).
+- Persistence: `fiscal_years`, `accounting_periods`, `period_lock_events`
+  tables (migration `a1f2b3c4d5e6`); adapter dual-writes legacy `period_locks`
+  rows so `RevaluationRepositoryPort.period_is_locked` (D8) keeps working.
+- Service: `PeriodLockService` — `ensure_fiscal_year` (idempotent auto-seed),
+  `create_fiscal_year` (quarter-aligned, overlap rejection), `close_period`,
+  `reopen_period` (reason required + SOD self-approval blocked),
+  `close_fiscal_year` (all-periods-locked precondition, YEAR_CLOSED +
+  opening-balance marker), `is_locked`, `validate_before_entry`.
+- REST: `/api/v1/fiscal-years*`, `/api/v1/periods*` (9 routes, `@casbin_required`,
+  AUDITOR read-only, actor UUID required on mutations).
+- Tests: 80 new (unit entity/enums/service + integration repo/API). Full suite
+  green except pre-existing `test_company_api.py` baseline (2 fail, 14 errors).
+
+**Known gaps (v2+, out of scope this version)**
+- Kết chuyển 911/421 + real opening balances need ledger module (flagged via
+  `opening_balance_posted` marker only).
+- `SystemSettingsService.lock_period` still 500s (missing
+  `SQLAlchemySystemSettingsRepository` — separate pre-existing issue).
+- Partial first-period FY creation (is_first_period + end_date) supported in
+  domain, not yet exposed via service/API.
+- Exchange-rate CSV locked-date hook: deliberately skipped — rates are
+  company-agnostic (no company_id), period locks company-scoped (see
+  tasks/plan.md slice 5).
+- Voucher/Invoice posting enforcement lands with those modules.
+
+See `production-readiness-audit-fiscal-year-period.md` for the pre-implementation audit.
 
 ## Why now (2026 regulatory drivers)
 

@@ -22,7 +22,9 @@ COMPANY = uuid4()
 
 
 def _cal_fy(start: date, **kw) -> FiscalYear:
-    return FiscalYear(company_id=COMPANY, period_type=AccountingPeriodType.CALENDAR, start_date=start, **kw)
+    return FiscalYear(
+        company_id=COMPANY, period_type=AccountingPeriodType.CALENDAR, start_date=start, **kw
+    )
 
 
 class TestFiscalYearConstruction:

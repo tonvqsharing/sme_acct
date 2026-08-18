@@ -47,11 +47,11 @@
 - REST: `src/presentation/api/audit_log_bp.py` — `/api/retention-status`, `/api/verify-destruction/<id>`, `/api/destroy`; registered in `app.py`.
 - Docs moved to `docs/audit-log/` (brd/specs/use-cases) 2026-08-18.
 
-## Fiscal Years & Accounting Periods module status (SPEC ONLY — NOT IMPLEMENTED — NOT PROD-READY)
-- Full spec set: `docs/fiscal-year-period/` (BRD, specs, use-cases, rules, processes, workflows, data-flows, user-journeys, templates, production-readiness-audit). Signed-off baseline for implementation.
-- **Gaps (see production-readiness audit)**: `AccountingPeriodType.FISCAL_15` in `src/domain/entities/base.py:124` is LEGALLY ILLEGAL (Luật Kế toán 88/2015 Đ12 — fiscal year must start quarter-aligned: 01/01, 01/04, 01/07, 01/10); `PeriodLockService` is a stub (`is_locked` always False, `validate_before_entry` has ZERO callers — Voucher/Invoice posting NOT period-enforced); `period_locks` table too primitive; `SystemSettingsService.lock_period` 500s (missing repo adapter).
-- Working patterns to reuse: `currency_repo.period_is_locked()` overlap query (currency_repo.py:203), `RevaluationService` `PeriodLockedError` (revaluation_service.py:75), currencies test-engine hook.
-- Do NOT implement until specs §2–§5 (entities, ports, adapters, `fiscal_year_bp.py`) reviewed + sign-off recorded in `docs/fiscal-year-period/SIGN-OFF.md`.
+## Fiscal Years & Accounting Periods module status (IMPLEMENTED v1 — 2026-08-18)
+- Full spec set: `docs/fiscal-year-period/` (BRD, specs, use-cases, rules, processes, workflows, data-flows, user-journeys, templates, production-readiness-audit). Signed-off baseline.
+- **Implemented end-to-end (TDD, 8 slices)**: legal enums (`AccountingPeriodType` CALENDAR/FISCAL_APR/FISCAL_JUL/FISCAL_OCT — FISCAL_15 removed as illegal; `PeriodStatus`; `PeriodLockAction`); `FiscalYear`/`AccountingPeriod` entities (`src/domain/entities/fiscal_year.py`); `PeriodLockEvent` SHA-256 checksum chain; models `FiscalYearModel`/`AccountingPeriodModel`/`PeriodLockEventModel` (models.py); ports `FiscalYearRepositoryPort`/`PeriodLockRepositoryPort`; adapters `fiscal_year_repo.py` (dual-writes legacy `period_locks` rows → currencies D8 path untouched, 80 tests green); `PeriodLockService` rewrite (ensure_fiscal_year auto-seed, quarter-aligned create, close/reopen with SOD self-approval block, close_fiscal_year YEAR_CLOSED + opening-balance marker, validate_before_entry raises PeriodLockedError); REST `fiscal_year_bp.py` 9 routes registered in app.py (currencies test-engine hook pattern); migration `a1f2b3c4d5e6` (3 tables, zero drift verified).
+- **Known gaps (v2)**: kết chuyển 911/421 + real opening balances await ledger module; `SystemSettingsService.lock_period` still 500s (missing `SQLAlchemySystemSettingsRepository` — pre-existing); partial-first-period FY creation (is_first_period+end_date) in domain only; CSV locked-date hook skipped by design (rates company-agnostic); Voucher/Invoice period enforcement lands with those modules.
+- Tests: 80 new (unit + integration). Full suite: 257 pass + 2 fail + 14 errors (all baseline `test_company_api.py`, untouched).
 
 ## Toolchain
 - Install deps: `uv pip install --python=.venv/bin/python <package>`

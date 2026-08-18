@@ -131,7 +131,15 @@ class SystemSettingsRepositoryPort(ABC):
         pass
 
     @abstractmethod
-    def audit_log(self, entity_type: str, entity_id: UUID, action: str, field_name: str | None, before_value: str | None, after_value: str | None) -> None:
+    def audit_log(
+        self,
+        entity_type: str,
+        entity_id: UUID,
+        action: str,
+        field_name: str | None,
+        before_value: str | None,
+        after_value: str | None,
+    ) -> None:
         pass
 
 
@@ -182,7 +190,16 @@ class AuditLogRepositoryPort(ABC):
     """
 
     @abstractmethod
-    def create(self, entity_type: str, entity_id: UUID, action: str, field_name: str | None, before_value: str | None, after_value: str | None, actor_id: UUID) -> object:
+    def create(
+        self,
+        entity_type: str,
+        entity_id: UUID,
+        action: str,
+        field_name: str | None,
+        before_value: str | None,
+        after_value: str | None,
+        actor_id: UUID,
+    ) -> object:
         """Create a new audit log record.
 
         INSERT-only operation; no UPDATE/DELETE permitted on core audit table.
@@ -190,7 +207,18 @@ class AuditLogRepositoryPort(ABC):
         """
 
     @abstractmethod
-    def get_filtered(self, entity_type: str | None, entity_id: UUID | None, action: str | None, field_name: str | None, start_date: datetime | None, end_date: datetime | None, actor_id: UUID | None, page: int, page_size: int) -> dict:
+    def get_filtered(
+        self,
+        entity_type: str | None,
+        entity_id: UUID | None,
+        action: str | None,
+        field_name: str | None,
+        start_date: datetime | None,
+        end_date: datetime | None,
+        actor_id: UUID | None,
+        page: int,
+        page_size: int,
+    ) -> dict:
         """Query audit records with filtering and pagination.
 
         Returns paged result dict with items and total_count.
@@ -230,11 +258,19 @@ class ExchangeRateRepositoryPort(ABC):
         """Insert a new rate row. No in-place update (D3)."""
 
     @abstractmethod
-    def get_latest(self, currency_code: str, rate_type: RateType, rate_date: date) -> ExchangeRate | None:
+    def get_latest(
+        self, currency_code: str, rate_type: RateType, rate_date: date
+    ) -> ExchangeRate | None:
         """Last available rate with (currency, type) on or before rate_date."""
 
     @abstractmethod
-    def list_history(self, currency_code: str | None, rate_type: RateType | None, from_date: date | None, to_date: date | None) -> list[ExchangeRate]:
+    def list_history(
+        self,
+        currency_code: str | None,
+        rate_type: RateType | None,
+        from_date: date | None,
+        to_date: date | None,
+    ) -> list[ExchangeRate]:
         pass
 
     @abstractmethod
@@ -258,7 +294,9 @@ class RevaluationRepositoryPort(ABC):
         pass
 
     @abstractmethod
-    def get_posted_run(self, company_id: UUID, period_start: date, period_end: date) -> RevaluationRun | None:
+    def get_posted_run(
+        self, company_id: UUID, period_start: date, period_end: date
+    ) -> RevaluationRun | None:
         """Most recent POSTED run for (company, period) — idempotent re-run (D7)."""
 
     @abstractmethod
@@ -266,7 +304,9 @@ class RevaluationRepositoryPort(ABC):
         """Check period_locks table (D8)."""
 
     @abstractmethod
-    def list_fx_differences(self, company_id: UUID, period_start: date, period_end: date) -> list[FXDifference]:
+    def list_fx_differences(
+        self, company_id: UUID, period_start: date, period_end: date
+    ) -> list[FXDifference]:
         pass
 
 
