@@ -167,6 +167,33 @@ class EInvoiceMode(Enum):
     CA_SIGNED = "ca_signed"          # GDT-approved CA; bắt buộc sau 2026
 
 
+class RateType(Enum):
+    """Loại tỷ giá (specs-currencies.md §2.2)."""
+
+    BUY = "buy"            # Tỷ giá mua (NHTM)
+    SELL = "sell"          # Tỷ giá bán (NHTM)
+    TRANSFER = "transfer"  # Tỷ giá chuyển khoản (mua bán trung bình — cuối kỳ)
+    CENTRAL = "central"    # Tỷ giá trung tâm / NHNN
+    BOOKING = "booking"    # Tỷ giá ghi sổ
+
+
+class RevaluationStatus(Enum):
+    """Trạng thái đợt đánh giá lại cuối kỳ (specs-currencies.md §2.5)."""
+
+    DRAFT = "draft"
+    PENDING_APPROVAL = "pending_approval"
+    APPROVED = "approved"
+    POSTED = "posted"
+    REVERSED = "reversed"
+
+
+class PostingSide(Enum):
+    """Bên ghi sổ cho bút toán chênh lệch tỷ giá."""
+
+    DEBIT = "debit"
+    CREDIT = "credit"
+
+
 @dataclass
 class TaxId:
     """Mã số thuế (MST) value object."""

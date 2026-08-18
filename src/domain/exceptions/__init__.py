@@ -69,3 +69,39 @@ class InvalidCAListError(SystemSettingsError):
 
 class InvalidRegimeError(SystemSettingsError):
     """Accounting regime value is invalid for the company type."""
+
+
+class CurrencyError(DomainException):
+    """Base for all currencies & exchange rates errors."""
+
+
+class InvalidCurrencyError(CurrencyError):
+    """Currency code fails ISO 4217 format validation (^[A-Z]{3}$)."""
+
+
+class CurrencyNotFoundError(CurrencyError):
+    """Currency does not exist or is inactive."""
+
+
+class RateNotFoundError(CurrencyError):
+    """No applicable exchange rate found for (currency, date, type)."""
+
+
+class InvalidRateError(CurrencyError):
+    """Rate value fails invariants (must be > 0)."""
+
+
+class RateLockedError(CurrencyError):
+    """Rate referenced by a posted transaction; cannot change."""
+
+
+class RevaluationError(CurrencyError):
+    """Revaluation run violates state machine or balance rule."""
+
+
+class PeriodLockedError(CurrencyError):
+    """Revaluation blocked: accounting period is locked."""
+
+
+class FXImportError(CurrencyError):
+    """CSV rate import failed validation."""
