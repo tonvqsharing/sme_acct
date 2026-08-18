@@ -118,7 +118,11 @@ class TestFiscalYearsAPI:
     def test_a05_create_missing_actor(self, client):
         resp = client.post(
             "/api/v1/fiscal-years",
-            json={"company_id": str(COMPANY), "period_type": "calendar", "start_date": "2026-01-01"},
+            json={
+                "company_id": str(COMPANY),
+                "period_type": "calendar",
+                "start_date": "2026-01-01",
+            },
         )
         assert resp.status_code == 400
         assert resp.get_json()["code"] == "MISSING_ACTOR"

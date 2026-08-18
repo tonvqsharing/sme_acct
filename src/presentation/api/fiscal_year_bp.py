@@ -139,7 +139,10 @@ def create_fiscal_year():
         period_type = data.get("period_type")
         start_date = _as_date(data.get("start_date", ""))
         if start_date is None:
-            return jsonify({"error": "start_date (YYYY-MM-DD) bắt buộc", "code": "VALIDATION_ERROR"}), 422
+            return (
+                jsonify({"error": "start_date (YYYY-MM-DD) bắt buộc", "code": "VALIDATION_ERROR"}),
+                422,
+            )
         from src.domain.entities.base import AccountingPeriodType
 
         fy = _service().create_fiscal_year(
@@ -178,7 +181,12 @@ def ensure_fiscal_year():
         data = request.get_json(silent=True) or {}
         entry_date = _as_date(data.get("entry_date", ""))
         if entry_date is None:
-            return jsonify({"error": "entry_date (YYYY-MM-DD) là bắt buộc", "code": "VALIDATION_ERROR"}), 422
+            return (
+                jsonify(
+                    {"error": "entry_date (YYYY-MM-DD) là bắt buộc", "code": "VALIDATION_ERROR"}
+                ),
+                422,
+            )
         fy = _service().ensure_fiscal_year(
             company_id=UUID(data["company_id"]),
             entry_date=entry_date,
@@ -226,15 +234,22 @@ def period_lock_status():
     company_id = request.args.get("company_id")
     entry_date = _as_date(request.args.get("date", ""))
     if not company_id or entry_date is None:
-        return jsonify({"error": "company_id + date (YYYY-MM-DD) bắt buộc", "code": "VALIDATION_ERROR"}), 422
+        return (
+            jsonify(
+                {"error": "company_id + date (YYYY-MM-DD) bắt buộc", "code": "VALIDATION_ERROR"}
+            ),
+            422,
+        )
     try:
         svc = _service()
         period = svc._lock_repo.find_period(UUID(company_id), entry_date)
         locked = svc.is_locked(UUID(company_id), entry_date)
-        return jsonify({
-            "locked": locked,
-            "period": serialize_accounting_period(period) if period else None,
-        })
+        return jsonify(
+            {
+                "locked": locked,
+                "period": serialize_accounting_period(period) if period else None,
+            }
+        )
     except (ValueError, TypeError) as exc:
         return jsonify({"error": str(exc), "code": "VALIDATION_ERROR"}), 422
     except Exception as exc:  # noqa: BLE001

@@ -113,9 +113,7 @@ class PeriodLockService:
     def validate_before_entry(self, company_id: UUID, entry_date: date) -> None:
         """Raise PeriodLockedError when posting into a locked period (D8)."""
         if self._lock_repo.is_locked(company_id, entry_date):
-            raise PeriodLockedError(
-                f"Kỳ kế toán chứa {entry_date} đang khóa; không thể ghi sổ"
-            )
+            raise PeriodLockedError(f"Kỳ kế toán chứa {entry_date} đang khóa; không thể ghi sổ")
 
     def close_period(self, period_id: UUID, actor: UUID, reason: str) -> PeriodLockEvent:
         """OPEN → LOCKED (R-06)."""
@@ -132,7 +130,5 @@ class PeriodLockService:
         if not reason or not reason.strip():
             raise PeriodTransitionError("Lý do mở khóa kỳ kế toán là bắt buộc")
         if period.locked_by == actor:
-            raise SelfApprovalError(
-                "Người khóa kỳ không được tự mở khóa; cần người khác duyệt"
-            )
+            raise SelfApprovalError("Người khóa kỳ không được tự mở khóa; cần người khác duyệt")
         return self._lock_repo.reopen(period_id, actor=actor, reason=reason)

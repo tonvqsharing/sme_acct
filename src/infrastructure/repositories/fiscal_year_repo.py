@@ -76,7 +76,9 @@ def _fy_model_to_domain(m: FiscalYearModel) -> FiscalYear:
         opening_balance_posted=m.opening_balance_posted,
         closed_at=m.closed_at,
         closed_by=m.closed_by,
-        periods=[_period_model_to_domain(p) for p in sorted(m.periods, key=lambda p: p.period_number)],
+        periods=[
+            _period_model_to_domain(p) for p in sorted(m.periods, key=lambda p: p.period_number)
+        ],
     )
 
 
@@ -103,9 +105,7 @@ def _chain_checksum(
     reason: str,
     ts: datetime,
 ) -> str:
-    raw = "|".join(
-        [prev or "", str(period_id), action.value, str(actor), reason, ts.isoformat()]
-    )
+    raw = "|".join([prev or "", str(period_id), action.value, str(actor), reason, ts.isoformat()])
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
@@ -149,6 +149,7 @@ class SQLAlchemyFiscalYearRepository(FiscalYearRepositoryPort):
             pm.lock_reason = dom.lock_reason
 
         db.session.flush()
+        db.session.commit()
         return _fy_model_to_domain(model)
 
     def get_active(self, company_id: UUID, entry_date: date) -> FiscalYear | None:
@@ -224,6 +225,7 @@ class SQLAlchemyPeriodLockRepository(PeriodLockRepositoryPort):
         event = self._append_event(period_id, PeriodLockAction.CLOSE, actor, reason, now)
         self._write_legacy_lock(period, actor, reason, now)
         db.session.flush()
+        db.session.commit()
         return event
 
     def reopen(self, period_id: UUID, actor: UUID, reason: str) -> PeriodLockEvent:
@@ -241,6 +243,7 @@ class SQLAlchemyPeriodLockRepository(PeriodLockRepositoryPort):
         event = self._append_event(period_id, PeriodLockAction.REOPEN, actor, reason, now)
         self._clear_legacy_lock(period, now)
         db.session.flush()
+        db.session.commit()
         return event
 
     def history(self, period_id: UUID) -> list[PeriodLockEvent]:
