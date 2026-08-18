@@ -122,11 +122,32 @@ class FlagCategory(Enum):
 
 
 class AccountingPeriodType(Enum):
-    """Loại năm tài chính."""
+    """Loại năm tài chính (Luật Kế toán 88/2015 Điều 12).
+
+    Năm tài chính = 12 tháng, bắt đầu từ đầu tháng đầu quý (01/01, 01/04,
+    01/07, 01/10). FISCAL_15 (giữa quý) đã loại bỏ — trái pháp luật (R-15).
+    """
 
     CALENDAR = "calendar"         # Jan 1 – Dec 31
-    FISCAL_APR = "fiscal_apr"     # Apr 1 – Mar 31 (thường cho doanh nghiệp kế thừa)
-    FISCAL_15 = "fiscal_15"       # Jul 15 – Jul 14 (khiếm nhiëu; phải khai báo)
+    FISCAL_APR = "fiscal_apr"     # Apr 1 – Mar 31
+    FISCAL_JUL = "fiscal_jul"     # Jul 1 – Jun 30
+    FISCAL_OCT = "fiscal_oct"     # Oct 1 – Sep 30
+
+
+class PeriodStatus(Enum):
+    """Trạng thái kỳ kế toán (workflows-fiscal-year-period.md §1)."""
+
+    OPEN = "OPEN"                 # Nhận chứng từ
+    LOCKED = "LOCKED"             # Đã khóa sổ, chặn ghi sổ
+    YEAR_CLOSED = "YEAR_CLOSED"   # Năm tài chính đã đóng hoàn toàn
+
+
+class PeriodLockAction(Enum):
+    """Hành động khóa/mở khóa kỳ (period_lock_events)."""
+
+    CLOSE = "CLOSE"
+    REOPEN = "REOPEN"
+    YEAR_END = "YEAR_END"
 
 
 class UserRole(Enum):

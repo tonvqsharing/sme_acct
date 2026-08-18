@@ -105,3 +105,31 @@ class PeriodLockedError(CurrencyError):
 
 class FXImportError(CurrencyError):
     """CSV rate import failed validation."""
+
+
+class FiscalYearError(DomainException):
+    """Base for all fiscal year / accounting period errors."""
+
+
+class InvalidFiscalYearError(FiscalYearError):
+    """Fiscal year violates Luật 88/2015 Đ12 (not quarter-aligned, bad length)."""
+
+
+class FiscalYearExistsError(FiscalYearError):
+    """Duplicate year_code for the same company."""
+
+
+class PeriodTransitionError(FiscalYearError):
+    """Illegal accounting-period state transition (e.g. YEAR_CLOSED → OPEN)."""
+
+
+class PeriodNotClosableError(FiscalYearError):
+    """Period cannot be closed (open drafts / prerequisites missing)."""
+
+
+class YearEndPreconditionsError(FiscalYearError):
+    """Year-end close blocked: periods not all locked / unposted entries."""
+
+
+class SelfApprovalError(FiscalYearError):
+    """SOD violation: requester == approver on lock/reopen."""
