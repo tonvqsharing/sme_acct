@@ -258,6 +258,73 @@ def unlock_period():
         return jsonify({"error": str(exc), "code": "SERVER_ERROR"}), 500
 
 
+'''
+Invoice Approval with threshold-based routing and RBAC enforcement
+'''
+
+@api_bp.post("/invoices/<uuid:invoice_id>/approve")
+def approve_invoice(invoice_id: UUID):
+    try:
+        data = request.get_json(silent=True) or {}
+        actor = UUID(data.get("actor")) if data.get("actor") else None
+        if not actor:
+            return jsonify({"error": "actor is required", "code": "MISSING_ACTOR"}), 400
+        from src.infrastructure.repositories import SQLAlchemyInvoiceRepository
+        from src.domain.entities.invoice import InvoiceStatus
+        invoice = SQLAlchemyInvoiceRepository().get_by_id(invoice_id)
+        if not invoice:
+            return jsonify({"error": "Invoice not found", "code": "NOT_FOUND"}), 404
+        if invoice.status != InvoiceStatus.DRAFT:
+            return jsonify({"error": "Hoa don khong o trang thai DRAFT", "code": "INVALID_STATUS"}), 400
+        po_matched = data.get("po_matched", False)
+        from src.application.services import InvoiceService as _ISvc
+        _ISvc().approve_invoice(invoice_id=invoice_id, actor=actor, po_matched=po_matched)
+        return jsonify({"success": True, "invoice_id": str(invoice_id), "status": invoice.status})
+    except ValueError as exc:
+        return jsonify({"error": str(exc), "code": "VALIDATION_ERROR"}), 422
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("approve_invoice failed")
+        return jsonify({"error": str(exc), "code": "SERVER_ERROR"}), 500
+
+@api_bp.get("/invoices/<uuid:invoice_id>/threshold-info")
+def threshold_info(invoice_id: UUID):
+    try:
+        from src.infrastructure.repositories import SQLAlchemyInvoiceRepository
+        invoice = SQLAlchemyInvoiceRepository().get_by_id(invoice_id)
+        if not invoice:
+            return jsonify({"error": "Invoice not found", "code": "NOT_FOUND"}), 404
+        amount = invoice.grand_total
+        _T1 = 500_000_000
+        _T2 = 5_000_000_000
+        _T3 = 25_000_000_000
+        _T4 = 100_000_000_000
+        if amount <= _T1:
+            band = "T1 (<= 500USD / <= 500M VND)"
+            role = "AUTO (with PO) or MANAGER"
+        elif amount <= _T2:
+            band = "T2 (500-5000USD / 500M-5B VND)"
+            role = "MANAGER"
+        elif amount <= _T3:
+            band = "T3 (5000-25000USD / 5B-25B VND)"
+            role = "CHIEF_ACCOUNTANT"
+        elif amount <= _T4:
+            band = "T4 (25000-100000USD / 25B-100B VND)"
+            role = "DIRECTOR"
+        else:
+            band = "T5 (> 100000USD / > 100B VND)"
+            role = "ADMIN/BOARD"
+        return jsonify({
+            "invoice_id": str(invoice_id),
+            "invoice_number": invoice.invoice_number,
+            "amount": float(amount),
+            "threshold_band": band,
+            "required_approver_role": role,
+            "status": invoice.status,
+            "po_matched": getattr(invoice, 'po_matched', False)
+        })
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("threshold_info failed")
+        return jsonify({"error": str(exc), "code": "SERVER_ERROR"}), 500
 # ── E-Invoice Series ───────────────────────────────────────────────────────
 
 

@@ -34,6 +34,14 @@ from src.domain.exceptions import (
 
 logger = logging.getLogger(__name__)
 
+# 2nd approval required for CONFIG-type flags (per SoD policy)
+# First approver: admin, Second approver: chief accountant
+CONFIG_FIRST_APPROVER = "ADMIN"
+CONFIG_SECOND_APPROVER = "CHIEF_ACCOUNTANT"
+
+# LAW-type flags are immutable without migration patch
+LAW_IMMUTABLE = "LAW"
+
 
 class SystemSettingsService:
     """Orchestrates System Settings aggregate lifecycle and business rules.
@@ -104,9 +112,19 @@ class SystemSettingsService:
                     f"CompanyConfig has no field '{field}'"
                 )
 
-            # Check if the flag is LAW-type (immutable)
-            # In v1, we allow all modifications for CONFIG flags
-            # Full SoD enforcement comes in later phases
+            # Check if the field is LAW-type (immutable without migration)
+            if field in _LAW_TYPE_FIELDS:
+                raise FlagLockedError(
+                    f"Cơ quan quy định ({field}) là hằng pháp lý, không thể thay đổi mà không có bản vá migration."
+                )
+
+            # Check if the field is CONFIG-type (changeable with 2nd approval)
+            # In this v1, we allow the modification but enforce 2nd approval pattern
+            # at the presentation/API layer. The service records the change for audit.
+            if field in _CONFIG_TYPE_FIELDS:
+                pass  # CONFIG-type: allowed with 2nd approval enforcement in API layer
+
+            # Apply the setting
             setattr(config, field, value)
 
         # Validate VAT rates after update - get the first rate from the frozenset
