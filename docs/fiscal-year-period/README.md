@@ -1,8 +1,9 @@
 # Fiscal Years & Accounting Periods Module — README
 
-## Status: 📋 SPEC DRAFT — NOT IMPLEMENTED — NOT PROD-READY
+## Status: 📋 SPEC APPROVED — NOT IMPLEMENTED — NOT PROD-READY
 
-Doc set written 2026-08-18. Baseline for implementation.
+Doc set **signed off 2026-08-18** (SIGN-OFF.md) — BA lead + chief accountant.
+Tech lead + security review pending. Spec baseline for implementation.
 
 **Verdict: codebase has stub-only support (period_locks table + PeriodLockService no-op).
 Cannot operate in PROD ENV.** See `production-readiness-audit-fiscal-year-period.md`.
