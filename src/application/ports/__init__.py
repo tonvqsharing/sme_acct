@@ -9,6 +9,8 @@ from uuid import UUID
 
 from src.domain.entities.company import Company
 from src.domain.entities.contact import Partner
+from src.domain.entities.currency import Currency, ExchangeRate, FXDifference, RevaluationRun
+from src.domain.entities.base import RateType
 from src.domain.entities.invoice import Invoice, InvoiceItem, InvoiceStatus, InvoiceType
 from src.domain.entities.voucher import DocumentType, Voucher, VoucherLine, VoucherStatus
 from src.domain.entities.company_config import CompanyConfig
@@ -192,4 +194,72 @@ class AuditLogRepositoryPort(ABC):
     @abstractmethod
     def get_all_ordered(self) -> list:
         """Get all audit records ordered by changed_at (for integrity verification)."""
+        pass
+
+
+class CurrencyRepositoryPort(ABC):
+    """Port for currency master data (specs-currencies.md §2.1)."""
+
+    @abstractmethod
+    def get(self, code: str) -> Currency | None:
+        pass
+
+    @abstractmethod
+    def list_active(self) -> list[Currency]:
+        pass
+
+    @abstractmethod
+    def save(self, currency: Currency) -> Currency:
+        pass
+
+    @abstractmethod
+    def exists(self, code: str) -> bool:
+        pass
+
+
+class ExchangeRateRepositoryPort(ABC):
+    """Port for exchange rate history (specs §2.2, D2/D3: append-only)."""
+
+    @abstractmethod
+    def create(self, rate: ExchangeRate) -> ExchangeRate:
+        """Insert a new rate row. No in-place update (D3)."""
+
+    @abstractmethod
+    def get_latest(self, currency_code: str, rate_type: RateType, rate_date: date) -> ExchangeRate | None:
+        """Last available rate with (currency, type) on or before rate_date."""
+
+    @abstractmethod
+    def list_history(self, currency_code: str | None, rate_type: RateType | None, from_date: date | None, to_date: date | None) -> list[ExchangeRate]:
+        pass
+
+    @abstractmethod
+    def rate_is_referenced(self, rate_id: UUID) -> bool:
+        """True when a posted transaction references the rate (D3 lock)."""
+
+
+class RevaluationRepositoryPort(ABC):
+    """Port for revaluation runs (specs §2.5, D7/D8)."""
+
+    @abstractmethod
+    def create_run(self, run: RevaluationRun) -> RevaluationRun:
+        pass
+
+    @abstractmethod
+    def save_run(self, run: RevaluationRun) -> RevaluationRun:
+        """Persist state changes (approve/post/reverse)."""
+
+    @abstractmethod
+    def get_run(self, run_id: UUID) -> RevaluationRun | None:
+        pass
+
+    @abstractmethod
+    def get_posted_run(self, company_id: UUID, period_start: date, period_end: date) -> RevaluationRun | None:
+        """Most recent POSTED run for (company, period) — idempotent re-run (D7)."""
+
+    @abstractmethod
+    def period_is_locked(self, company_id: UUID, period_start: date, period_end: date) -> bool:
+        """Check period_locks table (D8)."""
+
+    @abstractmethod
+    def list_fx_differences(self, company_id: UUID, period_start: date, period_end: date) -> list[FXDifference]:
         pass

@@ -4,9 +4,20 @@ from __future__ import annotations
 
 import enum
 from datetime import date, datetime
+from decimal import Decimal
 from uuid import UUID, uuid4
 
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, MetaData, Numeric, String, func
+from sqlalchemy import (
+    Boolean,
+    Date,
+    DateTime,
+    ForeignKey,
+    MetaData,
+    Numeric,
+    String,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy import Enum as SQLEnum
 from sqlalchemy.orm import (
     DeclarativeBase,
@@ -291,9 +302,7 @@ class PeriodLockModel(Base):
     __tablename__ = "period_locks"
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
-    company_id: Mapped[UUID] = mapped_column(
-        ForeignKey("companies.id"), nullable=False, index=True
-    )
+    company_id: Mapped[UUID] = mapped_column(ForeignKey("companies.id"), nullable=False, index=True)
     period_start: Mapped[date] = mapped_column(Date, nullable=False)
     period_end: Mapped[date] = mapped_column(Date, nullable=False)
     is_locked: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
@@ -308,16 +317,26 @@ class SystemAuditLogModel(Base):
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
     entity_type: Mapped[str] = mapped_column(String(50), nullable=False)
     entity_id: Mapped[UUID] = mapped_column(nullable=True)
-    action: Mapped[str] = mapped_column(String(20), nullable=False)  # CREATE | UPDATE | DELETE | APPROVE | REJECT | SUSPEND | REACTIVATE | DISSOLVE
+    action: Mapped[str] = mapped_column(
+        String(20), nullable=False
+    )  # CREATE | UPDATE | DELETE | APPROVE | REJECT | SUSPEND | REACTIVATE | DISSOLVE
     field_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
     before_value: Mapped[str | None] = mapped_column(String(500), nullable=True)
     after_value: Mapped[str | None] = mapped_column(String(500), nullable=True)
     actor_id: Mapped[UUID] = mapped_column(nullable=False, default=uuid4)
     actor_ip: Mapped[str | None] = mapped_column(String(45), nullable=True)  # Client IP (IPv4/IPv6)
-    actor_user_agent: Mapped[str | None] = mapped_column(String(255), nullable=True)  # Browser/APP version
-    checksum: Mapped[str | None] = mapped_column(String(64), nullable=True)  # SHA-256 hash for integrity chain
-    destroyed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)  # NULL = active, set when destroyed
-    changed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=func.now())
+    actor_user_agent: Mapped[str | None] = mapped_column(
+        String(255), nullable=True
+    )  # Browser/APP version
+    checksum: Mapped[str | None] = mapped_column(
+        String(64), nullable=True
+    )  # SHA-256 hash for integrity chain
+    destroyed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )  # NULL = active, set when destroyed
+    changed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=func.now()
+    )
 
 
 class EInvoiceSeriesModel(Base):
@@ -328,9 +347,7 @@ class EInvoiceSeriesModel(Base):
     next_sequence: Mapped[int] = mapped_column(nullable=False, default=1)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     ca_signer: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    company_id: Mapped[UUID] = mapped_column(
-        ForeignKey("companies.id"), nullable=False, index=True
-    )
+    company_id: Mapped[UUID] = mapped_column(ForeignKey("companies.id"), nullable=False, index=True)
 
 
 class CAListEntryModel(Base):
@@ -355,16 +372,150 @@ class UserModel(Base):
         SQLEnum(UserRoleEnum), nullable=False, default=UserRoleEnum.ACCOUNTANT
     )
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
-    last_login: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    last_login: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=func.now()
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=func.now(), onupdate=func.now()
     )
-    created_by_id: Mapped[UUID | None] = mapped_column(
-        ForeignKey("users.id"), nullable=True
+    created_by_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+
+
+class RateTypeEnum(enum.Enum):
+    BUY = "buy"
+    SELL = "sell"
+    TRANSFER = "transfer"
+    CENTRAL = "central"
+    BOOKING = "booking"
+
+
+class RevaluationStatusEnum(enum.Enum):
+    DRAFT = "draft"
+    PENDING_APPROVAL = "pending_approval"
+    APPROVED = "approved"
+    POSTED = "posted"
+    REVERSED = "reversed"
+
+
+class PostingSideEnum(enum.Enum):
+    DEBIT = "debit"
+    CREDIT = "credit"
+
+
+class CurrencyModel(Base):
+    """Đơn vị tiền tệ (ISO 4217) — specs-currencies.md §2.1."""
+
+    __tablename__ = "currencies"
+
+    code: Mapped[str] = mapped_column(String(3), primary_key=True)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    symbol: Mapped[str] = mapped_column(String(10), nullable=False, default="")
+    decimal_places: Mapped[int] = mapped_column(nullable=False, default=2)
+    is_base: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    display_format: Mapped[str] = mapped_column(
+        String(100), nullable=False, default="{symbol} {amount:,.2f}"
     )
 
+
+class ExchangeRateModel(Base):
+    """Tỷ giá quy đổi ra VND — specs §2.2. Lịch sử bất biến (D3)."""
+
+    __tablename__ = "exchange_rates"
+    __table_args__ = (
+        UniqueConstraint(
+            "currency_code", "rate_date", "rate_type", name="uq_exchange_rate_currency_date_type"
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    currency_code: Mapped[str] = mapped_column(
+        ForeignKey("currencies.code"), nullable=False, index=True
+    )
+    rate_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    rate_type: Mapped[RateTypeEnum] = mapped_column(
+        SQLEnum(RateTypeEnum), nullable=False, index=True
+    )
+    rate: Mapped[Decimal] = mapped_column(Numeric(18, 6), nullable=False)
+    source: Mapped[str] = mapped_column(String(20), nullable=False)
+    actor_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=func.now()
+    )
+    note: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+
+class RevaluationRunModel(Base):
+    """Đợt đánh giá lại cuối kỳ — specs §2.5."""
+
+    __tablename__ = "revaluation_runs"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    company_id: Mapped[UUID] = mapped_column(ForeignKey("companies.id"), nullable=False, index=True)
+    period_start: Mapped[date] = mapped_column(Date, nullable=False)
+    period_end: Mapped[date] = mapped_column(Date, nullable=False)
+    rate_date: Mapped[date] = mapped_column(Date, nullable=False)
+    status: Mapped[RevaluationStatusEnum] = mapped_column(
+        SQLEnum(RevaluationStatusEnum), nullable=False, default=RevaluationStatusEnum.DRAFT
+    )
+    actor_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"), nullable=False)
+    approver_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=func.now()
+    )
+    posted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    entries: Mapped[list[RevaluationEntryModel]] = relationship(
+        back_populates="run", cascade="all, delete-orphan"
+    )
+
+
+class RevaluationEntryModel(Base):
+    """Khoản mục tiền tệ trong đợt đánh giá lại."""
+
+    __tablename__ = "revaluation_entries"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    run_id: Mapped[UUID] = mapped_column(
+        ForeignKey("revaluation_runs.id"), nullable=False, index=True
+    )
+    account_code: Mapped[str] = mapped_column(String(10), nullable=False)
+    currency_code: Mapped[str] = mapped_column(ForeignKey("currencies.code"), nullable=False)
+    balance_original: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
+    rate_applied: Mapped[Decimal] = mapped_column(Numeric(18, 6), nullable=False)
+    old_vnd: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
+    new_vnd: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
+    difference: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
+    posting_side: Mapped[PostingSideEnum | None] = mapped_column(
+        SQLEnum(PostingSideEnum), nullable=True
+    )
+
+    run: Mapped[RevaluationRunModel] = relationship(back_populates="entries")
+
+
+class FXDifferenceModel(Base):
+    """Dòng báo cáo chênh lệch tỷ giá — specs §5."""
+
+    __tablename__ = "fx_differences"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    company_id: Mapped[UUID] = mapped_column(ForeignKey("companies.id"), nullable=False, index=True)
+    account_code: Mapped[str] = mapped_column(String(10), nullable=False, index=True)
+    currency_code: Mapped[str] = mapped_column(
+        ForeignKey("currencies.code"), nullable=False, index=True
+    )
+    period_start: Mapped[date] = mapped_column(Date, nullable=False)
+    period_end: Mapped[date] = mapped_column(Date, nullable=False)
+    opening_original: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False, default=0)
+    opening_vnd: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False, default=0)
+    movements_original: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False, default=0)
+    movements_vnd: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False, default=0)
+    closing_original: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False, default=0)
+    closing_vnd: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False, default=0)
+    revaluation_adjustment: Mapped[Decimal] = mapped_column(
+        Numeric(18, 2), nullable=False, default=0
+    )
+    cumulative_difference: Mapped[Decimal] = mapped_column(
+        Numeric(18, 2), nullable=False, default=0
+    )
