@@ -195,6 +195,38 @@ class TestPeriodsAPI:
         resp = client.get(f"/api/v1/periods/lock-status?company_id={COMPANY}&date=2026-02-10")
         assert resp.get_json()["locked"] is True
 
+    def test_lock_period_in_closed_year_rejected(self, client, app, seeded_year):
+        """Locking any period of a YEAR_CLOSED fiscal year must be refused —
+        it would silently downgrade the closed year (bypasses reopen SOD/approval)."""
+        _lock_all_periods(app, seeded_year)
+        resp = client.post(
+            f"/api/v1/fiscal-years/{seeded_year.id}/close",
+            json={"company_id": str(COMPANY), "actor": str(ACTOR)},
+        )
+        assert resp.status_code == 200
+
+        p1 = seeded_year.period_for_date(date(2026, 1, 10))
+        resp = client.post(
+            f"/api/v1/periods/{p1.id}/lock",
+            json={"actor": str(OTHER), "reason": "khóa lại"},
+        )
+        assert resp.status_code == 422
+        assert resp.get_json()["code"] == "FISCAL_YEAR_ERROR"
+
+    def test_double_lock_rejected(self, client, app, seeded_year):
+        p2 = seeded_year.period_for_date(date(2026, 2, 10))
+        resp = client.post(
+            f"/api/v1/periods/{p2.id}/lock",
+            json={"actor": str(ACTOR), "reason": "khóa tháng 02"},
+        )
+        assert resp.status_code == 201
+        resp = client.post(
+            f"/api/v1/periods/{p2.id}/lock",
+            json={"actor": str(OTHER), "reason": "khóa lần hai"},
+        )
+        assert resp.status_code == 422
+        assert resp.get_json()["code"] == "FISCAL_YEAR_ERROR"
+
     def test_unlock_requires_other_actor(self, client, app, seeded_year):
         p2 = seeded_year.period_for_date(date(2026, 2, 10))
         with app.app_context():

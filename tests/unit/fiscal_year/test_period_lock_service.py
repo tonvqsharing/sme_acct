@@ -82,10 +82,15 @@ class FakeLockRepo(PeriodLockRepositoryPort):
         return p is not None and p.status != PeriodStatus.OPEN
 
     def lock(self, period_id: UUID, actor: UUID, reason: str) -> PeriodLockEvent:
+        # Mirrors SQLAlchemyPeriodLockRepository: persistence only — state
+        # guard is enforced by the service via AccountingPeriod.close().
         p = self.get_period(period_id)
         if p is None:
             raise NotFoundError("period", str(period_id))
-        p.close(actor=actor, reason=reason)
+        p.status = PeriodStatus.LOCKED
+        p.locked_by = actor
+        p.locked_at = datetime.now()
+        p.lock_reason = reason
         ev = PeriodLockEvent(
             period_id=period_id,
             action=PeriodLockAction.CLOSE,
@@ -97,10 +102,14 @@ class FakeLockRepo(PeriodLockRepositoryPort):
         return ev
 
     def reopen(self, period_id: UUID, actor: UUID, reason: str) -> PeriodLockEvent:
+        # Mirrors SQLAlchemyPeriodLockRepository: persistence only.
         p = self.get_period(period_id)
         if p is None:
             raise NotFoundError("period", str(period_id))
-        p.reopen(actor=actor, reason=reason)
+        p.status = PeriodStatus.OPEN
+        p.locked_by = None
+        p.locked_at = None
+        p.lock_reason = None
         ev = PeriodLockEvent(
             period_id=period_id,
             action=PeriodLockAction.REOPEN,
@@ -224,6 +233,27 @@ class TestPeriodLock:
         assert ev.action == PeriodLockAction.REOPEN
         assert svc.is_locked(COMPANY, date(2026, 2, 10)) is False
 
+    def test_reopen_open_period_rejected(self, service):
+        """R-06: only LOCKED → OPEN; re-opening an OPEN period is refused."""
+        svc, fy_repo, _ = service
+        fy = svc.ensure_fiscal_year(COMPANY, date(2026, 3, 15))
+        p2 = fy.period_for_date(date(2026, 2, 10))
+        other = uuid4()
+        with pytest.raises(PeriodTransitionError):
+            svc.reopen_period(p2.id, other, "mở lại kỳ chưa khóa")
+
+    def test_lock_closed_year_period_rejected(self, service):
+        """A YEAR_CLOSED period must not be re-lockable — that would silently
+        downgrade a closed year without the reopen SOD/approval flow."""
+        svc, fy_repo, _ = service
+        fy = svc.ensure_fiscal_year(COMPANY, date(2026, 3, 15))
+        for p in fy.periods:
+            svc.close_period(p.id, ACTOR, "khóa từng kỳ")
+        svc.close_fiscal_year(COMPANY, fy.id, ACTOR)
+        p1 = fy.period_for_date(date(2026, 1, 10))
+        with pytest.raises(PeriodTransitionError):
+            svc.close_period(p1.id, ACTOR, "khóa lại kỳ năm đã đóng")
+
 
 class TestCloseFiscalYear:
     def test_s10_open_period_blocks_close(self, service):
@@ -247,3 +277,12 @@ class TestCloseFiscalYear:
         svc, fy_repo, _ = service
         with pytest.raises(NotFoundError):
             svc.close_fiscal_year(COMPANY, uuid4(), ACTOR)
+
+    def test_close_year_twice_rejected(self, service):
+        svc, fy_repo, _ = service
+        fy = svc.ensure_fiscal_year(COMPANY, date(2026, 3, 15))
+        for p in fy.periods:
+            svc.close_period(p.id, ACTOR, "khóa từng kỳ")
+        svc.close_fiscal_year(COMPANY, fy.id, ACTOR)
+        with pytest.raises(PeriodTransitionError):
+            svc.close_fiscal_year(COMPANY, fy.id, ACTOR)

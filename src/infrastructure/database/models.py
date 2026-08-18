@@ -361,7 +361,7 @@ class FiscalYearModel(Base):
     )
 
     periods: Mapped[list[AccountingPeriodModel]] = relationship(
-        back_populates="fiscal_year", cascade="all, delete-orphan"
+        back_populates="fiscal_year", cascade="all, delete-orphan", lazy="selectin"
     )
 
 

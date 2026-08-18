@@ -49,6 +49,8 @@ logger = logging.getLogger(__name__)
 READ_ROLES = ("ACCOUNTANT", "CHIEF_ACCOUNTANT", "ADMIN", "AUDITOR", "DIRECTOR")
 LOCK_WRITE_ROLES = ("ACCOUNTANT", "CHIEF_ACCOUNTANT")
 FY_ADMIN_ROLES = ("CHIEF_ACCOUNTANT", "ADMIN", "DIRECTOR")
+# ensure auto-seeds a fiscal year (write); AUDITOR stays read-only.
+AUTO_SEED_ROLES = ("ACCOUNTANT", "CHIEF_ACCOUNTANT", "ADMIN", "DIRECTOR")
 
 # ── Test engine hook (set by tests before making requests) ─────────────────
 _test_engine = None
@@ -175,7 +177,7 @@ def get_fiscal_year(fy_id: UUID):
 
 
 @api_bp.post("/v1/fiscal-years/ensure")
-@casbin_required(*READ_ROLES)
+@casbin_required(*AUTO_SEED_ROLES)
 def ensure_fiscal_year():
     try:
         data = request.get_json(silent=True) or {}

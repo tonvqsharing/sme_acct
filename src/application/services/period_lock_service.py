@@ -91,6 +91,8 @@ class PeriodLockService:
         fy = self._fy_repo.get_by_id(fy_id)
         if fy is None or fy.company_id != company_id:
             raise NotFoundError(f"Năm tài chính {fy_id} không tồn tại")
+        if fy.status == PeriodStatus.YEAR_CLOSED:
+            raise PeriodTransitionError(f"Năm tài chính {fy.year_code} đã đóng sổ")
         if not fy.all_periods_locked():
             open_periods = [p.label for p in fy.periods if p.status == PeriodStatus.OPEN]
             raise YearEndPreconditionsError(
@@ -116,14 +118,24 @@ class PeriodLockService:
             raise PeriodLockedError(f"Kỳ kế toán chứa {entry_date} đang khóa; không thể ghi sổ")
 
     def close_period(self, period_id: UUID, actor: UUID, reason: str) -> PeriodLockEvent:
-        """OPEN → LOCKED (R-06)."""
+        """OPEN → LOCKED (R-06).
+
+        State guard via domain transition first (rejects double-lock and any
+        attempt to re-lock a YEAR_CLOSED period — the latter would silently
+        downgrade a closed year), then delegate persistence.
+        """
         period = self._lock_repo.get_period(period_id)
         if period is None:
             raise NotFoundError(f"Kỳ kế toán {period_id} không tồn tại")
+        period.close(actor=actor, reason=reason)
         return self._lock_repo.lock(period_id, actor=actor, reason=reason)
 
     def reopen_period(self, period_id: UUID, actor: UUID, reason: str) -> PeriodLockEvent:
-        """LOCKED → OPEN (R-06, UC-06): reason required, self-approval blocked."""
+        """LOCKED → OPEN (R-06, UC-06): reason required, self-approval blocked.
+
+        State guard via domain transition first (rejects re-open of an OPEN or
+        YEAR_CLOSED period), then delegate persistence.
+        """
         period = self._lock_repo.get_period(period_id)
         if period is None:
             raise NotFoundError(f"Kỳ kế toán {period_id} không tồn tại")
@@ -131,4 +143,5 @@ class PeriodLockService:
             raise PeriodTransitionError("Lý do mở khóa kỳ kế toán là bắt buộc")
         if period.locked_by == actor:
             raise SelfApprovalError("Người khóa kỳ không được tự mở khóa; cần người khác duyệt")
+        period.reopen(actor=actor, reason=reason)
         return self._lock_repo.reopen(period_id, actor=actor, reason=reason)
