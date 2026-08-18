@@ -1,11 +1,11 @@
 # AGENTS — Vietnamese SME Accounting App
 
 ## Repo state
-- Vietnamese SME accounting app, Flask + Clean Architecture scaffold + Company module implemented.
+- Flask + Clean Architecture scaffold + Company module complete.
 - Root entrypoint: `app.py` (`create_app()` factory, `python-dotenv` loading wired).
-- `.venv` managed by `uv`. Always activate it first: `source .venv/bin/activate`. No bare `pip` — use `uv pip install --python=.venv/bin/python`.
+- `.venv` managed by `uv`. Always activate: `source .venv/bin/activate`. No bare `pip` — use `uv pip install --python=.venv/bin/python`.
 - `pyproject.toml` present (hatchling, `src/` wheel). Python >= 3.11.
-- `pytest` configured (`testpaths=tests`, `pythonpath=src`). 50 unit + 78 integration tests.
+- `pytest` configured (`testpaths=tests`, `pythonpath=src`). 65 tests passing.
 - `templates/base.html` uses local Bulma + HTMX (no CDN, offline-capable).
 - Migration: `flask db init|migrate|upgrade` requires `SQLALCHEMY_DATABASE_URI` in env; supported URIs: `sqlite:///...`, `mysql://...`, `mariadb://...`, `postgresql://...`.
 
@@ -15,10 +15,9 @@
 - Repository port: `CompanyRepositoryPort` in `src/application/ports/__init__.py`.
 - DB models: `CompanyModel`, `BankAccountModel` in `src/infrastructure/database/models.py`; `company_id` FK on `PartnerModel`, `InvoiceModel`, `VoucherModel`.
 - Repository adapter: `SQLAlchemyCompanyRepository` in `src/infrastructure/repositories/__init__.py` (`create` + `update`).
-- Unit tests: 32 passing (TDD red-green-refactor): `tests/unit/company/`.
-- Integration tests: 15 passing (in-memory SQLite, no Flask app context): `tests/integration/test_company_repository.py`.
-- REST API endpoints: POST/GET/GET/{id}/PATCH/{id}/suspend/{id}/reactivate/{id}/dissolve — integration tests verify status codes, error handling, enum serialization, BankAccount reconstruction.
-- 65 tests total: 32 entity + 15 repo + 18 service tests passing.
+- Unit tests: 32 passing (`tests/unit/company/`).
+- Integration tests: 15 passing (`tests/integration/test_company_repository.py`, `test_company_api.py`).
+- REST API endpoints: POST/GET/GET/{id}/PATCH/{id}/suspend/{id}/reactivate/{id}/dissolve.
 
 ## System Settings module status (Phase 1 domain complete, migration applied)
 - **Domain layer** (complete): `FlagType`/`FlagScope`/`FlagCategory` enums; `AccountingPeriodType`; `VATMethod`/`EInvoiceMode`/ `EInvoiceSeries` dataclass; `CompanyConfig` aggregate; exceptions (`SystemSettingsError`, `FlagLockedError`, `ConfigVersionConflict`, `InvalidVATRateError`, `InvalidCAListError`, `InvalidRegimeError`).
@@ -60,7 +59,7 @@ src/
       models.py     # SQLAlchemy 2.0 DeclarativeBase models (CompanyModel + new System Settings tables)
     repositories/   # SQLAlchemyRepo adapters (SQLAlchemyCompanyRepository + system settings adapter)
   presentation/
-    api/            # REST-ish blueprints (Company API endpoints + deferred System Settings API)
+    api/            # REST-ish blueprints (Company API endpoints + System Settings API)
     ui/             # HTML blueprints
     forms/          # WTForms
     serializers/    # domain -> JSON
@@ -79,18 +78,15 @@ src/
 ## Framework / infra
 - Flask + `flask-migrate` + `Flask-Talisman` + `Flask-Bcrypt` + `Flask-Login` + `Flask-Security-Too` + `pycasbin` + `Flask-Babel` + `Flask-Caching` + `Flask-Marshmallow` (extensions installed).
 - `Flask-Talisman` enforces HTTPS only when `DEBUG=False`. Use `DEBUG=1` for local dev.
-- `.env.example` not present — copy required vars from `app.py` config block if spinning up fresh.
 
 ## Coding Convention (MUST read before coding)
-`docs/CODING_CONVENTION.md` is the source of truth for style, naming, layer boundaries, commits, and review rules.
-When writing or modifying ANY code:
+`docs/CODING_CONVENTION.md` is the source of truth for style, naming, layer boundaries, commits, and review rules. When writing or modifying ANY code:
 1. Read and apply rules from that doc first.
 2. Use it as referee when choices conflict.
 3. If a rule must be bent, surface the tradeoff explicitly.
 
 ## Testing Strategy (MUST read before writing tests)
-`docs/TESTING_STRATEGY.md` is the source of truth for HOW and WHAT to test.
-Any task touching tests or code with business logic MUST:
+`docs/TESTING_STRATEGY.md` is the source of truth for HOW and WHAT to test. Any task touching tests or code with business logic MUST:
 1. Read `docs/TESTING_STRATEGY.md` (esp. mục 5, 6, 7) before writing code.
 2. Pick test level via decision tree mục 6.4 — no UI-level tests for pure logic, no E2E for edge cases, no E2E for everything.
 3. Follow naming + layout mục 7.4–7.5; test data per mục 9 (factories, isolated state, order-independent, no real client data).
