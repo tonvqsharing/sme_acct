@@ -140,3 +140,50 @@ def serialize_fx_difference(fx) -> dict:
         "revaluation_adjustment": str(fx.revaluation_adjustment),
         "cumulative_difference": str(fx.cumulative_difference),
     }
+
+
+def serialize_accounting_period(period) -> dict:
+    return {
+        "id": str(period.id),
+        "fiscal_year_id": str(period.fiscal_year_id),
+        "period_number": period.period_number,
+        "label": period.label,
+        "start_date": period.start_date.isoformat(),
+        "end_date": period.end_date.isoformat(),
+        "status": period.status.value,
+        "locked_by": str(period.locked_by) if period.locked_by else None,
+        "locked_at": period.locked_at.isoformat() if period.locked_at else None,
+        "lock_reason": period.lock_reason,
+    }
+
+
+def serialize_fiscal_year(fy) -> dict:
+    return {
+        "id": str(fy.id),
+        "company_id": str(fy.company_id),
+        "year_code": fy.year_code,
+        "period_type": fy.period_type.value,
+        "start_date": fy.start_date.isoformat(),
+        "end_date": fy.end_date.isoformat() if fy.end_date else None,
+        "is_first_period": fy.is_first_period,
+        "status": fy.status.value,
+        "opening_balance_posted": fy.opening_balance_posted,
+        "closed_at": fy.closed_at.isoformat() if fy.closed_at else None,
+        "closed_by": str(fy.closed_by) if fy.closed_by else None,
+        "periods": [serialize_accounting_period(p) for p in fy.periods],
+    }
+
+
+def serialize_period_lock_event(event) -> dict:
+    return {
+        "id": str(event.id),
+        "period_id": str(event.period_id),
+        "action": event.action.value,
+        "requested_by": str(event.requested_by),
+        "approved_by": str(event.approved_by) if event.approved_by else None,
+        "requested_at": event.requested_at.isoformat(),
+        "approved_at": event.approved_at.isoformat() if event.approved_at else None,
+        "reason": event.reason,
+        "prev_checksum": event.prev_checksum,
+        "checksum": event.checksum,
+    }
