@@ -1,6 +1,8 @@
 # Currencies & Exchange Rates Module — README
 
-## Status: 📋 DESIGNED — NOT IMPLEMENTED — NOT PROD-READY
+## Status: 📋 SPEC APPROVED — NOT IMPLEMENTED — NOT PROD-READY
+
+Doc set **signed off 2026-08-18** (SIGN-OFF.md). Spec baseline for implementation.
 
 **Verdict: Module does not exist in codebase. Cannot operate in PROD ENV.**
 

@@ -1,7 +1,7 @@
 # ADR-003: Currencies & Exchange Rates Module Design
 
 ## Status
-Proposed
+Accepted (2026-08-18 — signed off)
 
 ## Date
 2026-08-18
