@@ -1,120 +1,138 @@
-"""Period lock service for accounting period enforcement.
+"""Period lock service — accounting period enforcement (specs §3, R-01..R-10).
 
-Handles fiscal year / accounting period locking per Vietnamese accounting law.
-Integrates with CompanyService.validate_active_for_transaction() for
-company status checks.
+Ports injected (no Flask/SQLAlchemy). Handles: lazy fiscal-year auto-seed,
+quarter-aligned FY creation, period close/reopen with SOD, year-end close.
 """
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import UTC, date, datetime
 from uuid import UUID
 
-from src.application.services.company_service import CompanyService
-from src.domain.entities.company import CompanyStatus
-from src.domain.exceptions import CompanyLockedError, NotFoundError
+from src.application.ports import FiscalYearRepositoryPort, PeriodLockRepositoryPort
+from src.domain.entities.base import AccountingPeriodType, PeriodStatus
+from src.domain.entities.fiscal_year import (
+    _ANCHOR_START,
+    FiscalYear,
+    PeriodLockEvent,
+)
+from src.domain.exceptions import (
+    FiscalYearExistsError,
+    InvalidFiscalYearError,
+    NotFoundError,
+    PeriodLockedError,
+    PeriodTransitionError,
+    SelfApprovalError,
+    YearEndPreconditionsError,
+)
 
 
 class PeriodLockService:
-    """Enforces accounting period lock rules.
+    """Enforces period lock + fiscal year lifecycle rules.
 
-    Period lock prevents posting new entries in a closed/frozen accounting
-    period. Integrated with Company.validate_active_for_transaction() for
-    company status checks.
+    Replaces the v1 stub (is_locked always False). Now backed by
+    accounting_periods.status (dual-written to legacy period_locks by the
+    adapter so the currencies D8 path keeps working).
     """
 
-    # Period lock key format (can be backed by Redis in production)
-    PERIOD_LOCK_KEY = "period_lock:{company_id}:{period}"
+    def __init__(
+        self,
+        fy_repo: FiscalYearRepositoryPort,
+        lock_repo: PeriodLockRepositoryPort,
+    ) -> None:
+        self._fy_repo = fy_repo
+        self._lock_repo = lock_repo
 
-    # Fiscal year close key format
-    FYEAR_CLOSE_KEY = "fyear_closed:{company_id}:{fyear}"
+    # ── Fiscal year lifecycle ───────────────────────────────────────────────
 
-    def __init__(self, company_service: CompanyService) -> None:
-        self._company_service = company_service
+    def ensure_fiscal_year(self, company_id: UUID, entry_date: date) -> FiscalYear:
+        """Idempotent auto-seed: return FY containing entry_date, create a
+        default calendar FY (starting 01/01) if none exists."""
+        existing = self._fy_repo.get_active(company_id, entry_date)
+        if existing is not None:
+            return existing
+        fy = FiscalYear(
+            company_id=company_id,
+            period_type=AccountingPeriodType.CALENDAR,
+            start_date=date(entry_date.year, 1, 1),
+        )
+        return self._fy_repo.save(fy)
 
-    # ── Public API ──────────────────────────────────────────────────────────
+    def create_fiscal_year(
+        self,
+        company_id: UUID,
+        period_type: AccountingPeriodType,
+        start_date: date,
+        actor: UUID,
+    ) -> FiscalYear:
+        """Create a new fiscal year — quarter-aligned start (R-01), no
+        overlap with existing years (R-03)."""
+        anchor_month = _ANCHOR_START[period_type][0]
+        if start_date.day != 1 or start_date.month != anchor_month:
+            raise InvalidFiscalYearError(
+                f"Năm tài chính phải bắt đầu {anchor_month:02d}/01 (Luật 88/2015 Đ12)"
+            )
 
-    def is_locked(self, company_id: UUID, period: str) -> bool:
-        """Returns True if period is LOCKED or FYEAR_CLOSED.
+        fy = FiscalYear(
+            company_id=company_id,
+            period_type=period_type,
+            start_date=start_date,
+        )
+        for existing in self._fy_repo.list_by_company(company_id):
+            if not (fy.end_date < existing.start_date or fy.start_date > existing.end_date):
+                raise FiscalYearExistsError(
+                    f"Năm tài chính {fy.year_code} trùng khoảng thời gian với năm tài chính hiện có"
+                )
+        return self._fy_repo.save(fy)
 
-        Args:
-            company_id: Target company.
-            period: Period string (e.g. "1" for January, or "FY2024").
+    def close_fiscal_year(self, company_id: UUID, fy_id: UUID, actor: UUID) -> FiscalYear:
+        """Close fiscal year: all periods must be LOCKED (R-10). Marks
+        YEAR_CLOSED, posts opening-balance flag for the next year."""
+        fy = self._fy_repo.get_by_id(fy_id)
+        if fy is None or fy.company_id != company_id:
+            raise NotFoundError(f"Năm tài chính {fy_id} không tồn tại")
+        if not fy.all_periods_locked():
+            open_periods = [p.label for p in fy.periods if p.status == PeriodStatus.OPEN]
+            raise YearEndPreconditionsError(
+                f"Không thể đóng năm: các kỳ còn mở {open_periods}; khóa toàn bộ kỳ trước"
+            )
 
-        Returns:
-            True if the period is locked (cannot post entries).
-        """
-        # First check company status (already suspended/dissolved)
-        try:
-            self._company_service.validate_active_for_transaction(company_id)
-        except CompanyLockedError:
-            return True  # Company itself is locked
+        for p in fy.periods:
+            p.close_fiscal_year()
+        fy.status = PeriodStatus.YEAR_CLOSED
+        fy.opening_balance_posted = True
+        fy.closed_by = actor
+        fy.closed_at = datetime.now(UTC)
+        return self._fy_repo.save(fy)
 
-        # TODO: In production, check DB period_locks table
-        # For v1, we check if a period lock exists via the repo
-        # For now, this is a stub - actual DB triggers handled by migrations
-        return False
+    # ── Period lock enforcement ─────────────────────────────────────────────
 
-    def lock_period(self, company_id: UUID, period: str, actor: UUID) -> None:
-        """Lock an accounting period.
-
-        Requires ACCOUNTANT or ADMIN role (enforced by presentation layer).
-
-        Args:
-            company_id: Target company.
-            period: Period to lock (e.g. "1" for January).
-            actor: User performing the lock.
-        """
-        # Company must be active to lock periods
-        self._company_service.validate_active_for_transaction(company_id)
-        # TODO: In production, write to period_locks table
-        # For v1, we just record the intent
-
-    def close_fiscal_year(self, company_id: UUID, fyear: int, actor: UUID) -> None:
-        """Close a fiscal year (irreversible).
-
-        Requires CHIEF_ACCOUNTANT role (enforced by presentation layer).
-
-        Args:
-            company_id: Target company.
-            fyear: Fiscal year to close (e.g. 2024).
-            actor: User performing the close.
-        """
-        # Company must be active to close FY
-        self._company_service.validate_active_for_transaction(company_id)
-        # TODO: In production, write to period_locks table
-        # For v1, we just record the intent
+    def is_locked(self, company_id: UUID, entry_date: date) -> bool:
+        return self._lock_repo.is_locked(company_id, entry_date)
 
     def validate_before_entry(self, company_id: UUID, entry_date: date) -> None:
-        """Block new transactions for locked periods.
+        """Raise PeriodLockedError when posting into a locked period (D8)."""
+        if self._lock_repo.is_locked(company_id, entry_date):
+            raise PeriodLockedError(
+                f"Kỳ kế toán chứa {entry_date} đang khóa; không thể ghi sổ"
+            )
 
-        Called by InvoiceService and VoucherService before accepting entries.
+    def close_period(self, period_id: UUID, actor: UUID, reason: str) -> PeriodLockEvent:
+        """OPEN → LOCKED (R-06)."""
+        period = self._lock_repo.get_period(period_id)
+        if period is None:
+            raise NotFoundError(f"Kỳ kế toán {period_id} không tồn tại")
+        return self._lock_repo.lock(period_id, actor=actor, reason=reason)
 
-        Args:
-            company_id: Target company.
-            entry_date: Date of the entry being posted.
-
-        Raises:
-            CompanyLockedError: If period is locked or company is inactive.
-        """
-        # First check company status (SUSPENDED/DISSOLVED)
-        self._company_service.validate_active_for_transaction(company_id)
-
-        # TODO: In production, check DB period_locks for the given date
-        # For v1, we delegate to the company's fiscal year helper
-        # which derives the fiscal year/period from the entry date
-        company = self._company_service.get_company(company_id)
-        fym = company.fiscal_year_start_month
-        fyd = company.fiscal_year_start_day
-
-        # Derive fiscal year and period from entry date
-        if entry_date.month > fym or (entry_date.month == fym and entry_date.day >= fyd):
-            accounting_period = entry_date.month - fym + 1
-        else:
-            accounting_period = entry_date.month + 12 - fym + 1
-
-        # For v1, we check if the derived period would be locked
-        # In production, this would query the period_locks table
-        # For now, always allow (stub implementation)
-        # TODO: Query DB: SELECT * FROM period_locks 
-        #       WHERE company_id = ? AND fiscal_year = ? AND period = ?
+    def reopen_period(self, period_id: UUID, actor: UUID, reason: str) -> PeriodLockEvent:
+        """LOCKED → OPEN (R-06, UC-06): reason required, self-approval blocked."""
+        period = self._lock_repo.get_period(period_id)
+        if period is None:
+            raise NotFoundError(f"Kỳ kế toán {period_id} không tồn tại")
+        if not reason or not reason.strip():
+            raise PeriodTransitionError("Lý do mở khóa kỳ kế toán là bắt buộc")
+        if period.locked_by == actor:
+            raise SelfApprovalError(
+                "Người khóa kỳ không được tự mở khóa; cần người khác duyệt"
+            )
+        return self._lock_repo.reopen(period_id, actor=actor, reason=reason)
