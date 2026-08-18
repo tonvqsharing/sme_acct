@@ -77,6 +77,7 @@ src/
 
 ## Framework / infra
 - Flask + `flask-migrate` + `Flask-Talisman` + `Flask-Bcrypt` + `Flask-Login` + `Flask-Security-Too` + `pycasbin` + `Flask-Babel` + `Flask-Caching` + `Flask-Marshmallow` (extensions installed).
+- ⚠️ CRITICAL: `pycasbin 2.8.0` is installed but NOT implemented in the codebase. RBAC enforcement is currently UI/Flask-Login only — ❌ P0-10 production-readiness gap.
 - `Flask-Talisman` enforces HTTPS only when `DEBUG=False`. Use `DEBUG=1` for local dev.
 
 ## Coding Convention (MUST read before coding)
@@ -101,6 +102,9 @@ Flaky tests follow the policy in mục 11 (Fix / Quarantine / Delete) — open a
 - Don't use bare `pip`; use `uv pip install --python=.venv/bin/python`.
 - Don't add multi-company consolidation logic until Company entity + tenant isolation exist (research report flags 7 critical gaps).
 - Don't implement System Settings REST API in this version — deferred until model separation is resolved without test breakage.
+- ❌ Do NOT assume RBAC is enforced — pycasbin is installed but not implemented; UI/Flask-Login checks are insufficient for PROD (P0-10 audit gap).
+- ❌ Do NOT add role-based checks only in presentation templates — backend service methods must also enforce RBAC, or use the `@casbin_required` decorator pattern.
+- ❌ Do NOT mix UI-only auth with backend logic that bypasses RBAC — this creates security shadows that audit will flag.
 
 ## CI / Git
 - Commit: Conventional Commits format: `type(scope): description`; subject ≤50 chars.
