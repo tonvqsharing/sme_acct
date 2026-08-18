@@ -307,6 +307,8 @@ class SystemAuditLogModel(Base):
     actor_id: Mapped[UUID] = mapped_column(nullable=False, default=uuid4)
     actor_ip: Mapped[str | None] = mapped_column(String(45), nullable=True)  # Client IP (IPv4/IPv6)
     actor_user_agent: Mapped[str | None] = mapped_column(String(255), nullable=True)  # Browser/APP version
+    checksum: Mapped[str | None] = mapped_column(String(64), nullable=True)  # SHA-256 hash for integrity chain
+    destroyed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)  # NULL = active, set when destroyed
     changed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=func.now())
 
 

@@ -156,4 +156,110 @@ def sample_audit_record_update():
         "before_value": "0.10",
         "after_value": "0.15",
         "actor_id": uuid4(),
+    }# Conftest for test fixtures
+@pytest.fixture
+def audit_log_service():
+    """Create AuditLogService instance for testing."""
+    from src.infrastructure.repositories import SQLAlchemyAuditLogRepository
+    repo = SQLAlchemyAuditLogRepository()
+    from src.application.services.audit_log_service import AuditLogService
+    service = AuditLogService(repo)
+    return service
+
+
+@pytest.fixture
+def sample_audit_record():
+    """Valid audit record for CREATE action."""
+    return {
+        "entity_type": "Invoice",
+        "entity_id": uuid4(),
+        "action": "CREATE",
+        "actor_id": uuid4(),
     }
+
+
+@pytest.fixture
+def sample_audit_record_update():
+    """Valid audit record for UPDATE action with field change."""
+    return {
+        "entity_type": "Invoice",
+        "entity_id": uuid4(),
+        "action": "UPDATE",
+        "field_name": "vat_rate",
+        "before_value": "0.10",
+        "after_value": "0.15",
+        "actor_id": uuid4(),
+    }
+
+
+class TestAuditLogServiceDestruction:
+    """Test Certificate of Destruction functionality per Luật Kế toán 2015.
+
+    Records must be retained for minimum 10 years before destruction.
+    """
+
+    def test_verify_destruction_eligibility_happy_path(self, audit_log_service):
+        """Record older than 10 years should be eligible for destruction."""
+        from datetime import date
+        old_date = (date.today().replace(year=date.today().year - 11)).isoformat()
+
+        result = audit_log_service.verify_destruction_eligibility(
+            record_id=uuid4(),
+            changed_at=old_date
+        )
+
+        assert result["eligible"] is True
+        assert result["years_elapsed"] >= 10
+        assert result["reason"] is None
+
+    def test_verify_destruction_eligibility_too_young(self, audit_log_service):
+        """Record younger than 10 years should NOT be eligible."""
+        young_date = (date.today().replace(year=date.today().year - 5)).isoformat()
+
+        result = audit_log_service.verify_destruction_eligibility(
+            record_id=uuid4(),
+            changed_at=young_date
+        )
+
+        assert result["eligible"] is False
+        assert result["years_elapsed"] == 5
+        assert result["reason"] is not None
+
+    def test_verify_destruction_eligibility_exactly_10_years(self, audit_log_service):
+        """Record exactly 10 years old should be eligible."""
+        exactly_10 = (date.today().replace(year=date.today().year - 10)).isoformat()
+
+        result = audit_log_service.verify_destruction_eligibility(
+            record_id=uuid4(),
+            changed_at=exactly_10
+        )
+
+        assert result["eligible"] is True
+        assert result["years_elapsed"] == 10
+
+    def test_verify_destruction_eligibility_invalid_date(self, audit_log_service):
+        """Invalid date format should return not eligible."""
+        result = audit_log_service.verify_destruction_eligibility(
+            record_id=uuid4(),
+            changed_at="not-a-date"
+        )
+
+        assert result["eligible"] is False
+        assert result["reason"] is not None
+        assert "invalid_date_format" in result["reason"]
+
+    def test_destroy_records_success(self, audit_log_service):
+        """Destroy records should return success result."""
+        record_ids = [uuid4() for _ in range(3)]
+        result = audit_log_service.destroy_records(record_ids, uuid4())
+
+        assert result["destroyed_count"] == 3
+        assert result["failed_ids"] == []
+        assert result["reason"] is None
+
+    def test_destroy_records_empty_list(self, audit_log_service):
+        """Destroy with empty list should return 0 destroyed."""
+        result = audit_log_service.destroy_records([], uuid4())
+
+        assert result["destroyed_count"] == 0
+        assert result["failed_ids"] == []

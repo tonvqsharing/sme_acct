@@ -474,6 +474,8 @@ class SQLAlchemyAuditLogRepository(AuditLogRepositoryPort):
             actor_id=actor_id,
             actor_ip=None,  # Filled by presentation layer / middleware
             actor_user_agent=None,  # Filled by presentation layer / middleware
+            checksum=None,  # SHA-256 hash, computed later
+            destroyed_at=None,  # Set when record is destroyed
             changed_at=datetime.now(),
         )
         # Actually, let me use the proper approach with db.session
