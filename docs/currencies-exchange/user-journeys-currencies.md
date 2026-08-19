@@ -2,8 +2,8 @@
 
 | | |
 |---|---|
-| Version | 0.1 |
-| Date | 2026-08-18 |
+| Version | 1.0 |
+| Date | 2026-08-19 |
 
 Role-based journeys. Emotional/practical steps; exit criteria.
 

@@ -3,11 +3,11 @@
 | | |
 |---|---|
 | Module | Currencies & Exchange Rates |
-| Status | DRAFT — awaiting sign-off |
-| Version | 0.1 |
-| Date | 2026-08-18 |
-| Author | BA Lead + Chief Accountant research team |
-| Related | Company module, System Settings, Invoice, Voucher, Bank Account |
+| Status | ✅ IMPLEMENTED + PROD-READY — all BR-01..BR-06 verified against code |
+| Version | 1.0 |
+| Date | 2026-08-19 |
+| Related | specs-currencies.md, rules-currencies.md, ADR-003 |
+| Related | production-readiness-audit-currencies.md, SIGN-OFF.md |
 
 ## 1. Background
 

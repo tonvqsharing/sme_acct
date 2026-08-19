@@ -2,8 +2,8 @@
 
 | | |
 |---|---|
-| Version | 0.1 |
-| Date | 2026-08-18 |
+| Version | 1.0 |
+| Date | 2026-08-19 |
 | Follows | docs/TESTING_STRATEGY.md (esp. mục 5, 6, 7) |
 | Level selection | mục 6.4 decision tree — pure logic → unit; repo/API → integration; no UI-level for pure logic; no E2E for edge cases |
 

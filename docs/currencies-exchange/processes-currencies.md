@@ -2,8 +2,8 @@
 
 | | |
 |---|---|
-| Version | 0.1 |
-| Date | 2026-08-18 |
+| Version | 1.0 |
+| Date | 2026-08-19 |
 
 End-to-end business processes. Numbered steps; actors; systems; exit criteria.
 

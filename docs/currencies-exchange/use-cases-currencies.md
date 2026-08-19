@@ -2,8 +2,9 @@
 
 | | |
 |---|---|
-| Version | 0.1 |
-| Date | 2026-08-18 |
+| Version | 1.0 |
+| Date | 2026-08-19 |
+| Status | ✅ IMPLEMENTED + PROD-READY — all UC-01..UC-12 mapped to working API endpoints |
 
 Format: each UC has Description, Preconditions, Actors, Main flow (happy path),
 Alternative flows, Exception paths.
