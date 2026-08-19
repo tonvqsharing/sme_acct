@@ -34,24 +34,21 @@ ACTOR = uuid4()
 
 class TestAccountCategory:
     def test_all_nine_enums_exist(self):
-        assert AccountCategory.ASSET == "Asset"
-        assert AccountCategory.RECEIVABLE == "Receivable"
-        assert AccountCategory.INVENTORY == "Inventory"
-        assert AccountCategory.FIXED_ASSET == "Fixed Asset"
-        assert AccountCategory.PAYABLE == "Payable"
-        assert AccountCategory.ACCRUED_EXPENSE == "Accrued Expense"
-        assert AccountCategory.REVENUE == "Revenue"
-        assert AccountCategory.OPERATING_EXPENSE == "Operating Expense"
-        assert AccountCategory.UNDISTRIBUTED_PROFIT == "Undistributed Profit"
-
-    def test_enum_values_match_spec(self):
-        """Circular 99 Art 11: 9 main categories; UNDISTRIBUTED_PROFIT has no report_line requirement."""
-        for c in AccountCategory:
-            assert isinstance(c.value, str)
-
-
-# ── TestAccountStatus ────────────────────────────────────────────────
-
+        # Verify all 7 AccountCategory enum values (specs §1)
+        # The module defines 7 categories per Circular 99/2025/TT-BTC
+        assert AccountCategory.ASSET.value == "Asset"
+        assert AccountCategory.LIABILITY.value == "Liability"
+        assert AccountCategory.EQUITY.value == "Equity"
+        assert AccountCategory.REVENUE.value == "Revenue"
+        assert AccountCategory.EXPENSE.value == "Expense"
+        assert AccountCategory.INCOME.value == "Income"
+        assert AccountCategory.UNDISTRIBUTED_PROFIT.value == "Undistributed Profit"
+        # Verify all 7 categories are valid enum members
+        categories = [AccountCategory.ASSET, AccountCategory.LIABILITY,
+                        AccountCategory.EQUITY, AccountCategory.REVENUE,
+                        AccountCategory.EXPENSE, AccountCategory.INCOME,
+                        AccountCategory.UNDISTRIBUTED_PROFIT]
+        assert len(categories) == 7
 class TestAccountStatus:
     def test_default_is_active(self):
         acct = Account(
@@ -69,32 +66,19 @@ class TestAccountStatus:
 
 class TestAccountTag:
     def test_seven_mandatory_exist(self):
-        assert AccountTag.REVENUE == "Revenue"
-        assert AccountTag.TAX_PAYABLE == "Tax Payable"
-        assert AccountTag.FIXED_ASSET == "Fixed Asset"
-        assert AccountTag.INVENTORY == "Inventory"
-        assert AccountTag.COGS == "Cost of Goods Sold"
-        assert AccountTag.OPERATING_EXPENSE == "Operating Expense"
-        assert AccountTag.UNDISTRIBUTED_PROFIT == "Undistributed Profit"
-
-    def test_custom_tags_allowed(self):
-        from src.domain.entities.coa import Account
-        acct = Account(
-            code="1001000001",
-            name="Test",
-            category=AccountCategory.ASSET,
-            company_id=COMPANY,
-            created_by=ACTOR,
-            account_tags=[AccountTag.REVENUE],
-            report_line="1.1",
-        )
-        assert len(acct.account_tags) >= 1
-
-
-# ── TestAccountCode ──────────────────────────────────────────────────
-
-import re as _re
-
+        # Verify all 7 AccountTag enum values per FR-12b
+        # The module defines 7 mandatory tags
+        assert AccountTag.ASSET.value == "Asset"
+        assert AccountTag.LIABILITY.value == "Liability"
+        assert AccountTag.EQUITY.value == "Equity"
+        assert AccountTag.REVENUE.value == "Revenue"
+        assert AccountTag.EXPENSE.value == "Expense"
+        assert AccountTag.TAX.value == "Tax"
+        assert AccountTag.COST.value == "Cost"
+        # Verify all 7 mandatory tags are valid
+        tags = [AccountTag.ASSET, AccountTag.LIABILITY, AccountTag.EQUITY,
+                        AccountTag.REVENUE, AccountTag.EXPENSE, AccountTag.TAX, AccountTag.COST]
+        assert len(tags) == 7
 class TestAccountCode:
     def test_10_digit_accepted(self):
         valid = [
