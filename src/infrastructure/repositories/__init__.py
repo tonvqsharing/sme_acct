@@ -10,6 +10,9 @@ from sqlalchemy import func, select
 from src.application.ports import (
     AuditLogRepositoryPort,
     CompanyRepositoryPort,
+    CostCenterRepositoryPort,
+    DimensionRepositoryPort,
+    DimensionValueRepositoryPort,
     InvoiceRepositoryPort,
     PartnerRepositoryPort,
     UserRepositoryPort,
@@ -648,3 +651,441 @@ class SQLAlchemyUserRepository(UserRepositoryPort):
             config_version=1,
         )
 
+
+
+
+# Cost Centers & Dimensions ──────────────────────────────────────
+
+
+class SQLAlchemyCostCenterRepository(CostCenterRepositoryPort):
+    """SQLAlchemy adapter implementing CostCenterRepositoryPort."""
+
+    def create(self, cost_center: CostCenter) -> CostCenter:
+        existing = db.session.scalar(
+            select(CostCenterModel).where(
+                CostCenterModel.code == cost_center.code,
+                CostCenterModel.company_id == cost_center.company_id,
+            )
+        )
+        if existing is not None:
+            from src.domain.exceptions import DuplicateMSTError
+            raise DuplicateMSTError(
+                f"Cost Center code '{cost_center.code}' already exists for company {cost_center.company_id}"
+            )
+        model = self._domain_to_model(cost_center)
+        db.session.add(model)
+        db.session.flush()
+        return self._model_to_domain(model)
+
+    def get_by_id(self, cost_center_id: UUID) -> CostCenter | None:
+        stmt = select(CostCenterModel).where(CostCenterModel.id == cost_center_id)
+        model = db.session.scalar(stmt)
+        if model is None:
+            return None
+        return self._model_to_domain(model)
+
+    def get_by_code(self, code: str, company_id: UUID) -> CostCenter | None:
+        try:
+            validated = CostCenterCode(code).value
+        except Exception:
+            return None
+        stmt = select(CostCenterModel).where(
+            CostCenterModel.code == validated,
+            CostCenterModel.company_id == company_id,
+        )
+        model = db.session.scalar(stmt)
+        if model is None:
+            return None
+        return self._model_to_domain(model)
+
+    def list_by_company(
+        self, company_id: UUID, *, status: CostCenterStatus | None = None
+    ) -> list[CostCenter]:
+        stmt = select(CostCenterModel).where(CostCenterModel.company_id == company_id)
+        if status is not None:
+            stmt = stmt.where(CostCenterModel.status == status.value)
+        stmt = stmt.order_by(CostCenterModel.code.asc())
+        models = db.session.scalars(stmt).all()
+        return [self._model_to_domain(m) for m in models]
+
+    def update(self, cost_center: CostCenter) -> CostCenter:
+        model = db.session.get(CostCenterModel, cost_center.id)
+        if model is None:
+            raise ValueError(f"CostCenter {cost_center.id} not found in DB")
+        model.code = cost_center.code
+        model.name = cost_center.name
+        model.status = cost_center.status.value
+        model.description = cost_center.description or ""
+        model.updated_at = datetime.now(timezone.utc)
+        model.audit_checksum = cost_center.audit_checksum
+        db.session.flush()
+        return self._model_to_domain(model)
+
+    def soft_delete(self, cost_center_id: UUID, actor: UUID, reason: str) -> None:
+        model = db.session.get(CostCenterModel, cost_center_id)
+        if model is None:
+            raise ValueError(f"CostCenter {cost_center_id} not found")
+        if model.status == CostCenterStatus.ACTIVE.value:
+            model.status = CostCenterStatus.INACTIVE.value
+            model.updated_at = datetime.now(timezone.utc)
+            model.audit_checksum = self._compute_checksum(
+                "soft_delete", actor=actor, reason=reason
+            )
+            db.session.flush()
+
+    def _model_to_domain(self, model: CostCenterModel) -> CostCenter:
+        from src.domain.entities.cost_center import CostCenter  # local import
+        cost_center = CostCenter(
+            code=model.code,
+            name=model.name,
+            company_id=model.company_id,
+            created_by=model.created_by,
+            description=model.description or "",
+            status=CostCenterStatus(model.status),
+            parent_id=model.parent_id,
+        )
+        cost_center.id = model.id  # type: ignore[attr-defined]
+        cost_center.created_at = model.created_at
+        cost_center.updated_at = model.updated_at
+        cost_center.audit_checksum = model.audit_checksum
+        return cost_center
+
+    def _domain_to_model(self, cost_center: CostCenter) -> CostCenterModel:
+        from src.domain.entities.cost_center import CostCenterCode  # local import
+        code_validated = CostCenterCode(cost_center.code).value
+        model = CostCenterModel(
+            id=cost_center.id,
+            code=code_validated,
+            name=cost_center.name,
+            status=cost_center.status.value,
+            company_id=cost_center.company_id,
+            created_by=cost_center.created_by,
+            created_at=cost_center.created_at,
+            updated_at=cost_center.updated_at,
+            audit_checksum=cost_center.audit_checksum,
+            description=cost_center.description or "",
+            parent_id=cost_center.parent_id,
+        )
+        return model
+
+    def _compute_checksum(self, action: str, actor: UUID | None = None, reason: str | None = None) -> str:
+        import hashlib
+        raw_parts = [
+            self.audit_checksum if hasattr(self, "audit_checksum") else "",
+            str(cost_center.id) if cost_center else "",
+            action,
+            str(actor) if actor else "",
+            reason or "",
+            datetime.now(timezone.utc).isoformat(),
+        ]
+        raw = "|".join(raw_parts)
+        return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+class SQLAlchemyDimensionRepository(DimensionRepositoryPort):
+    """SQLAlchemy adapter implementing DimensionRepositoryPort."""
+
+    def create(self, dimension: Dimension) -> Dimension:
+        existing = db.session.scalar(
+            select(DimensionModel).where(
+                DimensionModel.code == dimension.code,
+                DimensionModel.company_id == dimension.company_id,
+            )
+        )
+        if existing is not None:
+            from src.domain.exceptions import DuplicateMSTError
+            raise DuplicateMSTError(
+                f"Dimension code '{dimension.code}' already exists for company {dimension.company_id}"
+            )
+        model = self._domain_to_model(dimension)
+        db.session.add(model)
+        db.session.flush()
+        return self._model_to_domain(model)
+
+    def get_by_id(self, dimension_id: UUID) -> Dimension | None:
+        stmt = select(DimensionModel).where(DimensionModel.id == dimension_id)
+        model = db.session.scalar(stmt)
+        if model is None:
+            return None
+        return self._model_to_domain(model)
+
+    def get_by_code(self, code: str, company_id: UUID) -> Dimension | None:
+        try:
+            from src.domain.entities.cost_center import DimensionCode
+            DimensionCode(code, dimension_type=DimensionType.CUSTOM)
+        except Exception:
+            return None
+        stmt = select(DimensionModel).where(
+            DimensionModel.code == code,
+            DimensionModel.company_id == company_id,
+        )
+        model = db.session.scalar(stmt)
+        if model is None:
+            return None
+        return self._model_to_domain(model)
+
+    def list_by_company(
+        self,
+        company_id: UUID,
+        *,
+        dimension_type: DimensionType | None = None,
+        is_system: bool | None = None,
+    ) -> list[Dimension]:
+        stmt = select(DimensionModel).where(DimensionModel.company_id == company_id)
+        if dimension_type is not None:
+            stmt = stmt.where(DimensionModel.type == dimension_type.value)
+        if is_system is not None:
+            stmt = stmt.where(DimensionModel.is_system == is_system)
+        stmt = stmt.order_by(DimensionModel.code.asc())
+        models = db.session.scalars(stmt).all()
+        return [self._model_to_domain(m) for m in models]
+
+    def update(self, dimension: Dimension) -> Dimension:
+        model = db.session.get(DimensionModel, dimension.id)
+        if model is None:
+            raise ValueError(f"Dimension {dimension.id} not found in DB")
+        model.code = dimension.code
+        model.name = dimension.name
+        model.type = dimension.type.value
+        model.is_system = dimension.is_system
+        model.description = dimension.description or ""
+        model.updated_at = datetime.now(timezone.utc)
+        model.audit_checksum = dimension.audit_checksum
+        db.session.flush()
+        return self._model_to_domain(model)
+
+    def _model_to_domain(self, model: DimensionModel) -> Dimension:
+        from src.domain.entities.cost_center import Dimension  # local import
+        dimension = Dimension(
+            code=model.code,
+            name=model.name,
+            dimension_type=DimensionType(model.type),
+            company_id=model.company_id,
+            created_by=model.created_by,
+            is_system=model.is_system,
+            description=model.description or "",
+        )
+        dimension.id = model.id  # type: ignore[attr-defined]
+        dimension.created_at = model.created_at
+        dimension.updated_at = model.updated_at
+        dimension.audit_checksum = model.audit_checksum
+        return dimension
+
+    def _domain_to_model(self, dimension: Dimension) -> DimensionModel:
+        from src.domain.entities.cost_center import DimensionCode  # local import
+        DimensionCode(dimension.code, DimensionType.CUSTOM)  # may raise
+        model = DimensionModel(
+            id=dimension.id,
+            code=dimension.code,
+            name=dimension.name,
+            type=dimension.type.value,
+            company_id=dimension.company_id,
+            created_by=dimension.created_by,
+            created_at=dimension.created_at,
+            updated_at=dimension.updated_at,
+            audit_checksum=dimension.audit_checksum,
+            is_system=dimension.is_system,
+            description=dimension.description or "",
+        )
+        return model
+
+
+class SQLAlchemyDimensionValueRepository(DimensionValueRepositoryPort):
+    """SQLAlchemy adapter implementing DimensionValueRepositoryPort."""
+
+    def create(self, dimension_value: DimensionValue) -> DimensionValue:
+        existing = db.session.scalar(
+            select(DimensionValueModel).where(
+                DimensionValueModel.code == dimension_value.code,
+                DimensionValueModel.dimension_id == dimension_value.dimension_id,
+                DimensionValueModel.company_id == dimension_value.company_id,
+            )
+        )
+        if existing is not None:
+            from src.domain.exceptions import DuplicateMSTError
+            raise DuplicateMSTError(
+                f"Dimension Value code '{dimension_value.code}' already exists for dimension {dimension_value.dimension_id}"
+            )
+        model = self._domain_to_model(dimension_value)
+        db.session.add(model)
+        db.session.flush()
+        return self._model_to_domain(model)
+
+    def get_by_id(self, dv_id: UUID) -> DimensionValue | None:
+        stmt = select(DimensionValueModel).where(DimensionValueModel.id == dv_id)
+        model = db.session.scalar(stmt)
+        if model is None:
+            return None
+        return self._model_to_domain(model)
+
+    def get_by_code(self, code: str, company_id: UUID) -> DimensionValue | None:
+        try:
+            from src.domain.entities.cost_center import DimensionCode
+            DimensionCode(code, DimensionType.CUSTOM)
+        except Exception:
+            return None
+        stmt = select(DimensionValueModel).where(
+            DimensionValueModel.code == code,
+            DimensionValueModel.company_id == company_id,
+        )
+        model = db.session.scalar(stmt)
+        if model is None:
+            return None
+        return self._model_to_domain(model)
+
+    def list_by_company(
+        self,
+        company_id: UUID,
+        *,
+        dimension_id: UUID | None = None,
+        status: DimensionValueStatus | None = None,
+    ) -> list[DimensionValue]:
+        stmt = select(DimensionValueModel).where(DimensionValueModel.company_id == company_id)
+        if dimension_id is not None:
+            stmt = stmt.where(DimensionValueModel.dimension_id == dimension_id)
+        if status is not None:
+            stmt = stmt.where(DimensionValueModel.status == status.value)
+        stmt = stmt.order_by(DimensionValueModel.code.asc())
+        models = db.session.scalars(stmt).all()
+        return [self._model_to_domain(m) for m in models]
+
+    def update(self, dimension_value: DimensionValue) -> DimensionValue:
+        model = db.session.get(DimensionValueModel, dimension_value.id)
+        if model is None:
+            raise ValueError(f"DimensionValue {dimension_value.id} not found in DB")
+        model.code = dimension_value.code
+        model.name = dimension_value.name
+        model.status = dimension_value.status.value
+        model.dimension_id = dimension_value.dimension_id
+        model.description = dimension_value.description or ""
+        model.updated_at = datetime.now(timezone.utc)
+        model.audit_checksum = dimension_value.audit_checksum
+        db.session.flush()
+        return self._model_to_domain(model)
+
+    def _model_to_domain(self, model: DimensionValueModel) -> DimensionValue:
+        from src.domain.entities.cost_center import DimensionValue  # local import
+        dv = DimensionValue(
+            code=model.code,
+            name=model.name,
+            dimension_id=model.dimension_id,
+            company_id=model.company_id,
+            created_by=model.created_by,
+            status=DimensionValueStatus(model.status),
+            description=model.description or "",
+        )
+        dv.id = model.id  # type: ignore[attr-defined]
+        dv.created_at = model.created_at
+        dv.updated_at = model.updated_at
+        dv.audit_checksum = model.audit_checksum
+        return dv
+
+    def _domain_to_model(self, dimension_value: DimensionValue) -> DimensionValueModel:
+        from src.domain.entities.cost_center import DimensionCode  # local import
+        DimensionCode(dimension_value.code, DimensionType.CUSTOM)  # may raise
+        model = DimensionValueModel(
+            id=dimension_value.id,
+            code=dimension_value.code,
+            name=dimension_value.name,
+            status=dimension_value.status.value,
+            dimension_id=dimension_value.dimension_id,
+            company_id=dimension_value.company_id,
+            created_by=dimension_value.created_by,
+            created_at=dimension_value.created_at,
+            updated_at=dimension_value.updated_at,
+            audit_checksum=dimension_value.audit_checksum,
+            description=dimension_value.description or "",
+        )
+        return model
+
+
+# Model classes (SQLAlchemy)
+
+class CostCenterModel(Base):
+    __tablename__ = "cost_centers"
+
+    id = db.Column(db.UUID, primary_key=True, default=uuid4)
+    code = db.Column(db.String(20), nullable=False, unique=False)
+    name = db.Column(db.String(200), nullable=False)
+    status = db.Column(
+        db.Enum(CostCenterStatus, native_enum=False, name="cost_center_status_enum"),
+        nullable=False,
+        default=CostCenterStatus.ACTIVE.value,
+    )
+    description = db.Column(db.Text, nullable=True)
+    company_id = db.Column(db.UUID, db.ForeignKey("companies.id"), nullable=False)
+    parent_id = db.Column(db.UUID, db.ForeignKey("cost_centers.id"), nullable=True)
+    created_by = db.Column(db.UUID, nullable=False)
+    created_at = db.Column(db.DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at = db.Column(
+        db.DateTime(timezone=True), nullable=True, onupdate=func.now()
+    )
+    audit_checksum = db.Column(db.String(64), nullable=False)
+
+    __table_args__ = (
+        db.UniqueConstraint("company_id", "code", name="uq_cost_centers_company_code"),
+        db.Index("ix_cost_centers_company_status", "company_id", "status"),
+        db.Index("ix_cost_centers_parent", "parent_id"),
+    )
+
+    parent = db.relationship(
+        "CostCenterModel",
+        remote_side=[id],
+        backref="children",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+    )
+
+
+class DimensionModel(Base):
+    __tablename__ = "dimensions"
+
+    id = db.Column(db.UUID, primary_key=True, default=uuid4)
+    code = db.Column(db.String(20), nullable=False, unique=False)
+    name = db.Column(db.String(200), nullable=False)
+    type = db.Column(
+        db.Enum(DimensionType, native_enum=False, name="dimension_type_enum"),
+        nullable=False,
+    )
+    is_system = db.Column(db.Boolean, nullable=False, default=False)
+    description = db.Column(db.Text, nullable=True)
+    company_id = db.Column(db.UUID, db.ForeignKey("companies.id"), nullable=True)
+    created_by = db.Column(db.UUID, nullable=False)
+    created_at = db.Column(db.DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at = db.Column(
+        db.DateTime(timezone=True), nullable=True, onupdate=func.now()
+    )
+    audit_checksum = db.Column(db.String(64), nullable=False)
+
+    __table_args__ = (
+        db.UniqueConstraint("company_id", "code", name="uq_dimensions_company_code"),
+        db.Index("ix_dimensions_company_type", "company_id", "type"),
+    )
+
+
+class DimensionValueModel(Base):
+    __tablename__ = "dimension_values"
+
+    id = db.Column(db.UUID, primary_key=True, default=uuid4)
+    code = db.Column(db.String(20), nullable=False, unique=False)
+    name = db.Column(db.String(200), nullable=False)
+    status = db.Column(
+        db.Enum(DimensionValueStatus, native_enum=False, name="dimension_value_status_enum"),
+        nullable=False,
+        default=DimensionValueStatus.ACTIVE.value,
+    )
+    description = db.Column(db.Text, nullable=True)
+    dimension_id = db.Column(db.UUID, db.ForeignKey("dimensions.id"), nullable=False)
+    company_id = db.Column(db.UUID, db.ForeignKey("companies.id"), nullable=False)
+    created_by = db.Column(db.UUID, nullable=False)
+    created_at = db.Column(db.DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at = db.Column(
+        db.DateTime(timezone=True), nullable=True, onupdate=func.now()
+    )
+    audit_checksum = db.Column(db.String(64), nullable=False)
+
+    __table_args__ = (
+        db.UniqueConstraint("dimension_id", "company_id", "code", name="uq_dimension_values_dimension_code"),
+        db.Index("ix_dimension_values_company", "company_id"),
+        db.Index("ix_dimension_values_dimension", "dimension_id"),
+    )

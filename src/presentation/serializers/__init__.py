@@ -26,7 +26,51 @@ def serialize_account_category(cat) -> dict:
 
 
 def serialize_account_tag(tag) -> dict:
-    """Serialize an AccountTag entity to a dict."""
+def serialize_cost_center(cc) -> dict:
+    """Serialize a CostCenter entity to a dict."""
+    return {
+        "id": str(cc.id),
+        "code": cc.code,
+        "name": cc.name,
+        "status": cc.status.value,
+        "description": cc.description or "",
+        "created_by": str(cc.created_by) if cc.created_by else None,
+        "created_at": cc.created_at.isoformat() if cc.created_at else None,
+        "updated_at": cc.updated_at.isoformat() if cc.updated_at else None,
+        "audit_checksum": cc.audit_checksum,
+    }
+
+
+def serialize_dimension(d) -> dict:
+    """Serialize a Dimension entity to a dict."""
+    return {
+        "id": str(d.id),
+        "code": d.code,
+        "name": d.name,
+        "type": d.type.value,
+        "is_system": d.is_system,
+        "description": d.description or "",
+        "created_by": str(d.created_by) if d.created_by else None,
+        "created_at": d.created_at.isoformat() if d.created_at else None,
+        "updated_at": d.updated_at.isoformat() if d.updated_at else None,
+        "audit_checksum": d.audit_checksum,
+    }
+
+
+def serialize_dimension_value(dv) -> dict:
+    """Serialize a DimensionValue entity to a dict."""
+    return {
+        "id": str(dv.id),
+        "code": dv.code,
+        "name": dv.name,
+        "status": dv.status.value,
+        "description": dv.description or "",
+        "dimension_id": str(dv.dimension_id) if dv.dimension_id else None,
+        "created_by": str(dv.created_by) if dv.created_by else None,
+        "created_at": dv.created_at.isoformat() if dv.created_at else None,
+        "updated_at": dv.updated_at.isoformat() if dv.updated_at else None,
+        "audit_checksum": dv.audit_checksum,
+    }    """Serialize an AccountTag entity to a dict."""
     return {"id": None, "name": tag.value, "code": tag.code, "is_mandatory": True}
 
 

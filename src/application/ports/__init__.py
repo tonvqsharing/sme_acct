@@ -11,6 +11,7 @@ from src.domain.entities.company import Company
 from src.domain.entities.contact import Partner
 from src.domain.entities.currency import Currency, ExchangeRate, FXDifference, RevaluationRun
 from src.domain.entities.base import RateType
+from src.domain.entities.cost_center import CostCenter, Dimension, DimensionValue
 from src.domain.entities.fiscal_year import (
     AccountingPeriod,
     FiscalYear,
@@ -143,6 +144,55 @@ class SystemSettingsRepositoryPort(ABC):
         pass
 
 
+class AuditLogRepositoryPort(ABC):
+    """Port for audit log persistence operations.
+
+    Abstract interface separating audit log storage concerns from
+    application service logic. Implementations handle INSERT-only
+    write paths with immutability enforcement at the database level.
+    """
+
+    @abstractmethod
+    def create(
+        self,
+        entity_type: str,
+        entity_id: UUID,
+        action: str,
+        field_name: str | None,
+        before_value: str | None,
+        after_value: str | None,
+        actor_id: UUID,
+    ) -> object:
+        """Create a new audit log record.
+
+        INSERT-only operation; no UPDATE/DELETE permitted on core audit table.
+        Returns the created record entity for service-layer response mapping.
+        """
+
+    @abstractmethod
+    def get_filtered(
+        self,
+        entity_type: str | None,
+        entity_id: UUID | None,
+        action: str | None,
+        field_name: str | None,
+        start_date: datetime | None,
+        end_date: datetime | None,
+        actor_id: UUID | None,
+        page: int,
+        page_size: int,
+    ) -> dict:
+        """Query audit records with filtering and pagination.
+
+        Returns paged result dict with items and total_count.
+        """
+
+    @abstractmethod
+    def get_all_ordered(self) -> list:
+        """Get all audit records ordered by changed_at (for integrity verification).
+        """
+
+
 class UserRepositoryPort(ABC):
     @abstractmethod
     def create(self, user: User) -> User:
@@ -230,27 +280,111 @@ class AccountCategoryRepositoryPort(ABC):
         pass
 
 
-class AccountTagRepositoryPort(ABC):
-    '''Port for AccountTag master data (7 mandatory tags per FR-12b).'''
+class DimensionRepositoryPort(ABC):
+    '''Port for Dimension (khối đoán) master data.
+
+    Dimensions are analytical categories for cost allocation:
+    Project, Location, Product, Customer, Employee, Department, Custom.
+    '''
 
     @abstractmethod
-    def list_mandatory_tags(self) -> list[AccountTag]:
+    def create(self, dimension: Dimension) -> Dimension:
         pass
 
     @abstractmethod
-    def get_by_code(self, code: str) -> AccountTag | None:
+    def get_by_id(self, dimension_id: UUID) -> Dimension | None:
         pass
 
     @abstractmethod
-    def create(self, tag: AccountTag) -> AccountTag:
+    def get_by_code(self, code: str, company_id: UUID) -> Dimension | None:
         pass
 
     @abstractmethod
-    def update(self, tag: AccountTag) -> AccountTag:
+    def list_by_company(
+        self,
+        company_id: UUID,
+        *,
+        dimension_type: DimensionType | None = None,
+        is_system: bool | None = None,
+    ) -> list[Dimension]:
+        pass
+
+    @abstractmethod
+    def update(self, dimension: Dimension) -> Dimension:
         pass
 
 
-class AuditLogRepositoryPort(ABC):
+class DimensionValueRepositoryPort(ABC):
+    '''Port for Dimension Value (giá trị khối đoán) master data.
+
+    Specific values within a Dimension (e.g., "Project Alpha" under
+    Dimension "Project", or "Hanoi" under Dimension "Location").
+    Used for analytical cost allocation.
+    '''
+
+    @abstractmethod
+    def create(self, dimension_value: DimensionValue) -> DimensionValue:
+        pass
+
+    @abstractmethod
+    def get_by_id(self, dv_id: UUID) -> DimensionValue | None:
+        pass
+
+    @abstractmethod
+    def get_by_code(self, code: str, company_id: UUID) -> DimensionValue | None:
+        pass
+
+    @abstractmethod
+    def list_by_company(
+        self,
+        company_id: UUID,
+        *,
+        dimension_id: UUID | None = None,
+        status: DimensionValueStatus | None = None,
+    ) -> list[DimensionValue]:
+        pass
+
+    @abstractmethod
+    def update(self, dimension_value: DimensionValue) -> DimensionValue:
+        pass
+
+
+class CostCenterRepositoryPort(ABC):
+    '''Port for Cost Center (chi phí trung tâm) master data.
+
+    Represents departments, branches, or organizational units
+    that incur costs. Supports analytical accounting per Circular 99/2025/TT-BTC.
+    '''
+
+    @abstractmethod
+    def create(self, cost_center: CostCenter) -> CostCenter:
+        pass
+
+    @abstractmethod
+    def get_by_id(self, cost_center_id: UUID) -> CostCenter | None:
+        pass
+
+    @abstractmethod
+    def get_by_code(self, code: str, company_id: UUID) -> CostCenter | None:
+        pass
+
+    @abstractmethod
+    def list_by_company(
+        self,
+        company_id: UUID,
+        *,
+        status: CostCenterStatus | None = None,
+    ) -> list[CostCenter]:
+        pass
+
+    @abstractmethod
+    def update(self, cost_center: CostCenter) -> CostCenter:
+        pass
+
+    @abstractmethod
+    def soft_delete(self, cost_center_id: UUID, actor: UUID, reason: str) -> None:
+        '''Soft-delete: set status=INACTIVE or CLOSED; do NOT row-delete per Law on Accounting 10-year retention.'''
+        pass
     """Port for audit log persistence operations.
 
     Abstract interface separating audit log storage concerns from
