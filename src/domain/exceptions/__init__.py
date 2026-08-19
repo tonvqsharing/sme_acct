@@ -133,3 +133,19 @@ class YearEndPreconditionsError(FiscalYearError):
 
 class SelfApprovalError(FiscalYearError):
     """SOD violation: requester == approver on lock/reopen."""
+
+class InvalidAccountCodeError(DomainException):
+    """Account code format invalid, VAT rate out of range, or tag missing."""
+    pass
+
+class AccountCodeAlreadyExistsError(DomainException):
+    """Account code already exists for this company."""
+    pass
+
+class SystemAccountModificationError(DomainException):
+    """Attempt to modify system (pre-loaded) account via normal API."""
+    pass
+
+class RequiresChiefAccountantError(DomainException):
+    """Operation requires CHIEF_ACCOUNTANT role."""
+    pass

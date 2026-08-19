@@ -181,6 +181,75 @@ class UserRepositoryPort(ABC):
         pass
 
 
+
+class AccountRepositoryPort(ABC):
+    '''Port for Chart of Accounts master data.'''
+
+    @abstractmethod
+    def create(self, account: Account) -> Account:
+        pass
+
+    @abstractmethod
+    def get_by_id(self, account_id: UUID) -> Account | None:
+        pass
+
+    @abstractmethod
+    def get_by_code(self, code: str, company_id: UUID) -> Account | None:
+        pass
+
+    @abstractmethod
+    def update(self, account: Account) -> Account:
+        pass
+
+    @abstractmethod
+    def list_by_company(
+        self,
+        company_id: UUID,
+        *,
+        category: AccountCategory | None = None,
+        status: AccountStatus | None = None,
+        tag: AccountTag | None = None,
+        VAT_rate: float | None = None,
+    ) -> list[Account]:
+        pass
+
+    @abstractmethod
+    def soft_delete(self, account_id: UUID, actor: UUID, reason: str) -> Account:
+        '''Soft-delete: set status=CLOSED; do NOT row-delete per Law on Accounting 10-year retention.'''
+
+
+class AccountCategoryRepositoryPort(ABC):
+    '''Port for AccountCategory system categories.'''
+
+    @abstractmethod
+    def get_system_categories(self) -> list[AccountCategory]:
+        pass
+
+    @abstractmethod
+    def get_by_name(self, name: str) -> AccountCategory | None:
+        pass
+
+
+class AccountTagRepositoryPort(ABC):
+    '''Port for AccountTag master data (7 mandatory tags per FR-12b).'''
+
+    @abstractmethod
+    def list_mandatory_tags(self) -> list[AccountTag]:
+        pass
+
+    @abstractmethod
+    def get_by_code(self, code: str) -> AccountTag | None:
+        pass
+
+    @abstractmethod
+    def create(self, tag: AccountTag) -> AccountTag:
+        pass
+
+    @abstractmethod
+    def update(self, tag: AccountTag) -> AccountTag:
+        pass
+
+
 class AuditLogRepositoryPort(ABC):
     """Port for audit log persistence operations.
 

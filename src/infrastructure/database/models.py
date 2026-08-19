@@ -9,12 +9,14 @@ from uuid import UUID, uuid4
 
 from sqlalchemy import (
     Boolean,
+    Column,
     Date,
     DateTime,
     ForeignKey,
     MetaData,
     Numeric,
     String,
+    Table,
     UniqueConstraint,
     func,
 )
@@ -620,3 +622,57 @@ class FXDifferenceModel(Base):
     cumulative_difference: Mapped[Decimal] = mapped_column(
         Numeric(18, 2), nullable=False, default=0
     )
+
+
+class AccountModel(Base):
+    __tablename__ = "accounts"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    code: Mapped[str] = mapped_column(String(10), nullable=False, unique=True, index=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    category: Mapped[str] = mapped_column(String(20), nullable=False)  # enum as string
+    company_id: Mapped[UUID] = mapped_column(ForeignKey("companies.id"), nullable=False, index=True)
+    vat_rate: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False, default=0.0)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="Active")  # Active/Closed
+    report_line: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    created_by: Mapped[UUID] = mapped_column(nullable=False, default=uuid4)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    # Relationships
+    company = relationship("CompanyModel", back_populates="accounts")
+    tag_association = relationship("AccountTagModel", secondary="account_tag_xref", back_populates="accounts", lazy="selectin")
+
+    # Self-referencing (sub-accounts) and audit
+    parent_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("accounts.id"), nullable=True
+    )
+    audit_checksum: Mapped[str] = mapped_column(String(64), nullable=False)
+
+
+class AccountCategoryModel(Base):
+    __tablename__ = "account_categories"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    name: Mapped[str] = mapped_column(String(50), nullable=False, unique=True)
+    code_prefix: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    is_system: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    description: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
+
+class AccountTagModel(Base):
+    __tablename__ = "account_tags"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    name: Mapped[str] = mapped_column(String(50), nullable=False, unique=True)
+    code: Mapped[str] = mapped_column(String(10), nullable=False)
+    is_mandatory: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
+
+# Join table for account-tag many-to-many
+account_tag_xref = Table(
+    "account_tag_xref",
+    Base.metadata,
+    Column("account_id", ForeignKey("accounts.id"), primary_key=True),
+    Column("tag_id", ForeignKey("account_tags.id"), primary_key=True),
+)
