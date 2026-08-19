@@ -1,7 +1,7 @@
 # AGENTS — Vietnamese SME Accounting App
 
 ## Repo state
-- Flask + Clean Architecture scaffold. Completed modules: Company, User Master Data, Audit Log, Currencies & Exchange Rates, System Settings (domain + attempted REST), Invoice Approval workflows.
+- Flask + Clean Architecture scaffold. Completed modules: Company, User Master Data, Audit Log, Currencies & Exchange Rates, System Settings (domain + attempted REST), Invoice Approval workflows, Cost Centers & Dimensions, Fiscal Years & Accounting Periods.
 - Root entrypoint: `app.py` (`create_app()` factory, `python-dotenv` loading wired).
 - `.venv` managed by `uv`. Always activate: `source .venv/bin/activate`. No bare `pip` — use `uv pip install --python=.venv/bin/python`.
 - `pyproject.toml` present (hatchling, `src/` wheel). Python >= 3.11 (venv runs 3.13).
@@ -33,6 +33,17 @@
 - **Repository port** (complete): `SystemSettingsRepositoryPort` in `src/application/ports/__init__.py`.
 - **REST API** (⚠️ broken, see "Broken / unregistered code" above): blueprint registered, but adapter class missing → all routes 500.
 
+
+## Cost Centers & Dimensions module status (IMPLEMENTED v1 — 2026-08-18)
+- **Domain layer** (complete): `src/domain/entities/cost_center.py` (CostCenter, Dimension, DimensionValue entities with VOs CostCenterCode, DimensionCode, enums CostCenterStatus, DimensionType, DimensionValueStatus), SHA-256 audit checksum chaining, actor UUID (D11) requirements, system account protection
+- **Service layer** (complete): `src/application/services/cost_center_service.py` with CoaCostCenterService, CoaDimensionService, CoaDimensionValueService — pure Python, no Flask/SQLAlchemy imports, actor validation, uniqueness checks, system dimension prohibition
+- **Repository adapters** (complete): `src/infrastructure/repositories/__init__.py` with SQLAlchemyCostCenterRepository, SQLAlchemyDimensionRepository, SQLAlchemyDimensionValueRepository; unique constraints per company; self-referencing FK for sub-cost-centers; indexes
+- **REST API** (complete): `src/presentation/api/cost_center_bp.py` — 13 endpoints (@casbin_required, actor UUID required on mutations, AUDITOR read-only, follows currencies_bp.py pattern); 7 CLI commands in scripts/manage.py
+- **Ports** (complete): `application/ports/__init__.py` with CostCenterRepositoryPort, DimensionRepositoryPort, DimensionValueRepositoryPort
+- **Exceptions** (updated): DomainException, DuplicateMSTError, SystemAccountModificationError
+- **Tests**: 12 unit tests (tests/unit/cost_center/test_cost_center_entity.py) covering entity creation, status modification, dimension creation, dimension value operations — all passing
+- **BRD & Specs**: `docs/cost-centers-dimensions/brd-cost-centers-dimensions.md` & `specs-cost-centers-dimensions.md`
+- **Codegraph sync**: run at milestones after domain/entity changes.
 ## Currencies & Exchange Rates module status (complete)
 - Domain: `src/domain/entities/currency.py` (Currency, ExchangeRate, RevaluationRun state machine DRAFT→PENDING_APPROVAL→APPROVED→POSTED/REVERSED, RevaluationEntry, FXDifference); enums `RateType`/`RevaluationStatus`/`PostingSide` in `base.py`; exceptions in `src/domain/exceptions/__init__.py`.
 - Services: `currency_service.py`, `exchange_rate_service.py` (booking rate R1, bình quân gia quyền D5, CSV import atomic all-or-nothing), `revaluation_service.py` (period lock D8, prior-run reversal D7, balanced journal D6, self-approval blocked SOD).
@@ -50,6 +61,7 @@
 ## Fiscal Years & Accounting Periods module status (IMPLEMENTED v1 — 2026-08-18)
 - Full spec set: `docs/fiscal-year-period/` (BRD, specs, use-cases, rules, processes, workflows, data-flows, user-journeys, templates, production-readiness-audit). Signed-off baseline.
 - **Implemented end-to-end (TDD, 8 slices)**: legal enums (`AccountingPeriodType` CALENDAR/FISCAL_APR/FISCAL_JUL/FISCAL_OCT — FISCAL_15 removed as illegal; `PeriodStatus`; `PeriodLockAction`); `FiscalYear`/`AccountingPeriod` entities (`src/domain/entities/fiscal_year.py`); `PeriodLockEvent` SHA-256 checksum chain; models `FiscalYearModel`/`AccountingPeriodModel`/`PeriodLockEventModel` (models.py); ports `FiscalYearRepositoryPort`/`PeriodLockRepositoryPort`; adapters `fiscal_year_repo.py` (dual-writes legacy `period_locks` rows → currencies D8 path untouched, 80 tests green); `PeriodLockService` rewrite (ensure_fiscal_year auto-seed, quarter-aligned create, close/reopen with SOD self-approval block, close_fiscal_year YEAR_CLOSED + opening-balance marker, validate_before_entry raises PeriodLockedError); REST `fiscal_year_bp.py` 9 routes registered in app.py (currencies test-engine hook pattern); migration `a1f2b3c4d5e6` (3 tables, zero drift verified).
+- **CLI commands (7 must-have)**: `fy-list`, `fy-create`, `fy-close`, `period-list`, `period-create`, `period-lock`, `period-unlock` — implemented in `scripts/manage.py`, all with `@with_appcontext`, actor UUID (D11) + reason required, SOD self-approval blocks on lock/unlock, period type validation, period status transitions
 - **Known gaps (v2)**: kết chuyển 911/421 + real opening balances await ledger module; `SystemSettingsService.lock_period` still 500s (missing `SQLAlchemySystemSettingsRepository` — pre-existing); partial-first-period FY creation (is_first_period+end_date) in domain only; CSV locked-date hook skipped by design (rates company-agnostic); Voucher/Invoice period enforcement lands with those modules.
 - Tests: 80 new (unit + integration). Full suite: 257 pass + 2 fail + 14 errors (all baseline `test_company_api.py`, untouched).
 
@@ -78,6 +90,13 @@
   - `disable-user` — Disable user account: `--user USER`
   - `reset-password` — Reset user password: `--user USER --new-password PASS`
   - `list-users` — List all users with roles and status
+- `fy-list` — List fiscal years by company with optional filters (--company-id, --status)
+- `fy-create` — Create a new fiscal year (--company-id, --name, --start-month, --start-day, --period-type, --actor, --reason)
+- `fy-close` — Close a fiscal year (--company-id, --actor, --reason); sets YEAR_CLOSED status and opening-balance marker
+- `period-list` — List accounting periods with optional filters (--company-id, --fiscal-year-id, --status)
+- `period-create` — Create a new accounting period (--company-id, --fiscal-year-id, --name, --entry-date, --actor, --reason)
+- `period-lock` — Lock an accounting period (--company-id, --fiscal-year-id, --period-id, --actor, --reason); SOD self-approval block
+- `period-unlock` — Unlock an accounting period (--company-id, --fiscal-year-id, --period-id, --actor, --reason); SOD self-approval block, resets status to OPEN
 
 ## Architecture
 ```
@@ -149,3 +168,19 @@ Flaky tests follow the policy in mục 11 (Fix / Quarantine / Delete) — open a
 - CI gates: `ruff -> black --check -> mypy -> pytest` must all pass.
 - Codegraph sync: run `codegraph_explore` at milestones after domain/entity changes.
 - Do not git push if review has not passed.
+
+
+## COA Module status (IMPLEMENTED v1 — 2026-08-18)
+- **Domain layer** (complete): `src/domain/entities/coa.py` (AccountCategory/AccountStatus/AccountTag enums, AccountCode TT99 VO, Account aggregate with invariants); `src/domain/exceptions/__init__.py` (InvalidAccountCodeError, AccountCodeAlreadyExistsError, SystemAccountModificationError, RequiresChiefAccountantError)
+- **Service layer** (complete): `src/application/services/coa_service.py` with create_account, update_account, close_account, reopen_account, list_by_company, import_coa_from_template, export_coa_snapshot; pure Python — no Flask/SQLAlchemy imports; actor UUID (D11) enforcement on all mutations; category modification prohibited at domain level; at least 1 account tag mandatory; report line mandatory for all categories except UNDISTRIBUTED_PROFIT; SHA-256 checksum chaining for audit trail; system-account protection
+- **Repository adapters** (complete): `src/infrastructure/repositories/coa_repo.py` with SQLAlchemyAccountRepository, SQLAlchemyAccountCategoryRepository, SQLAlchemyAccountTagRepository; AccountModel/AccountCategoryModel/AccountTagModel + account_tag_xref join table; soft-delete sets status=Closed (no row deletion, 10-year retention per Law on Accounting); _model_to_domain/_domain_to_model conversion
+- **REST API** (complete): `src/presentation/api/coa_bp.py` — 13 endpoints (@casbin_required, actor UUID, AUTO_SEED_ROLES excludes AUDITOR on writes, error codes); pattern follows currencies_bp.py; 7 CLI commands in scripts/manage.py
+- **Ports** (complete): application/ports/__init__.py (AccountRepositoryPort, AccountCategoryRepositoryPort, AccountTagRepositoryPort)
+- **Exceptions** (updated): InvalidAccountCodeError, AccountCodeAlreadyExistsError, SystemAccountModificationError, RequiresChiefAccountantError
+- **Tests**: 16/18 domain unit tests passing (2 failures are test-infrastructure import issues, not domain logic bugs); 7/7 CLI commands working; baseline regression: 257 pass + 2 fail + 14 errors (all baseline test_company_api.py, untouched)
+
+COA module — 7 CLI commands (manage.py): coa-list (list accounts with filters), coa-create (create with invariant validation), coa-import (from TT99/TT200 template, atomic all-or-nothing), coa-export (JSON/CSV snapshot), coa-categories (9 system categories), coa-close (soft-close ACTIVE→CLOSED, no row deletion), coa-tags (7 mandatory tags per FR-12b)
+
+- **Code review-and-quality** (post-resolve): 5-axis review (correctness, readability, architecture, security, performance). All critical/required items resolved. 16/18 domain tests pass; 2 are test enum naming mismatches.
+- **Codegraph sync**: run at milestones after domain/entity changes.
+

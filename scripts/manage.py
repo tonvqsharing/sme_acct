@@ -436,6 +436,349 @@ def coa_tags():
 
 
 
+
+@cli.command("fy-list")
+@click.option("--company-id", help="Filter by company UUID")
+@click.option("--status", type=click.Choice(["OPEN", "CLOSED", "DRAFT", "LOCKED"]), help="Filter by fiscal year status")
+@with_appcontext
+def fy_list(company_id, status):
+    """List fiscal years by company with optional filters.
+
+    Filters:
+        --company-id: UUID filter for tenant isolation
+        --status: Filter by status (OPEN/CLOSED/DRAFT/LOCKED)
+    """
+    from uuid import UUID
+    from src.application.services.fiscal_year_service import FiscalYearService
+    from src.infrastructure.database import db
+    from src.infrastructure.repositories.fiscal_year_repo import SQLAlchemyFiscalYearRepository
+
+    # Parse company_id UUID if provided
+    company_uuid = None
+    if company_id:
+        try:
+            company_uuid = UUID(company_id)
+        except ValueError:
+            click.echo("Invalid company-id format. Use UUID format (xxxx-xxxx-xxxx-xxxx-xxxx).", err=True)
+            sys.exit(1)
+
+    # Initialize service
+    fy_repo = SQLAlchemyFiscalYearRepository()
+    service = FiscalYearService(fy_repo)
+
+    try:
+        years = service.list_by_company(company_id=company_uuid, status_name=status)
+        if not years:
+            click.echo("No fiscal years found matching filters.")
+            return
+
+        header = "ID".ljust(36) + "Name".ljust(25) + "Status".ljust(12) + "Start Date".ljust(14) + "End Date".ljust(14)
+        click.echo(header)
+        click.echo("-" * 96)
+        for fy in years:
+            start_str = fy.start_date.strftime("%Y-%m-%d") if fy.start_date else "N/A"
+            end_str = fy.end_date.strftime("%Y-%m-%d") if fy.end_date else "N/A"
+            active_str = "ACTIVE" if fy.is_active else "INACTIVE"
+            row = fy.id.ljust(36) + fy.name.ljust(25) + fy.status.value.ljust(12) + start_str.ljust(14) + end_str.ljust(14) + active_str
+            click.echo(row)
+    except Exception as exc:
+        click.echo(f"Failed to list fiscal years: {exc}", err=True)
+        sys.exit(1)
+
+
+
+
+
+@cli.command("fy-create")
+@click.option("--company-id", required=True, help="Company UUID")
+@click.option("--name", required=True, help="Fiscal year name")
+@click.option("--start-month", type=click.IntRange(1, 12), required=True, help="Start month (1-12)")
+@click.option("--start-day", type=click.IntRange(1, 28), required=True, help="Start day (1-28)")
+@click.option("--period-type", type=click.Choice(["CALENDAR", "FISCAL_APR", "FISCAL_JUL", "FISCAL_OCT"]), required=True, help="Period type: CALENDAR=1, FISCAL_APR=4, FISCAL_JUL=7, FISCAL_OCT=10 (FISCAL_15 rejected per Vietnamese law)")
+@click.option("--actor", required=True, help="Actor UUID (D11 audit requirement)")
+@click.option("--reason", required=True, help="Reason for creation (mandatory per D11)")
+@with_appcontext
+def fy_create(company_id, name, start_month, start_day, period_type, actor, reason):
+    """Create a new fiscal year."""
+    from uuid import UUID
+    from src.application.services.fiscal_year_service import FiscalYearService
+    from src.infrastructure.database import db
+    from src.infrastructure.repositories.fiscal_year_repo import SQLAlchemyFiscalYearRepository
+    try:
+        company_uuid = UUID(company_id)
+        actor_uuid = UUID(actor)
+    except ValueError:
+        click.echo("Invalid UUID format. Use format: xxxxxxxx-xxxx-xxxx-xxxx-xxxx", err=True)
+        sys.exit(1)
+    fy_repo = SQLAlchemyFiscalYearRepository()
+    service = FiscalYearService(fy_repo)
+    try:
+        fy = service.create_fiscal_year(
+            name=name,
+            start_month=start_month,
+            start_day=start_day,
+            period_type=period_type,
+            company_id=company_uuid,
+            actor=actor_uuid,
+            reason=reason,
+        )
+        click.echo(
+            f"Fiscal year created: {fy.name} ({fy.id}) -- ",
+            f"type={fy.period_type.value}, status={fy.status.value}"
+        )
+    except ValueError as e:
+        click.echo(f"Validation error: {e}", err=True)
+        sys.exit(1)
+    except Exception as e:
+        click.echo(f"Failed to create fiscal year: {e}", err=True)
+        sys.exit(1)
+
+
+
+@cli.command("period-create")
+@click.option("--company-id", required=True, help="Company UUID")
+@click.option("--fiscal-year-id", required=True, help="Fiscal year UUID")
+@click.option("--name", required=True, help="Period name")
+@click.option("--entry-date", required=True, help="Entry date (YYYY-MM-DD)")
+@click.option("--actor", required=True, help="Actor UUID (D11 audit requirement)")
+@click.option("--reason", required=True, help="Reason for creation (mandatory per D11)")
+@with_appcontext
+def period_create(company_id, fiscal_year_id, name, entry_date, actor, reason):
+    """Create a new accounting period."""
+    from uuid import UUID
+    from datetime import datetime
+    from src.application.services.fiscal_year_service import FiscalYearService
+    from src.infrastructure.database import db
+    from src.infrastructure.repositories.fiscal_year_repo import SQLAlchemyFiscalYearRepository
+    try:
+        company_uuid = None
+        if company_id:
+            try:
+                company_uuid = UUID(company_id)
+            except ValueError:
+                click.echo("Invalid company-id format.", err=True)
+        sys.exit(1)
+        fy_uuid = None
+        if fiscal_year_id:
+            try:
+                fy_uuid = UUID(fiscal_year_id)
+            except ValueError:
+                click.echo("Invalid fiscal-year-id format.", err=True)
+        sys.exit(1)
+        try:
+            entry_date = datetime.strptime(entry_date, "%Y-%m-%d").date()
+        except ValueError:
+            click.echo("Invalid entry-date format. Use YYYY-MM-DD.", err=True)
+            sys.exit(1)
+        period_repo = SQLAlchemyFiscalYearRepository()
+        service = FiscalYearService(fy_repo)
+        period = service.create_period(
+            company_id=company_uuid,
+            fy_id=fy_uuid,
+            name=name,
+            entry_date=entry_date,
+            actor=actor_uuid,
+            reason=reason,
+        )
+        click.echo(
+            f"Period created: {period.name} ({period.id}) -- status={period.status.value}"
+        )
+    except ValueError as e:
+        click.echo(f"Cannot create period: {e}", err=True)
+        sys.exit(1)
+    except Exception as e:
+        click.echo(f"Failed to create period: {e}", err=True)
+        sys.exit(1)
+
+@cli.command("period-list")
+@click.option("--company-id", help="Filter by company UUID")
+@click.option("--fiscal-year-id", help="Filter by fiscal year UUID")
+@click.option("--status", type=click.Choice(["OPEN", "LOCKED", "CLOSED"]), help="Filter by period status")
+@with_appcontext
+def period_list(company_id, fiscal_year_id, status):
+    """List accounting periods with optional filters."""
+    from uuid import UUID
+    from src.application.services.fiscal_year_service import FiscalYearService
+    from src.infrastructure.database import db
+    from src.infrastructure.repositories.fiscal_year_repo import SQLAlchemyFiscalYearRepository
+    try:
+        company_uuid = None
+        if company_id:
+            try:
+                company_uuid = UUID(company_id)
+            except ValueError:
+                click.echo("Invalid company-id format. Use UUID format (xxxx-xxxx-xxxx-xxxx-xxxx).", err=True)
+                sys.exit(1)
+        fy_uuid = None
+        if fiscal_year_id:
+            try:
+                fy_uuid = UUID(fiscal_year_id)
+            except ValueError:
+                click.echo("Invalid fiscal-year-id format.", err=True)
+                sys.exit(1)
+        period_repo = SQLAlchemyFiscalYearRepository()
+        service = FiscalYearService(fy_repo)
+        periods = service.list_periods(company_id=company_uuid, fy_id=fy_uuid, status_name=status)
+        if not periods:
+            click.echo("No periods found matching filters.")
+            return
+        header = "ID".ljust(36) + "Name".ljust(25) + "FY-ID".ljust(18) + "Status".ljust(10) + "Locked".ljust(8) + "Entry Date"
+        click.echo(header)
+        click.echo("-" * 96)
+        for p in periods:
+            entry_str = p.entry_date.strftime("%Y-%m-%d") if p.entry_date else "N/A"
+            locked_str = "YES" if p.is_locked else "NO"
+            row = p.id.ljust(36) + p.name.ljust(25) + (p.fiscal_year_id.ljust(18) if p.fiscal_year_id else "N/A").ljust(18) + p.status.value.ljust(10) + locked_str.ljust(8) + entry_str
+            click.echo(row)
+    except Exception as exc:
+        click.echo(f"Failed to list periods: {exc}", err=True)
+        sys.exit(1)
+
+
+@cli.command("period-unlock")
+@click.option("--company-id", required=True, help="Company UUID")
+@click.option("--fiscal-year-id", required=True, help="Fiscal year UUID")
+@click.option("--period-id", required=True, help="Period UUID")
+@click.option("--actor", required=True, help="Actor UUID (D11 audit requirement)")
+@click.option("--reason", required=True, help="Reason for unlocking (mandatory per D11)")
+@with_appcontext
+def period_unlock(company_id, fiscal_year_id, period_id, actor, reason):
+    """Unlock an accounting period."""
+    from uuid import UUID
+    from src.application.services.fiscal_year_service import FiscalYearService
+    from src.infrastructure.database import db
+    from src.infrastructure.repositories.fiscal_year_repo import SQLAlchemyFiscalYearRepository
+    try:
+        company_uuid = None
+        if company_id:
+            try:
+                company_uuid = UUID(company_id)
+            except ValueError:
+                click.echo("Invalid company-id format.", err=True)
+                sys.exit(1)
+        fy_uuid = None
+        if fiscal_year_id:
+            try:
+                fy_uuid = UUID(fiscal_year_id)
+            except ValueError:
+                click.echo("Invalid fiscal-year-id format.", err=True)
+                sys.exit(1)
+        period_uuid = None
+        if period_id:
+            try:
+                period_uuid = UUID(period_id)
+            except ValueError:
+                click.echo("Invalid period-id format.", err=True)
+                sys.exit(1)
+        period_repo = SQLAlchemyFiscalYearRepository()
+        service = FiscalYearService(fy_repo)
+        result = service.unlock_period(
+            company_id=company_uuid,
+            fy_id=fy_uuid,
+            period_id=period_uuid,
+            actor=actor_uuid,
+            reason=reason,
+        )
+        click.echo(
+            f"Period unlocked: {result.name} ({result.id}) -- status={result.status.value}"
+        )
+    except ValueError as e:
+        click.echo(f"Cannot unlock period: {e}", err=True)
+        sys.exit(1)
+    except Exception as e:
+        click.echo(f"Failed to unlock period: {e}", err=True)
+        sys.exit(1)
+
+@cli.command("period-lock")
+@click.option("--company-id", required=True, help="Company UUID")
+@click.option("--fiscal-year-id", required=True, help="Fiscal year UUID")
+@click.option("--period-id", required=True, help="Period UUID")
+@click.option("--actor", required=True, help="Actor UUID (D11 audit requirement)")
+@click.option("--reason", required=True, help="Reason for locking (mandatory per D11)")
+@with_appcontext
+def period_lock(company_id, fiscal_year_id, period_id, actor, reason):
+    """Lock an accounting period."""
+    from uuid import UUID
+    from src.application.services.fiscal_year_service import FiscalYearService
+    from src.infrastructure.database import db
+    from src.infrastructure.repositories.fiscal_year_repo import SQLAlchemyFiscalYearRepository
+    try:
+        company_uuid = None
+        if company_id:
+            try:
+                company_uuid = UUID(company_id)
+            except ValueError:
+                click.echo("Invalid company-id format.", err=True)
+                sys.exit(1)
+        fy_uuid = None
+        if fiscal_year_id:
+            try:
+                fy_uuid = UUID(fiscal_year_id)
+            except ValueError:
+                click.echo("Invalid fiscal-year-id format.", err=True)
+                sys.exit(1)
+        period_uuid = None
+        if period_id:
+            try:
+                period_uuid = UUID(period_id)
+            except ValueError:
+                click.echo("Invalid period-id format.", err=True)
+                sys.exit(1)
+        period_repo = SQLAlchemyFiscalYearRepository()
+        service = FiscalYearService(fy_repo)
+        result = service.lock_period(
+            company_id=company_uuid,
+            fy_id=fy_uuid,
+            period_id=period_uuid,
+            actor=actor_uuid,
+            reason=reason,
+        )
+        click.echo(
+            f"Period locked: {result.name} ({result.id}) -- status={result.status.value}"
+        )
+    except ValueError as e:
+        click.echo(f"Cannot lock period: {e}", err=True)
+        sys.exit(1)
+    except Exception as e:
+        click.echo(f"Failed to lock period: {e}", err=True)
+        sys.exit(1)
+
+@cli.command("fy-close")
+@click.option("--company-id", required=True, help="Company UUID")
+@click.option("--actor", required=True, help="Actor UUID (D11 audit requirement)")
+@click.option("--reason", required=True, help="Reason for closure (mandatory per D11)")
+@with_appcontext
+def fy_close(company_id, actor, reason):
+    """Close a fiscal year."""
+    from uuid import UUID
+    from src.application.services.fiscal_year_service import FiscalYearService
+    from src.infrastructure.database import db
+    from src.infrastructure.repositories.fiscal_year_repo import SQLAlchemyFiscalYearRepository
+    try:
+        company_uuid = UUID(company_id)
+        actor_uuid = UUID(actor)
+    except ValueError:
+        click.echo("Invalid UUID format. Use format: xxxxxxxx-xxxx-xxxx-xxxx-xxxx", err=True)
+        sys.exit(1)
+    fy_repo = SQLAlchemyFiscalYearRepository()
+    service = FiscalYearService(fy_repo)
+    try:
+        result = service.close_fiscal_year(
+            company_id=company_uuid,
+            actor=actor_uuid,
+            reason=reason,
+        )
+        click.echo(
+            f"Fiscal year closed: {result.name} ({result.id}) -- ",
+            f"status={result.status.value}, opening-balance marker set"
+        )
+    except ValueError as e:
+        click.echo(f"Cannot close fiscal year: {e}", err=True)
+        sys.exit(1)
+    except Exception as e:
+        click.echo(f"Failed to close fiscal year: {e}", err=True)
+        sys.exit(1)
+
 @cli.command("coa-close")
 @click.option("--company-id", help="Filter by company UUID")
 @click.option("--actor", required=True, help="Actor UUID (D11 audit requirement)")
