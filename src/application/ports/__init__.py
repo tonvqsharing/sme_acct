@@ -564,3 +564,108 @@ class PeriodLockRepositoryPort(ABC):
     @abstractmethod
     def history(self, period_id: UUID) -> list[PeriodLockEvent]:
         pass
+
+
+class BankAccountRepositoryPort(ABC):
+    """Port for Bank Account master data.
+
+    Represents bank accounts at financial institutions.
+    Supports tenant isolation per company, primary account tracking,
+    and SOD (Separation of Duties) for sensitive operations.
+    """
+
+    @abstractmethod
+    def get_by_id(self, bank_account_id: UUID) -> BankAccount | None:
+        pass
+
+    @abstractmethod
+    def get_by_company(self, company_id: UUID) -> list[BankAccount]:
+        pass
+
+    @abstractmethod
+    def get_primary_by_company(self, company_id: UUID) -> BankAccount | None:
+        pass
+
+    @abstractmethod
+    def create(self, account: BankAccount) -> BankAccount:
+        pass
+
+    @abstractmethod
+    def update(self, account: BankAccount) -> BankAccount:
+        pass
+
+    @abstractmethod
+    def soft_delete(self, bank_account_id: UUID, actor: UUID, reason: str) -> None:
+        pass
+
+    @abstractmethod
+    def validate_code_unique(self, company_id: UUID, account_number: str) -> bool:
+        pass
+
+
+class CashAccountRepositoryPort(ABC):
+    """Port for Cash on Hand master data.
+
+    Represents cash accounts (tiêu hối) per TT99 format.
+    Supports balance tracking, system account protection,
+    and 10-year retention per Law on Accounting Art. 11.
+    """
+
+    @abstractmethod
+    def get_by_id(self, cash_account_id: UUID) -> CashAccount | None:
+        pass
+
+    @abstractmethod
+    def get_by_company(self, company_id: UUID) -> list[CashAccount]:
+        pass
+
+    @abstractmethod
+    def validate_code_unique(self, company_id: UUID, code: str) -> bool:
+        pass
+
+    @abstractmethod
+    def create(self, account: CashAccount) -> CashAccount:
+        pass
+
+    @abstractmethod
+    def update_balance(self, cash_account_id: UUID, amount: Decimal, actor: UUID, reason: str) -> CashAccount:
+        pass
+
+    @abstractmethod
+    def soft_close(self, cash_account_id: UUID, actor: UUID, reason: str) -> None:
+        pass
+
+
+class BankReconciliationRepositoryPort(ABC):
+    """Port for Bank Reconciliation master data.
+
+    Represents bank reconciliation records with SOD approval.
+    Supports 2-actor resolution, tolerance 0.01 VND,
+    and audit checksum chaining per Circular 99/2025/TT-BTC.
+    """
+
+    @abstractmethod
+    def get_by_id(self, reconciliation_id: UUID) -> BankReconciliation | None:
+        pass
+
+    @abstractmethod
+    def get_unresolved_by_company(self, company_id: UUID) -> list[BankReconciliation]:
+        pass
+
+    @abstractmethod
+    def list_by_company(
+        self, company_id: UUID, resolved: bool | None = None
+    ) -> list[BankReconciliation]:
+        pass
+
+    @abstractmethod
+    def create(self, reconciliation: BankReconciliation) -> BankReconciliation:
+        pass
+
+    @abstractmethod
+    def update(self, reconciliation: BankReconciliation) -> BankReconciliation:
+        pass
+
+    @abstractmethod
+    def resolve(self, reconciliation_id: UUID, approver: UUID, reason: str) -> BankReconciliation:
+        pass

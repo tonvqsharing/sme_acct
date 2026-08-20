@@ -66,6 +66,18 @@ def create_app() -> Flask:
 
     app.register_blueprint(fiscal_year_bp, url_prefix="/api")
 
+    from src.presentation.api.bank_accounts_bp import api_bp as bank_accounts_bp
+
+    app.register_blueprint(bank_accounts_bp, url_prefix="/api")
+
+    from src.presentation.api.cash_accounts_bp import api_bp as cash_accounts_bp
+
+    app.register_blueprint(cash_accounts_bp, url_prefix="/api")
+
+    from src.presentation.api.bank_reconciliations_bp import api_bp as bank_reconciliations_bp
+
+    app.register_blueprint(bank_reconciliations_bp, url_prefix="/api")
+
     @app.route("/")
     def index():
         return render_template("base.html")
