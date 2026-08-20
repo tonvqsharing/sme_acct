@@ -51,21 +51,21 @@ def session(engine):
 
 
 @pytest.fixture(scope="function")
-def cc_repo(session):
-    """CostCenter repository bound to test session."""
-    return SQLAlchemyCostCenterRepository(session)
+def cc_repo():
+    """CostCenter repository (uses global db.session)."""
+    return SQLAlchemyCostCenterRepository()
 
 
 @pytest.fixture(scope="function")
-def dim_repo(session):
-    """Dimension repository bound to test session."""
-    return SQLAlchemyDimensionRepository(session)
+def dim_repo():
+    """Dimension repository (uses global db.session)."""
+    return SQLAlchemyDimensionRepository()
 
 
 @pytest.fixture(scope="function")
-def dv_repo(session):
-    """DimensionValue repository bound to test session."""
-    return SQLAlchemyDimensionValueRepository(session)
+def dv_repo():
+    """DimensionValue repository (uses global db.session)."""
+    return SQLAlchemyDimensionValueRepository()
 
 
 # Fixture with valid kwargs (matching company test pattern)

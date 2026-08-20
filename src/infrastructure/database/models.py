@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import enum
+import json
 from datetime import date, datetime
 from decimal import Decimal
 from uuid import UUID, uuid4
@@ -19,8 +20,8 @@ from sqlalchemy import (
     Table,
     UniqueConstraint,
     func,
+    Enum as SQLEnum,
 )
-from sqlalchemy import Enum as SQLEnum
 from sqlalchemy.orm import (
     DeclarativeBase,
     Mapped,
@@ -109,6 +110,16 @@ class CompanyModel(Base):
     vouchers: Mapped[list[VoucherModel]] = relationship(back_populates="company", lazy="selectin")
     bank_account_models: Mapped[list[BankAccountModel]] = relationship(
         back_populates="company", lazy="selectin", cascade="all, delete-orphan"
+    )
+    cash_account_models: Mapped[list[CashAccountModel]] = relationship(
+        back_populates="company", lazy="selectin", cascade="all, delete-orphan"
+    )
+    bank_reconciliation_models: Mapped[list[BankReconciliationModel]] = relationship(
+        back_populates="company", lazy="selectin", cascade="all, delete-orphan"
+    )
+    # COA accounts (pre-existing, back_populates target must exist)
+    accounts: Mapped[list] = relationship(
+        "AccountModel", back_populates="company", lazy="selectin"
     )
 
     __table_args__ = ({"mysql_engine": "InnoDB", "mysql_charset": "utf8mb4"},)
@@ -280,6 +291,74 @@ class BankAccountModel(Base):
     company: Mapped[CompanyModel] = relationship(
         back_populates="bank_account_models", lazy="selectin"
     )
+    bank_reconciliation_lines: Mapped[list[BankReconciliationModel]] = relationship(
+        back_populates="bank_account", lazy="selectin", cascade="all, delete-orphan"
+    )
+
+
+class CashAccountModel(Base):
+    """SQLAlchemy model for cash accounts (specs-bank-cash-accounts.md §2.2)."""
+
+    __tablename__ = "cash_accounts"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    company_id: Mapped[UUID] = mapped_column(
+        ForeignKey("companies.id"), nullable=False, index=True
+    )
+    code: Mapped[str] = mapped_column(String(20), nullable=False, unique=True)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    opening_balance: Mapped[Decimal] = mapped_column(
+        Numeric(18, 2), nullable=False, default=0.00
+    )
+    current_balance: Mapped[Decimal] = mapped_column(
+        Numeric(18, 2), nullable=False, default=0.00
+    )
+    is_system: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="ACTIVE")
+    checksum: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[date] = mapped_column(Date, nullable=False, default=date.today)
+
+    company: Mapped[CompanyModel] = relationship(
+        back_populates="cash_account_models", lazy="selectin"
+    )
+
+
+class BankReconciliationModel(Base):
+    """SQLAlchemy model for bank reconciliations (specs-bank-cash-accounts.md §2.3)."""
+
+    __tablename__ = "bank_reconciliations"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    company_id: Mapped[UUID] = mapped_column(
+        ForeignKey("companies.id"), nullable=False, index=True
+    )
+    bank_account_id: Mapped[UUID] = mapped_column(
+        ForeignKey("bank_accounts.id"), nullable=False
+    )
+    reconciliation_date: Mapped[date] = mapped_column(Date, nullable=False)
+    statement_balance: Mapped[Decimal] = mapped_column(
+        Numeric(18, 2), nullable=False
+    )
+    internal_balance: Mapped[Decimal] = mapped_column(
+        Numeric(18, 2), nullable=False
+    )
+    difference: Mapped[Decimal] = mapped_column(
+        Numeric(18, 2), nullable=False
+    )
+    is_resolved: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    resolved_at: Mapped[date | None] = mapped_column(Date, nullable=True)
+    resolved_by: Mapped[UUID | None] = mapped_column(
+        ForeignKey("users.id"), nullable=True
+    )
+    checksum: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_by: Mapped[UUID] = mapped_column(ForeignKey("users.id"), nullable=False)
+
+    company: Mapped[CompanyModel] = relationship(
+        back_populates="bank_reconciliation_models", lazy="selectin"
+    )
+    bank_account: Mapped[BankAccountModel] = relationship(
+        back_populates="bank_reconciliation_lines", lazy="selectin"
+    )
 
 
 class FlagTypeEnum(enum.Enum):
@@ -440,6 +519,51 @@ class SystemAuditLogModel(Base):
     changed_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=func.now()
     )
+
+
+class CompanyConfigModel(Base):
+    """SQLAlchemy model for CompanyConfig domain aggregate."""
+
+    __tablename__ = "company_config"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    company_id: Mapped[UUID] = mapped_column(
+        ForeignKey("companies.id"), nullable=False, unique=True, index=True
+    )
+    vat_rates: Mapped[str] = mapped_column(
+        String(100), nullable=False, default="[0, 5, 10]"
+    )
+    e_invoice_series: Mapped[str | None] = mapped_column(
+        String(500), nullable=True
+    )
+    config_version: Mapped[int] = mapped_column(nullable=False, default=1)
+    updated_by: Mapped[UUID | None] = mapped_column(
+        ForeignKey("users.id"), nullable=True
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=func.now(), onupdate=func.now()
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=func.now()
+    )
+    created_by: Mapped[UUID] = mapped_column(
+        nullable=False, default=uuid4
+    )
+    legal_reviewed_at: Mapped[date | None] = mapped_column(Date, nullable=True, default=None)
+    legal_reviewed_by: Mapped[UUID | None] = mapped_column(nullable=True, default=None)
+
+    # Serialization helpers for frozenset/json
+    @staticmethod
+    def _serialize_frozenset(fs: frozenset | None) -> str | None:
+        if fs is None:
+            return None
+        return json.dumps(sorted(fs))
+
+    @staticmethod
+    def _deserialize_frozenset(s: str | None) -> frozenset | None:
+        if s is None:
+            return None
+        return frozenset(json.loads(s))
 
 
 class EInvoiceSeriesModel(Base):
@@ -667,6 +791,10 @@ class AccountTagModel(Base):
     name: Mapped[str] = mapped_column(String(50), nullable=False, unique=True)
     code: Mapped[str] = mapped_column(String(10), nullable=False)
     is_mandatory: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
+    accounts: Mapped[list] = relationship(
+        "AccountModel", secondary="account_tag_xref", back_populates="tag_association", lazy="selectin"
+    )
 
 
 # Join table for account-tag many-to-many

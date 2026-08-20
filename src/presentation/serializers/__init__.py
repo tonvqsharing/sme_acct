@@ -26,6 +26,10 @@ def serialize_account_category(cat) -> dict:
 
 
 def serialize_account_tag(tag) -> dict:
+    """Serialize an AccountTag entity to a dict."""
+    return {"id": None, "name": tag.value, "is_system": True}
+
+
 def serialize_cost_center(cc) -> dict:
     """Serialize a CostCenter entity to a dict."""
     return {
@@ -70,8 +74,7 @@ def serialize_dimension_value(dv) -> dict:
         "created_at": dv.created_at.isoformat() if dv.created_at else None,
         "updated_at": dv.updated_at.isoformat() if dv.updated_at else None,
         "audit_checksum": dv.audit_checksum,
-    }    """Serialize an AccountTag entity to a dict."""
-    return {"id": None, "name": tag.value, "code": tag.code, "is_mandatory": True}
+    }
 
 
 def serialize_currency(currency) -> dict:
@@ -131,4 +134,40 @@ def serialize_period_lock_event(event) -> dict:
         "reason": event.reason,
         "prev_checksum": event.prev_checksum,
         "checksum": event.checksum,
+    }
+
+
+def serialize_fx_difference(fx) -> dict:
+    """Serialize an FXDifference report row to a dict."""
+    return {
+        "company_id": str(fx.company_id),
+        "account_code": fx.account_code,
+        "currency_code": fx.currency_code,
+        "period_start": fx.period_start.isoformat(),
+        "period_end": fx.period_end.isoformat(),
+        "opening_original": str(fx.opening_original),
+        "opening_vnd": str(fx.opening_vnd),
+        "movements_original": str(fx.movements_original),
+        "movements_vnd": str(fx.movements_vnd),
+        "closing_original": str(fx.closing_original),
+        "closing_vnd": str(fx.closing_vnd),
+        "revaluation_adjustment": str(fx.revaluation_adjustment),
+        "cumulative_difference": str(fx.cumulative_difference),
+    }
+
+
+def serialize_revaluation_run(run) -> dict:
+    """Serialize a RevaluationRun entity to a dict."""
+    return {
+        "id": str(run.id) if run.id else None,
+        "company_id": str(run.company_id),
+        "period_start": run.period_start.isoformat(),
+        "period_end": run.period_end.isoformat(),
+        "rate_date": run.rate_date.isoformat(),
+        "status": run.status.value,
+        "actor": str(run.actor),
+        "approver": str(run.approver) if run.approver else None,
+        "created_at": run.created_at.isoformat(),
+        "posted_at": run.posted_at.isoformat() if run.posted_at else None,
+        "entries_count": len(run.entries) if run.entries else 0,
     }

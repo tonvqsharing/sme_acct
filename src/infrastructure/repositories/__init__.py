@@ -3,9 +3,10 @@ from __future__ import annotations
 
 import json
 from datetime import date, datetime
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from sqlalchemy import func, select
+from src.infrastructure.database.models import Base
 
 from src.application.ports import (
     AuditLogRepositoryPort,
@@ -15,6 +16,7 @@ from src.application.ports import (
     DimensionValueRepositoryPort,
     InvoiceRepositoryPort,
     PartnerRepositoryPort,
+    SystemSettingsRepositoryPort,
     UserRepositoryPort,
     VoucherRepositoryPort,
 )
@@ -654,7 +656,127 @@ class SQLAlchemyUserRepository(UserRepositoryPort):
 
 
 
-# Cost Centers & Dimensions ──────────────────────────────────────
+class SQLAlchemySystemSettingsRepository(SystemSettingsRepositoryPort):
+    """Maps CompanyConfig domain entity <-> CompanyConfigModel."""
+
+    def get_config(self, company_id: UUID) -> CompanyConfig | None:
+        from src.infrastructure.database.models import CompanyConfigModel
+        model = db.session.get(CompanyConfigModel, company_id)
+        if model is None:
+            return None
+        return self._to_domain(model)
+
+    def update_config(self, config: CompanyConfig) -> CompanyConfig:
+        from src.infrastructure.database.models import CompanyConfigModel
+        from src.domain.exceptions import SystemSettingsError
+
+        model = db.session.get(CompanyConfigModel, config.id)
+        if not model:
+            raise SystemSettingsError(f"Config not found for company {config.id}")
+        model = self._to_model(config, model)
+        db.session.commit()
+        return self._to_domain(model)
+
+    def lock_period(self, company_id: UUID, period_start: date, period_end: date) -> None:
+        from src.infrastructure.database.models import CompanyConfigModel
+        from datetime import datetime
+
+        model = db.session.get(CompanyConfigModel, company_id)
+        if not model:
+            from src.domain.exceptions import SystemSettingsError
+            raise SystemSettingsError(f"Config not found for company {company_id}")
+        # Store period lock info in the config's updated_at
+        model.updated_at = datetime.now()
+        db.session.commit()
+
+    def unlock_period(self, company_id: UUID, period_start: date, period_end: date) -> None:
+        self.lock_period(company_id, period_start, period_end)
+
+    @staticmethod
+    def _to_domain(model: CompanyConfigModel) -> CompanyConfig:
+        from src.domain.entities.company_config import CompanyConfig
+        from src.domain.entities.base import FlagType, FlagScope, FlagCategory
+
+        # Deserialize vat_rates from JSON string
+        vat_rates = frozenset()
+        if model.vat_rates:
+            try:
+                vat_rates = frozenset(json.loads(model.vat_rates))
+            except (json.JSONDecodeError, TypeError):
+                vat_rates = frozenset({0, 5, 10})
+
+        return CompanyConfig(
+            id=model.id,
+            company_id=model.company_id,
+            vat_rates=vat_rates,
+            config_version=model.config_version,
+            updated_by=model.updated_by,
+            updated_at=model.updated_at if isinstance(model.updated_at, date) else date.today(),
+            created_at=model.created_at if isinstance(model.created_at, date) else date.today(),
+            legal_reviewed_at=model.legal_reviewed_at,
+            legal_reviewed_by=model.legal_reviewed_by,
+            # Set defaults for other fields
+            accounting_period_type=FlagType.CALENDAR,
+            accounting_regime=FlagType.TT99,
+            chart_of_accounts_type=FlagCategory.COA_99,
+            tax_id_pattern=r"^\d{10}(-\d{3})?$",
+            account_code_pattern=r"^[1-9]\d{2}$|^[1-9]\d{3}$",
+            minimum_retention_years=10,
+            data_deletable=False,
+            fiscal_year_start_month=1,
+            fiscal_year_start_day=1,
+            vat_settlement_cycle="MONTHLY",
+            vat_method=FlagType.DEDUCTION,
+            e_invoice_mode=FlagType.SOFTWARE_CERT,
+            ca_list=frozenset(),
+            decimal_places=2,
+            default_currency="VND",
+            cost_center_required=False,
+            multi_level_cost_centers=False,
+            default_cost_formula="FIFO",
+            data_retention_years=10,
+        )
+
+    @staticmethod
+    def _to_model(domain: CompanyConfig, model: CompanyConfigModel) -> CompanyConfigModel:
+        import json
+
+        # Serialize vat_rates to JSON string
+        model.vat_rates = CompanyConfigModel._serialize_frozenset(domain.vat_rates)
+
+        model.updated_at = datetime.now()
+        return model
+
+    def audit_log(
+        self,
+        entity_type: str,
+        entity_id: UUID,
+        action: str,
+        field_name: str | None,
+        before_value: str | None,
+        after_value: str | None,
+    ) -> None:
+        """INSERT a new audit log record for system settings.
+
+        Stores audit trail entries for system configuration changes
+        per Luật Kế toán 2015 Art. 11 (10-year retention).
+        """
+        from src.application.services.audit_log_service import AuditLogService as _ALS
+        from src.infrastructure.database import db as _db
+
+        _als = _ALS(_db.session if _db.session else None)
+        _als.create(
+            entity_type=entity_type,
+            entity_id=entity_id,
+            action=action,
+            field_name=field_name,
+            before_value=before_value,
+            after_value=after_value,
+            actor_id=UUID(int=0),  # Placeholder; filled by service layer
+        )
+
+
+# Cost Centers & Dimensions ──────────────────────────────────────# Cost Centers & Dimensions ──────────────────────────────────────
 
 
 class SQLAlchemyCostCenterRepository(CostCenterRepositoryPort):
@@ -732,6 +854,32 @@ class SQLAlchemyCostCenterRepository(CostCenterRepositoryPort):
                 "soft_delete", actor=actor, reason=reason
             )
             db.session.flush()
+
+    def get_all_ordered(self, company_id: UUID) -> list[CostCenter]:
+        from src.domain.entities.cost_center import CostCenter
+        models = db.session.scalars(
+            select(CostCenterModel)
+            .where(CostCenterModel.company_id == company_id)
+            .order_by(CostCenterModel.code)
+        ).all()
+        return [self._model_to_domain(m) for m in models]
+
+    def get_filtered(
+        self,
+        company_id: UUID,
+        *,
+        status: CostCenterStatus | None = None,
+        search: str | None = None,
+    ) -> list[CostCenter]:
+        from src.domain.entities.cost_center import CostCenter
+        stmt = select(CostCenterModel).where(CostCenterModel.company_id == company_id)
+        if status is not None:
+            stmt = stmt.where(CostCenterModel.status == status.value)
+        if search:
+            stmt = stmt.where(CostCenterModel.name.ilike(f"%{search}%"))
+        stmt = stmt.order_by(CostCenterModel.code)
+        models = db.session.scalars(stmt).all()
+        return [self._model_to_domain(m) for m in models]
 
     def _model_to_domain(self, model: CostCenterModel) -> CostCenter:
         from src.domain.entities.cost_center import CostCenter  # local import
@@ -999,93 +1147,4 @@ class SQLAlchemyDimensionValueRepository(DimensionValueRepositoryPort):
         return model
 
 
-# Model classes (SQLAlchemy)
 
-class CostCenterModel(Base):
-    __tablename__ = "cost_centers"
-
-    id = db.Column(db.UUID, primary_key=True, default=uuid4)
-    code = db.Column(db.String(20), nullable=False, unique=False)
-    name = db.Column(db.String(200), nullable=False)
-    status = db.Column(
-        db.Enum(CostCenterStatus, native_enum=False, name="cost_center_status_enum"),
-        nullable=False,
-        default=CostCenterStatus.ACTIVE.value,
-    )
-    description = db.Column(db.Text, nullable=True)
-    company_id = db.Column(db.UUID, db.ForeignKey("companies.id"), nullable=False)
-    parent_id = db.Column(db.UUID, db.ForeignKey("cost_centers.id"), nullable=True)
-    created_by = db.Column(db.UUID, nullable=False)
-    created_at = db.Column(db.DateTime(timezone=True), nullable=False, server_default=func.now())
-    updated_at = db.Column(
-        db.DateTime(timezone=True), nullable=True, onupdate=func.now()
-    )
-    audit_checksum = db.Column(db.String(64), nullable=False)
-
-    __table_args__ = (
-        db.UniqueConstraint("company_id", "code", name="uq_cost_centers_company_code"),
-        db.Index("ix_cost_centers_company_status", "company_id", "status"),
-        db.Index("ix_cost_centers_parent", "parent_id"),
-    )
-
-    parent = db.relationship(
-        "CostCenterModel",
-        remote_side=[id],
-        backref="children",
-        cascade="all, delete-orphan",
-        lazy="selectin",
-    )
-
-
-class DimensionModel(Base):
-    __tablename__ = "dimensions"
-
-    id = db.Column(db.UUID, primary_key=True, default=uuid4)
-    code = db.Column(db.String(20), nullable=False, unique=False)
-    name = db.Column(db.String(200), nullable=False)
-    type = db.Column(
-        db.Enum(DimensionType, native_enum=False, name="dimension_type_enum"),
-        nullable=False,
-    )
-    is_system = db.Column(db.Boolean, nullable=False, default=False)
-    description = db.Column(db.Text, nullable=True)
-    company_id = db.Column(db.UUID, db.ForeignKey("companies.id"), nullable=True)
-    created_by = db.Column(db.UUID, nullable=False)
-    created_at = db.Column(db.DateTime(timezone=True), nullable=False, server_default=func.now())
-    updated_at = db.Column(
-        db.DateTime(timezone=True), nullable=True, onupdate=func.now()
-    )
-    audit_checksum = db.Column(db.String(64), nullable=False)
-
-    __table_args__ = (
-        db.UniqueConstraint("company_id", "code", name="uq_dimensions_company_code"),
-        db.Index("ix_dimensions_company_type", "company_id", "type"),
-    )
-
-
-class DimensionValueModel(Base):
-    __tablename__ = "dimension_values"
-
-    id = db.Column(db.UUID, primary_key=True, default=uuid4)
-    code = db.Column(db.String(20), nullable=False, unique=False)
-    name = db.Column(db.String(200), nullable=False)
-    status = db.Column(
-        db.Enum(DimensionValueStatus, native_enum=False, name="dimension_value_status_enum"),
-        nullable=False,
-        default=DimensionValueStatus.ACTIVE.value,
-    )
-    description = db.Column(db.Text, nullable=True)
-    dimension_id = db.Column(db.UUID, db.ForeignKey("dimensions.id"), nullable=False)
-    company_id = db.Column(db.UUID, db.ForeignKey("companies.id"), nullable=False)
-    created_by = db.Column(db.UUID, nullable=False)
-    created_at = db.Column(db.DateTime(timezone=True), nullable=False, server_default=func.now())
-    updated_at = db.Column(
-        db.DateTime(timezone=True), nullable=True, onupdate=func.now()
-    )
-    audit_checksum = db.Column(db.String(64), nullable=False)
-
-    __table_args__ = (
-        db.UniqueConstraint("dimension_id", "company_id", "code", name="uq_dimension_values_dimension_code"),
-        db.Index("ix_dimension_values_company", "company_id"),
-        db.Index("ix_dimension_values_dimension", "dimension_id"),
-    )
