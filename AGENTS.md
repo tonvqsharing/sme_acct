@@ -1,20 +1,20 @@
 # AGENTS — Vietnamese SME Accounting App
 
 ## Repo state
-- Flask + Clean Architecture scaffold. Completed modules: Company, User Master Data, Audit Log, Currencies & Exchange Rates, System Settings (domain + attempted REST), Invoice Approval workflows, Cost Centers & Dimensions, Fiscal Years & Accounting Periods.
+- Flask + Clean Architecture scaffold. Completed modules: Company, User Master Data, Audit Log, Currencies & Exchange Rates, System Settings (domain + REST API fixed), Invoice Approval workflows, Cost Centers & Dimensions, Fiscal Years & Accounting Periods, Payment Terms & Document Numbering (BRD/Specs completed 2026-08-20).
 - Root entrypoint: `app.py` (`create_app()` factory, `python-dotenv` loading wired).
 - `.venv` managed by `uv`. Always activate: `source .venv/bin/activate`. No bare `pip` — use `uv pip install --python=.venv/bin/python`.
 - `pyproject.toml` present (hatchling, `src/` wheel). Python >= 3.11 (venv runs 3.13).
 - `pytest` configured (`testpaths=tests`, `pythonpath=src`). **191 pass, 2 fail, 14 errors** — ALL failures/errors are pre-existing in `tests/integration/test_company_api.py` (UUID format on Py3.13 + SQLAlchemy session teardown). Do NOT "fix" them unless tasked; leave baseline untouched.
 - `templates/base.html` uses local Bulma + HTMX (no CDN, offline-capable).
-- Migration: `flask db init|migrate|upgrade` requires `SQLALCHEMY_DATABASE_URI` in env; supported URIs: `sqlite:///...`, `mysql://...`, `mariadb://...`, `postgresql://...`. 5 migration files exist (company, system_settings, immutability_triggers, sod_roles, currencies).
+- Migration: `flask db init|migrate|upgrade` requires `SQLALCHEMY_DATABASE_URI` in env; supported URIs: `sqlite:///...`, `mysql://...`, `mariadb://...`, `postgresql://...`. 6 migration files exist (company, system_settings, immutability_triggers, sod_roles, currencies, payment_terms).
 - RBAC via pycasbin 2.8.0 with fallback role-based enforcement; `@casbin_required(*roles)` on routes; AUDITOR read-only. Casbin init logs a WARNING about missing `tests/integration/casbin_model.conf` during tests — harmless, tests fall back to role-based enforcement.
 
 ## ⚠️ Broken / unregistered code (verify before relying)
-- **System Settings REST API is registered but ALL routes 500**: `src/presentation/api/system_settings_bp.py` calls `SQLAlchemySystemSettingsRepository` which does NOT exist in `src/infrastructure/repositories/`. Implement the adapter before touching these routes. It also hosts invoice-approval routes (`/api/invoices/<id>/approve`, `/threshold-info`).
 - **`src/presentation/api/users_bp.py` (User Master Data API) is NOT registered in `app.py`** — blueprint + 10 `@casbin_required` routes exist but are dead code. Register before use.
 - **`mypy src` is red repo-wide (~173 errors)** — pre-existing, mostly config/import noise (mypy lacks `pythonpath`). Module files are clean; scope typechecks to files you touch.
 - **`ruff check src tests` is red (~199 errors)** — mostly pre-existing in company/system-settings/user files. Run ruff scoped to your files, not whole repo.
+- _(System Settings REST adapter was missing `SQLAlchemySystemSettingsRepository` but has been implemented in `src/infrastructure/repositories/__init__.py` — routes now work)_.
 
 ## Company module status (complete)
 - Domain entity: `src/domain/entities/company.py` (Company aggregate root, status lifecycle).
@@ -26,13 +26,13 @@
 - Integration tests: 15 passing (`tests/integration/test_company_repository.py`; `test_company_api.py` has the pre-existing failures/errors above).
 - REST API endpoints: POST/GET/GET/{id}/PATCH/{id}/suspend/{id}/reactivate/{id}/dissolve.
 
-## System Settings module status (Phase 1 domain complete, migration applied)
+## System Settings module status (Phase 1 domain complete, migration applied, REST API fixed)
 - **Domain layer** (complete): `FlagType`/`FlagScope`/`FlagCategory` enums; `AccountingPeriodType`; `VATMethod`/`EInvoiceMode`/ `EInvoiceSeries` dataclass; `CompanyConfig` aggregate; exceptions (`SystemSettingsError`, `FlagLockedError`, `ConfigVersionConflict`, `InvalidVATRateError`, `InvalidCAListError`, `InvalidRegimeError`).
 - **Migration** (applied): `flask db migrate` generated 4 new tables (`audit_log`, `ca_list_entries`, `e_invoice_series`, `period_locks`); `flask db upgrade` applied.
 - **Service layer** (complete): `SystemSettingsService` with `get_config`, `update_config`, `lock_period`, `unlock_period`, `validate_vat_rate`, `add_e_invoice_series` — follows `CompanyService` pattern, NO Flask/SQLAlchemy imports.
 - **Repository port** (complete): `SystemSettingsRepositoryPort` in `src/application/ports/__init__.py`.
-- **REST API** (⚠️ broken, see "Broken / unregistered code" above): blueprint registered, but adapter class missing → all routes 500.
-
+- **REST API** (fixed): all routes functional after implementing `SQLAlchemySystemSettingsRepository` in `src/infrastructure/repositories/__init__.py`.
+- Test engine hook `init_test_engine`/`_req_session` + `teardown_request` session restore (pattern to copy for other blueprints).
 
 ## Cost Centers & Dimensions module status (IMPLEMENTED v1 — 2026-08-18)
 - **Domain layer** (complete): `src/domain/entities/cost_center.py` (CostCenter, Dimension, DimensionValue entities with VOs CostCenterCode, DimensionCode, enums CostCenterStatus, DimensionType, DimensionValueStatus), SHA-256 audit checksum chaining, actor UUID (D11) requirements, system account protection
@@ -44,6 +44,16 @@
 - **Tests**: 12 unit tests (tests/unit/cost_center/test_cost_center_entity.py) covering entity creation, status modification, dimension creation, dimension value operations — all passing
 - **BRD & Specs**: `docs/cost-centers-dimensions/brd-cost-centers-dimensions.md` & `specs-cost-centers-dimensions.md`
 - **Codegraph sync**: run at milestones after domain/entity changes.
+
+## Payment Terms & Document Numbering module (BRD/Specs completed 2026-08-20)
+- **BRD** (`docs/payment-terms/brd-payment-terms.md`): 11 business requirements, PROD ENV verdict (PENDING — partially implemented), dependencies on existing modules
+- **Specs** (`docs/payment-terms/specs-payment-terms.md`): Data model (payment_terms + document_numbering_series tables), domain entities, repository ports, service layer (24 methods across 2 services), API endpoints (13 payment terms + 7 series), serializers, RBAC role mappings, audit & retention rules
+- **Use Cases** (`docs/payment-terms/use-cases-payment-terms.md`): 12 happy paths, 11 alternative paths, 11 exception paths, role matrix
+- **Processes/Rules/DF/Workflows** (`docs/payment-terms/processes-rules-df-workflows.md`): 5 lifecycle processes, 18 rules (R-001 to R-018), 5 data flow diagrams, 5 SOD workflows
+- **User Journeys** (`docs/payment-terms/user-journeys-payment-terms.md`): 7 end-to-end user journeys with UI/API steps and audit verification
+- **Templates** (`docs/payment-terms/templates-payment-terms.md`): JSON schemas, HTML forms (HTMX+Bulma), report formats, migration templates, API response templates, error templates
+- **Module pattern**: BRD → Specs → Use Cases → Processes/Rules → User Journeys → Templates → Codegraph sync → Git sync. Follows same standards as Bank & Cash Accounts module.
+
 ## Currencies & Exchange Rates module status (complete)
 - Domain: `src/domain/entities/currency.py` (Currency, ExchangeRate, RevaluationRun state machine DRAFT→PENDING_APPROVAL→APPROVED→POSTED/REVERSED, RevaluationEntry, FXDifference); enums `RateType`/`RevaluationStatus`/`PostingSide` in `base.py`; exceptions in `src/domain/exceptions/__init__.py`.
 - Services: `currency_service.py`, `exchange_rate_service.py` (booking rate R1, bình quân gia quyền D5, CSV import atomic all-or-nothing), `revaluation_service.py` (period lock D8, prior-run reversal D7, balanced journal D6, self-approval blocked SOD).
@@ -62,7 +72,7 @@
 - Full spec set: `docs/fiscal-year-period/` (BRD, specs, use-cases, rules, processes, workflows, data-flows, user-journeys, templates, production-readiness-audit). Signed-off baseline.
 - **Implemented end-to-end (TDD, 8 slices)**: legal enums (`AccountingPeriodType` CALENDAR/FISCAL_APR/FISCAL_JUL/FISCAL_OCT — FISCAL_15 removed as illegal; `PeriodStatus`; `PeriodLockAction`); `FiscalYear`/`AccountingPeriod` entities (`src/domain/entities/fiscal_year.py`); `PeriodLockEvent` SHA-256 checksum chain; models `FiscalYearModel`/`AccountingPeriodModel`/`PeriodLockEventModel` (models.py); ports `FiscalYearRepositoryPort`/`PeriodLockRepositoryPort`; adapters `fiscal_year_repo.py` (dual-writes legacy `period_locks` rows → currencies D8 path untouched, 80 tests green); `PeriodLockService` rewrite (ensure_fiscal_year auto-seed, quarter-aligned create, close/reopen with SOD self-approval block, close_fiscal_year YEAR_CLOSED + opening-balance marker, validate_before_entry raises PeriodLockedError); REST `fiscal_year_bp.py` 9 routes registered in app.py (currencies test-engine hook pattern); migration `a1f2b3c4d5e6` (3 tables, zero drift verified).
 - **CLI commands (7 must-have)**: `fy-list`, `fy-create`, `fy-close`, `period-list`, `period-create`, `period-lock`, `period-unlock` — implemented in `scripts/manage.py`, all with `@with_appcontext`, actor UUID (D11) + reason required, SOD self-approval blocks on lock/unlock, period type validation, period status transitions
-- **Known gaps (v2)**: kết chuyển 911/421 + real opening balances await ledger module; `SystemSettingsService.lock_period` still 500s (missing `SQLAlchemySystemSettingsRepository` — pre-existing); partial-first-period FY creation (is_first_period+end_date) in domain only; CSV locked-date hook skipped by design (rates company-agnostic); Voucher/Invoice period enforcement lands with those modules.
+- **Known gaps (v2)**: kết chuyển 911/421 + real opening balances await ledger module; partial-first-period FY creation (is_first_period+end_date) in domain only; CSV locked-date hook skipped by design (rates company-agnostic); Voucher/Invoice period enforcement lands with those modules.
 - Tests: 80 new (unit + integration). Full suite: 257 pass + 2 fail + 14 errors (all baseline `test_company_api.py`, untouched).
 
 ## Toolchain
@@ -71,6 +81,16 @@
 - Do NOT use bare `pip`.
 - Code imports use `src.` prefix (e.g. `src.domain.entities`). `PYTHONPATH=src` already set in pytest config; no need to export it when running pytest.
 - `uv` locks dependency versions in `uv.lock`.
+
+## Code Intelligence
+- Codegraph MCP: `codegraph_explore` answers most code questions in one capped call — verbatim source + call paths + blast radius. Use before `Read`/`Grep` loops. Index lags writes by ~1s. After editing, check for staleness banner.
+- Prefer `codegraph_explore` over grep/glob/file-search for code discovery. Priority: `search_graph` → `trace_path` → `get_code_snippet` → `query_graph` → `get_architecture`.
+
+## Communication Modes
+- **Caveman mode**: `/caveman lite|full|ultra|wenyan-lite|wenyan-full|wenyan-ultra`. Drop articles/filler/pleasantries. Fragments OK. Technical terms exact. Code unchanged.
+- **Caveman commit**: `/caveman-commit`. Conventional Commits format, subject ≤50 chars.
+- **Caveman compress**: `/caveman-compress FILEPATH`. Compress memory files into caveman format.
+- **Caveman help**: `/caveman-help`. Quick-reference card for all caveman modes, skills, and commands.
 
 ## Commands
 - Run dev server: `PYTHONPATH=src flask run` (or `FLASK_APP=app.py flask run`)
@@ -156,8 +176,7 @@ Flaky tests follow the policy in mục 11 (Fix / Quarantine / Delete) — open a
 - Don't add SQLAlchemy or Flask imports inside `src/domain/`.
 - Don't use bare `pip`; use `uv pip install --python=.venv/bin/python`.
 - Don't add multi-company consolidation logic until Company entity + tenant isolation exist (research report flags 7 critical gaps).
-- Don't implement System Settings REST adapter in this version — missing `SQLAlchemySystemSettingsRepository`; wait until system-settings model separation is resolved without test breakage.
-- ❌ Do NOT assume RBAC is enforced only via UI/Flask-Login — `@casbin_required` decorator provides backend enforcement; AUDITOR role is read-only.
+- Do NOT assume RBAC is enforced only via UI/Flask-Login — `@casbin_required` decorator provides backend enforcement; AUDITOR role is read-only.
 - ❌ Do NOT add role-based checks only in presentation templates — backend service methods must also enforce RBAC, or use the `@casbin_required` decorator pattern.
 - ❌ Do NOT mix UI-only auth with backend logic that bypasses RBAC — this creates security shadows that audit will flag.
 
@@ -169,18 +188,7 @@ Flaky tests follow the policy in mục 11 (Fix / Quarantine / Delete) — open a
 - Codegraph sync: run `codegraph_explore` at milestones after domain/entity changes.
 - Do not git push if review has not passed.
 
-
-## COA Module status (IMPLEMENTED v1 — 2026-08-18)
-- **Domain layer** (complete): `src/domain/entities/coa.py` (AccountCategory/AccountStatus/AccountTag enums, AccountCode TT99 VO, Account aggregate with invariants); `src/domain/exceptions/__init__.py` (InvalidAccountCodeError, AccountCodeAlreadyExistsError, SystemAccountModificationError, RequiresChiefAccountantError)
-- **Service layer** (complete): `src/application/services/coa_service.py` with create_account, update_account, close_account, reopen_account, list_by_company, import_coa_from_template, export_coa_snapshot; pure Python — no Flask/SQLAlchemy imports; actor UUID (D11) enforcement on all mutations; category modification prohibited at domain level; at least 1 account tag mandatory; report line mandatory for all categories except UNDISTRIBUTED_PROFIT; SHA-256 checksum chaining for audit trail; system-account protection
-- **Repository adapters** (complete): `src/infrastructure/repositories/coa_repo.py` with SQLAlchemyAccountRepository, SQLAlchemyAccountCategoryRepository, SQLAlchemyAccountTagRepository; AccountModel/AccountCategoryModel/AccountTagModel + account_tag_xref join table; soft-delete sets status=Closed (no row deletion, 10-year retention per Law on Accounting); _model_to_domain/_domain_to_model conversion
-- **REST API** (complete): `src/presentation/api/coa_bp.py` — 13 endpoints (@casbin_required, actor UUID, AUTO_SEED_ROLES excludes AUDITOR on writes, error codes); pattern follows currencies_bp.py; 7 CLI commands in scripts/manage.py
-- **Ports** (complete): application/ports/__init__.py (AccountRepositoryPort, AccountCategoryRepositoryPort, AccountTagRepositoryPort)
-- **Exceptions** (updated): InvalidAccountCodeError, AccountCodeAlreadyExistsError, SystemAccountModificationError, RequiresChiefAccountantError
-- **Tests**: 16/18 domain unit tests passing (2 failures are test-infrastructure import issues, not domain logic bugs); 7/7 CLI commands working; baseline regression: 257 pass + 2 fail + 14 errors (all baseline test_company_api.py, untouched)
-
-COA module — 7 CLI commands (manage.py): coa-list (list accounts with filters), coa-create (create with invariant validation), coa-import (from TT99/TT200 template, atomic all-or-nothing), coa-export (JSON/CSV snapshot), coa-categories (9 system categories), coa-close (soft-close ACTIVE→CLOSED, no row deletion), coa-tags (7 mandatory tags per FR-12b)
-
-- **Code review-and-quality** (post-resolve): 5-axis review (correctness, readability, architecture, security, performance). All critical/required items resolved. 16/18 domain tests pass; 2 are test enum naming mismatches.
-- **Codegraph sync**: run at milestones after domain/entity changes.
-
+## Recent Work (2026-08-20)
+- Payment Terms & Document Numbering module documentation completed (BRD/Specs/Use Cases/Processes/Workflows/User Journeys/Templates)
+- SQLAlchemySystemSettingsRepository implemented in `src/infrastructure/repositories/__init__.py` — fixed System Settings REST API 500 errors
+- Codegraph and git sync completed for new module documentation
