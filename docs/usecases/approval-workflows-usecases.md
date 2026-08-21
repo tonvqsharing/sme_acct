@@ -49,7 +49,7 @@
 ### Main Success Scenario
 1. User creates invoice → status = DRAFT
 2. Threshold check: `T1 < amount ≤ T2` → identifies T2 band
-3. System routes approval request to manager via `@casbin_required('MANAGER')` decorator
+3. System routes approval request to manager via `@login_required + current_user.role == 'MANAGER'` check
 4. Manager receives notification (email/HTMX in UI) with invoice details
 5. Manager reviews: invoice number, amount, vendor, line items, PO match
 6. Manager clicks "Approve" → status changes DRAFT → APPROVED
@@ -87,7 +87,7 @@
 ### Main Success Scenario
 1. User creates invoice → status = DRAFT
 2. Threshold check: `T2 < amount ≤ T3` → identifies T3 band
-3. System routes approval request to chief accountant via `@casbin_required('CHIEF_ACCOUNTANT')` decorator
+3. System routes approval request to chief accountant via `@login_required + current_user.role == 'CHIEF_ACCOUNTANT'` check
 4. Chief accountant receives notification with full invoice context
 5. Chief accountant reviews: invoice number, amount, vendor, tax compliance, overall financial impact
 6. Chief accountant clicks "Approve" → status changes DRAFT → APPROVED
@@ -126,7 +126,7 @@
 ### Main Success Scenario
 1. User creates invoice → status = DRAFT
 2. Threshold check: `T3 < amount ≤ T4` → identifies T4 band
-3. System routes approval request to director via `@casbin_required('DIRECTOR')` decorator
+3. System routes approval request to director via `@login_required + current_user.role == 'DIRECTOR'` check
 4. Director receives notification with executive-level context
 5. Director reviews: strategic impact, budget alignment, multi-entity considerations
 6. Director clicks "Approve" → status changes DRAFT → APPROVED
@@ -162,7 +162,7 @@
 ### Main Success Scenario
 1. User creates invoice → status = DRAFT
 2. Threshold check: `amount > T4` → identifies T5 band
-3. System routes approval request to ADMIN/Board via `@casbin_required('ADMIN')` or `@casbin_required('BOARD')` decorator
+3. System routes approval request to ADMIN/Board via `@login_required + current_user.role in ('ADMIN', 'BOARD')` check
 4. Admin/Board receives notification with full financial context
 5. Review: materiality, strategic alignment, board policy compliance
 6. Admin clicks "Approve" → status changes DRAFT → APPROVED

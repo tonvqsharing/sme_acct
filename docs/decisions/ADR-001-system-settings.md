@@ -16,7 +16,7 @@ Vietnamese accounting law mandates that certain settings be enforced at the syst
 - Data retention: ≥10 years — cannot be soft-deleted
 - Period lock: entries cannot backdate into locked fiscal period
 
-Current codebase: no System Settings module exists. Validators (`TaxId`, `AccountCode`) are implemented as domain value objects in `src/domain/entities/base.py` but are only enforced when those value objects are constructed in domain code. No enforcement at API boundary — a user posting raw JSON could bypass validation via direct SQL or a future API endpoint.
+Current codebase: no System Settings module exists. Validators (`TaxId`, `AccountCode`) are implemented as domain value objects in `src/bricks/company/domain.py` but are only enforced when those value objects are constructed in domain code. No enforcement at API boundary — a user posting raw JSON could bypass validation via direct SQL or a future API endpoint.
 
 We need a system-wide configuration aggregate that:
 1. Stores all legal constants and configurable flags in one place

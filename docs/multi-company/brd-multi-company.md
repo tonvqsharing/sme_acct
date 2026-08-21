@@ -194,7 +194,7 @@ Complete.
 
 | # | Gap | Impact | Required |
 |---|---|---|---|
-| G1 | No `Company` / `Tenant` entity | Cannot represent legal entity; cannot multi-post | Create `src/domain/entities/company.py` |
+| G1 | No `Company` / `Tenant` entity | Cannot represent legal entity; cannot multi-post | Create `src/bricks/company/domain.py` |
 | G2 | No tenant isolation in DB models | Data leak across entities; invalid consolidation | Add `company_id` FK to all transactional tables |
 | G3 | No master-subsidiary hierarchy | Cannot model group relationship | Add `parent_company_id`, `consolidation_method` |
 | G4 | No per-company COA regime | Invalid chart per Circular 99/2025 | Add `AccountingRegime` value object + entity |
@@ -226,7 +226,7 @@ Complete.
 ### 9.1 New Entities Required
 
 ```python
-# src/domain/entities/base.py additions
+# src/bricks/multi_company/domain.py additions
 class AccountingRegime(Enum):
     MICRO = "micro"          # Thông tư 58/2026/TT-BTC
     SME = "sme"              # Circular 99/2025 SME regime
@@ -243,7 +243,7 @@ class CompanyStatus(Enum):
 ```
 
 ```python
-# src/domain/entities/company.py (new)
+# src/bricks/company/domain.py
 class Company:
     """Legal entity in the enterprise group."""
     __slots__ = ("id", "name", "tax_id", "entity_type", "mst", 

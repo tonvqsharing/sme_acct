@@ -14,7 +14,7 @@
 
 **User Master Data** is the foundation for RBAC and audit traceability in the Vietnamese SME accounting system. Every operator (accountant, auditor, admin) must be registered in the system with a valid role. **No API endpoint, financial transaction, or system configuration change should proceed without an authenticated, authorized user context.**
 
-Current codebase: **AuthService manages users via raw SQL `users` table** (not SQLAlchemy model). Roles: ACCOUNTANT, CHIEF_ACCOUNTANT, ADMIN, AUDITOR, DIRECTOR. pycasbin fallback active. **Production verdict: OPERATIONAL via fallback, but user management lacks full RBAC fine-grain control.**
+Current codebase: **AuthService manages users via raw SQL `users` table** (not SQLAlchemy model). Roles: ACCOUNTANT, CHIEF_ACCOUNTANT, ADMIN, AUDITOR, DIRECTOR. Flask built-in RBAC via `@login_required + current_user.role`. **Production verdict: OPERATIONAL, RBAC enforced at web_adapter layer.**
 
 ---
 
@@ -59,7 +59,7 @@ Current codebase: **AuthService manages users via raw SQL `users` table** (not S
 - Role enum: ACCOUNTANT, CHIEF_ACCOUNTANT, ADMIN, AUDITOR, DIRECTOR (per existing auth_service.py)
 - Role hierarchy: ACCOUNTANT < CHIEF_ACCOUNTANT < ADMIN < AUDITOR < DIRECTOR
 - User CRUD via CLI scripts (manage.py) and AuthService
-- @casbin_required decorator on 8 API routes (company + invoice + voucher + system-config + audit-log)
+- @login_required + current_user.role checks on 8 API routes (company + invoice + voucher + system-config + audit-log) — Flask built-in RBAC
 - Audit logging of every user action (entity_type="RBAC" + entity_type="USER")
 - First-admin creation (once-only, via create-admin CLI)
 - Password reset, enable/disable, assign-role CLI commands
@@ -84,13 +84,13 @@ Current codebase: **AuthService manages users via raw SQL `users` table** (not S
 | Obj ID | Objective | Success Metric | Priority |
 |--------|-----------|----------------|----------|
 | OBJ-01 | Every operator registered with valid role | 100% of users have role ≠ NULL; zero orphan sessions | P0 |
-| OBJ-02 | Role hierarchy enforced at API boundary | @casbin_required denies unauthorized accesses | P0 |
+| OBJ-02 | Role hierarchy enforced at API boundary | @login_required + current_user.role denies unauthorized accesses | P0 |
 | OBJ-03 | User creation limited to ADMIN | Only ADMIN can create/users assign roles | P0 |
 | OBJ-04 | Account disable/reactivate works | disable_user/enable_user CLI + API works | P0 |
 | OBJ-05 | Audit trail for all user changes | Every user CRUD action in audit_log with before/after | P0 |
 | OBJ-06 | MST/tax validation tied to operators | Responsible accountant linked to company | P1 |
 | OBJ-07 | BHXH code tracked per operator | BHXH agency code stored per user profile | P1 |
-| OBJ-08 | System operates without pycasbin crash | Fallback never blocks legitimate users | P0 |
+| OBJ-08 | RBAC enforced via Flask built-in | current_user.role checks on all protected routes | P0 |
 
 ---
 
@@ -115,7 +115,7 @@ Current codebase: **AuthService manages users via raw SQL `users` table** (not S
 |--------|-----------|---------------|
 | ASM-01 | First user to register becomes ADMIN (via create-admin CLI) | No admin = no user management possible |
 | ASM-02 | Role enum is fixed: ACCOUNTANT/CHIEF_ACCOUNTANT/ADMIN/AUDITOR/DIRECTOR | New roles require code + RBAC model update |
-| ASM-03 | pycasbin fallback sufficiently covers RBAC needs | Unauthorized access possible if fallback misconfigured |
+| ASM-03 | Flask built-in RBAC sufficiently covers RBAC needs | Unauthorized access possible if role checks missing |
 | ASM-04 | Single deployment: one system per company (v1) | Multi-company user scoping not active |
 | ASM-05 | MST validation already in Company module | Operator MST must match company MST for ACCOUNTANT+ roles |
 | ASM-06 | AUDITOR is read-only by design | Cannot write invoices/vouchers/audit config |
@@ -127,11 +127,10 @@ Current codebase: **AuthService manages users via raw SQL `users` table** (not S
 | DEP-ID | Dependency | Owner | Risk |
 |--------|-----------|-------|------|
 | DEP-01 | AuthService users table + raw SQL | Dev team | Table schema may change; no SQLAlchemy model |
-| DEP-02 | @casbin_required decorator on API routes | Dev team | Falls back to DEFAULT_ALLOWED_ROUTES if pycasbin fails |
+| DEP-02 | @login_required + current_user.role on API routes | Dev team | Flask built-in RBAC, no fallback needed |
 | DEP-03 | CLI scripts (manage.py) for user CRUD | Dev team | No web UI for user management in v1 |
 | DEP-04 | AuditLogService for user change logging | Dev team | Missing audit = compliance gap |
-| DEP-05 | Role hierarchy CSV (rbac_policy.csv) | Dev team | Hierarchy anomaly: AUDITOR level > ADMIN but read-only |
-| DEP-06 | Flask-Login current_user for role detection | Dev team | Test contexts may not have authenticated user |
+| DEP-05 | Flask-Login current_user for role detection | Dev team | Test contexts may not have authenticated user |
 
 ---
 
@@ -146,11 +145,11 @@ Current codebase: **AuthService manages users via raw SQL `users` table** (not S
 - [ ] disable-user CLI disables active account; raises LookupError if user not found
 - [ ] list-users CLI lists all users with email, role, is_active, last_login
 - [ ] reset-password CLI resets user password; raises LookupError if user not found
-- [ ] @casbin_required decorator on all 8 API routes (company: 6 + invoice: 4 + voucher: 3 + system-config: 2 + audit-log: 2, with overlap)
+- [ ] @login_required + current_user.role checks on all 8 API routes (company: 6 + invoice: 4 + voucher: 3 + system-config: 2 + audit-log: 2, with overlap) — Flask built-in RBAC
 - [ ] Every user CRUD action logged to audit_log with entity_type="USER"
 - [ ] No user can have role= NULL; default='ACCOUNTANT' at table level
-- [ ] System does not crash when pycasbin unavailable (fallback active)
-- [ ] AUDITOR role: read-only (no write/delete policies in @casbin_required)
+- [ ] System uses Flask built-in RBAC only (no pycasbin, no casbin_model.conf, no rbac_policy.csv)
+- [ ] AUDITOR role: read-only (no write/delete access via role check)
 - [ ] Password stored as SHA-256 hash (current); bcrypted in future version
 
 ---

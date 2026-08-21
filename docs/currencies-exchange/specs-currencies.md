@@ -9,25 +9,24 @@
 
 ## 1. Architecture placement
 
-Follows existing Clean Architecture (see AGENTS.md, company-module pattern):
+Follows existing Lego Brick architecture (see AGENTS.md, company-module pattern):
 
 ```
-src/
-  domain/
-    entities/
-      currency.py        # Currency, ExchangeRate, FXDifference, RevaluationRun (pure Python)
-      base.py            # add CurrencyCode, RateType enums
-    exceptions/
-      currency.py        # CurrencyNotFoundError, RateNotFoundError, RateLockedError,
-                         # InvalidRateError, RevaluationError, PeriodLockedError
-  application/
-    ports/               # CurrencyRepositoryPort, ExchangeRateRepositoryPort,
-                         # RevaluationRepositoryPort, FXRateSourcePort
-    services/
-      currency_service.py        # Currency CRUD, rate maintenance
-      exchange_rate_service.py   # booking rate resolution, bình quân gia quyền
-      revaluation_service.py     # period-end revaluation + auto postings
-  infrastructure/
+src/bricks/
+  currencies/                  ← 🧱 EXISTING brick
+    contract.py                ← 🔌 Public interface (CurrencyCode, RateType, primitive IDs only)
+    domain.py                  ← 🎯 Currency, ExchangeRate, FXDifference, RevaluationRun (pure Python)
+    services.py                ← ⚙️ CurrencyService, ExchangeRateService, RevaluationService
+    storage.py                 ← 💾 SQLAlchemy models + repository adapters
+    web_adapter.py             ← 🌐 Flask blueprint + REST endpoints (currencies_bp)
+```
+
+**Brick boundaries:**
+- `domain.py` — pure Python; NO Flask, NO SQLAlchemy, NO flask_login imports
+- `contract.py` — public interface; accepts/returns only `str`, `int`, `float`, `dict`, `Decimal`, `UUID`
+- `storage.py` — SQLAlchemy models + repo adapters (the ONLY file with SQLAlchemy imports)
+- `services.py` — orchestration with injected port; no Flask/SQLAlchemy imports
+- `web_adapter.py` — Flask blueprint; `@login_required` + `current_user.role` checks (no Casbin)
     database/
       models.py          # CurrencyModel, ExchangeRateModel, RevaluationRunModel,
                          # RevaluationEntryModel, FXDifferenceModel
@@ -37,7 +36,7 @@ src/
       nhnn_source.py     # NHNN rate fetcher (v1.5), CSV importer (v1)
   presentation/
     api/
-      currencies_bp.py   # REST endpoints + @casbin_required
+      currencies_bp.py   # REST endpoints + @login_required + current_user.role
     serializers/
       currency_serializer.py
 ```
@@ -220,7 +219,7 @@ class FXDifferenceModel(Base):
 | GET | /api/fx-differences?period=&currency=&account= | all above | report |
 | GET | /api/config | all above | FX config (existing bp) |
 
-All routes decorated `@casbin_required(...)`; AUDITOR read-only; actor UUID required
+All routes decorated `@login_required + current_user.role`; AUDITOR read-only; actor UUID required
 for all mutations.
 
 ## 7. CSV import format

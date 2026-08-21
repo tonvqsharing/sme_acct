@@ -115,7 +115,7 @@ Sản phẩm kế toán cho SME: người dùng là kế toán viên, giám đ�
 | **Tính toán tiền** (Invoice subtotal/VAT/tổng, Voucher cân đối nợ-có) | Sai phép tính, làm tròn, sai ngày | Rất cao — sai tiền, sai thuế | Cao | ★★★★★ |
 | **Quy tắc nghiệp vụ domain** (MST, mã tài khoản, trạng thái Company: active/suspended/dissolved) | Bỏ qua ràng buộc, cho phép chuyển trạng thái bất hợp lệ | Cao — dữ liệu kế toán sai chuẩn pháp lý | Cao | ★★★★★ |
 | **Dữ liệu trùng/duy nhất** (MST trùng → 409) | Race condition, thiếu unique constraint | Cao — hồ sơ doanh nghiệp lẫn lộn | Trung bình | ★★★★ |
-| **Phân quyền & xác thực** (login, pycasbin RBAC) | Người dùng thấy/sửa dữ liệu người khác | Rất cao — lộ số liệu tài chính | Trung bình | ★★★★★ |
+| **Phân quyền & xác thực** (login, Flask built-in RBAC) | Người dùng thấy/sửa dữ liệu người khác | Rất cao — lộ số liệu tài chính | Trung bình | ★★★★★ |
 | **Lưu trữ & migration DB** (flask-migrate, JSON column, enum) | Mất dữ liệu khi upgrade, sai kiểu dữ liệu giữa DB | Rất cao | Trung bình | ★★★★ |
 | **Khác biệt DB dialect** (SQLite dev vs MySQL/PG prod) | Logic chạy đúng trên SQLite, sai trên production | Cao | Trung bình | ★★★ |
 | **Luồng người dùng quan trọng** (tạo công ty → lập hóa đơn → ghi sổ → báo cáo) | Vỡ luồng end-to-end do tích hợp tầng | Cao | Trung bình | ★★★★ |
@@ -146,7 +146,7 @@ Sản phẩm kế toán cho SME: người dùng là kế toán viên, giám đ�
                       |-- KHÔNG --> Cân nhắc không test hoặc test thủ công nhẹ
 ```
 
-**Hệ quả trực tiếp:** phần lớn test tập trung vào `src/domain/` và `src/application/` (tính toán, quy tắc, trạng thái) + `src/infrastructure/` + `src/presentation/api/` (tích hợp). UI chi tiết test ít.
+**Hệ quả trực tiếp:** phần lớn test tập trung vào `src/bricks/<module>/domain.py` và `src/bricks/<module>/services.py` (tính toán, quy tắc, trạng thái) + `src/bricks/<module>/storage.py` + `src/bricks/<module>/web_adapter.py` (tích hợp). UI chi tiết test ít.
 
 ---
 
@@ -329,7 +329,7 @@ Sản phẩm tài chính → security không phải "nếu có", mà là **bắt
 
 ### 6.1 Test NHIỀU (sâu, đủ edge case)
 
-- **Domain rules** — mọi quy tắc trong `src/domain/entities/`:
+- **Domain rules** — mọi quy tắc trong `src/bricks/<module>/domain.py`:
   - `TaxId`, `AccountCode` validation (đúng/sai/boundary: `\d{10}`, `\d{10}-\d{3}`, mã tài khoản 3/4 chữ số, ký tự lạ, rỗng).
   - `Invoice.add_item()`: tính lại subtotal/VAT/grand_total; thêm/xóa dòng; số âm; nhiều thuế suất.
   - `Voucher.post()`: cân đối trong tol 0.01; lệch 0.005 (làm tròn!); post từ trạng thái sai.

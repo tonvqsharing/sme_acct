@@ -20,7 +20,7 @@ Define and implement dollar-value approval thresholds and approval paths for inv
 - Delegation of Authority (DoA) management
 - Audit logging of all approval actions
 - Integration with existing Invoice `approve()` method
-- RBAC integration with `@casbin_required` decorators
+- RBAC integration with `@login_required + current_user.role` checks
 - Configurable via System Settings (CONFIG-type flags)
 - Templates for approval requests, matrices, DoA
 
@@ -43,7 +43,7 @@ Define and implement dollar-value approval thresholds and approval paths for inv
 | FR-005 | System shall detect invoice splitting (multiple invoices from same vendor/requester within 24h to bypass thresholds) | High |
 | FR-006 | Shall maintain audit log of: invoice ID, amount, threshold check result, approver, timestamp, reason | High |
 | FR-007 | Shall support configurable thresholds per company (one CompanyConfig per company) | High |
-| FR-008 | Shall integrate with existing `@casbin_required` decorator for RBAC enforcement | High |
+| FR-008 | Shall integrate with existing `@login_required + current_user.role` checks for RBAC enforcement | High |
 | FR-009 | Shall allow delegation of approval authority when approver is unavailable | Medium |
 | FR-010 | Shall support multiple threshold bands (typical: $0-5K, $5K-25K, $25K-100K, $100K+) | Medium |
 | FR-011 | Shall validate threshold config on CompanyConfig update (LAW-type flags require migration) | High |
@@ -79,11 +79,11 @@ Invoice Amount → Check Threshold Matrix → Determine Approver Role → Route 
 
 ### RBAC Integration
 
-- **Manager** role: `@casbin_required('MANAGER')` for T2 thresholds
-- **Chief Accountant** role: `@casbin_required('CHIEF_ACCOUNTANT')` for T3 thresholds  
-- **Director** role: `@casbin_required('DIRECTOR')` for T4+ thresholds
+- **Manager** role: `@login_required + current_user.role == 'MANAGER'` for T2 thresholds
+- **Chief Accountant** role: `@login_required + current_user.role == 'CHIEF_ACCOUNTANT'` for T3 thresholds  
+- **Director** role: `@login_required + current_user.role == 'DIRECTOR'` for T4+ thresholds
 - **AUDITOR** role: Read-only, no approval capability
-- Default role hierarchy: ACCOUNTANT → CHIEF_ACCOUNTANT → ADMIN → DIRECTOR (per rbac_policy.csv)
+- Default role hierarchy: ACCOUNTANT → CHIEF_ACCOUNTANT → ADMIN → DIRECTOR (per Flask built-in role checks)
 
 ## User Journeys
 
@@ -279,7 +279,7 @@ T5,above,ADMIN,"Above $100K requires executive sign-off"
 1. **Existing code integration**: 
    - Extend `Invoice.approve()` to perform threshold check before status change
    - Add threshold check in `SystemSettingsService.update_config()` with 2nd approval enforcement
-   - Use existing `@casbin_required` decorator pattern for RBAC
+   - Use existing `@login_required + current_user.role` checks pattern for RBAC
 
 2. **Database changes needed**:
    - New table: `approval_thresholds` (company_id, band, max_amount, approver_role, is_active)

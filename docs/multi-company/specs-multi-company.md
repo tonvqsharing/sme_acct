@@ -14,7 +14,7 @@ This spec covers FR-MC-01 through FR-MC-16 from the BRD. Out-of-scope items rema
 
 ### 2.1 New Domain Entities
 
-**`Company`** (`src/domain/entities/company.py`)
+**`Company`** (`src/bricks/company/domain.py`)
 - Fields: id (UUID), name (str), legal_name (str), mst (TaxId), tax_agency (str), accounting_regime (AccountingRegime), fiscal_year_start (date, default=01-01), parent_company_id (UUID | None), consolidation_method (ConsolidationMethod), status (CompanyStatus), is_active (bool), created_at (date), updated_at (date)
 - Rule: MST validated at construction; cannot change once invoices posted against it
 - Method: `deactivate()` — sets is_active=False; only if no open periods
@@ -84,7 +84,7 @@ class ConsolidationRunRepository(ABC):
     def get_by_id(self, run_id: UUID) -> ConsolidationRun | None: ...
 ```
 
-### 3.2 New Services (`src/application/services/`)
+### 3.2 New Services (`src/bricks/multi_company/services.py`)
 
 **`CompanyService`**
 - `create_subsidiary(parent_id, **kwargs)` — validates MST, creates Company with parent link

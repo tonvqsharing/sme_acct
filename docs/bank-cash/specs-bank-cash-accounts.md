@@ -5,8 +5,32 @@
 **Module:** Bank & Cash Accounts  
 **Version:** 1.0.0  
 **Status:** PRODUCTION READY  
-**Base Framework:** Flask + SQLAlchemy 2.0 + pycasbin 2.8.0  
-**Architecture:** Clean Architecture (domain → application → infrastructure → presentation)  
+**Base Framework:** Flask + SQLAlchemy 2.0 + Flask-Login (Flask built-in RBAC — no pycasbin)
+**Architecture:** Lego Brick (`src/bricks/bank_cash/`) with pure Python domain, port interfaces, SQLAlchemy storage adapters, and Flask blueprint adapters
+
+---
+
+# Bank & Cash Accounts Module (Lego Brick)
+_Brick: `src/bricks/bank_cash/`. Pure Python domain. Flask built-in RBAC. SQLite3 default DB._
+
+## 1.1 Brick Position
+
+```
+src/bricks/
+  bank_cash/                   ← 🧱 NEW brick
+    contract.py                ← 🔌 Public interface (BankAccountCode, CashAccountCode, primitive IDs only)
+    domain.py                  ← 🎯 BankAccount, CashAccount, BankReconciliation entities (pure Python)
+    services.py                ← ⚙️ BankAccountService, CashAccountService, BankReconciliationService
+    storage.py                 ← 💾 SQLAlchemy models + repository adapters
+    web_adapter.py             ← 🌐 Flask blueprint + REST endpoints (bank_cash_bp)
+```
+
+**Brick boundaries:**
+- `domain.py` — pure Python; NO Flask, NO SQLAlchemy, NO flask_login imports
+- `contract.py` — public interface; accepts/returns only `str`, `int`, `float`, `dict`, `Decimal`, `UUID`
+- `storage.py` — SQLAlchemy models + repo adapters (the ONLY file with SQLAlchemy imports)
+- `services.py` — orchestration with injected port; no Flask/SQLAlchemy imports
+- `web_adapter.py` — Flask blueprint; `@login_required` + `current_user.role` checks (no Casbin)
 
 ---
 
@@ -69,7 +93,7 @@
 
 ## 3. Domain Entities
 
-### 3.1 BankAccount (src/domain/entities/bank_account.py)
+### 3.1 BankAccount (src/bricks/bank_cash/domain.py)
 
 ```python
 @dataclass
@@ -109,7 +133,7 @@ class BankAccount:
         return True
 ```
 
-### 3.2 CashAccount (src/domain/entities/cash_account.py)
+### 3.2 CashAccount (src/bricks/bank_cash/domain.py)
 
 ```python
 @dataclass
@@ -143,7 +167,7 @@ class CashAccount:
         # ... append audit event
 ```
 
-### 3.3 BankReconciliation (src/domain/entities/bank_reconciliation.py)
+### 3.3 BankReconciliation (src/bricks/bank_cash/domain.py)
 
 ```python
 @dataclass
@@ -168,9 +192,9 @@ class BankReconciliation:
 
 ---
 
-## 4. Repository Ports
+## 4. Contract Interface
 
-### 4.1 BankAccountRepositoryPort (src/application/ports/__init__.py)
+### 4.1 BankAccountRepositoryPort (src/bricks/bank_cash/contract.py)
 
 ```python
 class BankAccountRepositoryPort(Protocol):
@@ -185,7 +209,7 @@ class BankAccountRepositoryPort(Protocol):
     def validate_code_unique(self, company_id: UUID, account_number: str) -> bool: ...
 ```
 
-### 4.2 CashAccountRepositoryPort (src/application/ports/__init__.py)
+### 4.2 CashAccountRepositoryPort (src/bricks/bank_cash/contract.py)
 
 ```python
 class CashAccountRepositoryPort(Protocol):
@@ -200,7 +224,7 @@ class CashAccountRepositoryPort(Protocol):
     def validate_code_unique(self, company_id: UUID, code: str) -> bool: ...
 ```
 
-### 4.3 BankReconciliationRepositoryPort (src/application/ports/__init__.py)
+### 4.3 BankReconciliationRepositoryPort (src/bricks/bank_cash/contract.py)
 
 ```python
 class BankReconciliationRepositoryPort(Protocol):
@@ -215,9 +239,9 @@ class BankReconciliationRepositoryPort(Protocol):
 
 ---
 
-## 5. Service Layer
+## 5. Services Layer
 
-### 5.1 BankAccountService (src/application/services/bank_account_service.py)
+### 5.1 BankAccountService (src/bricks/bank_cash/services.py)
 
 **Pure Python — NO Flask/SQLAlchemy imports.**
 
@@ -239,7 +263,7 @@ class BankReconciliationRepositoryPort(Protocol):
 - SOD approval required for primary changes and closures
 - SHA-256 checksum appended on every mutation
 
-### 5.2 CashAccountService (src/application/services/cash_account_service.py)
+### 5.2 CashAccountService (src/bricks/bank_cash/services.py)
 
 **Pure Python — NO Flask/SQLAlchemy imports.**
 
@@ -260,7 +284,7 @@ class BankReconciliationRepositoryPort(Protocol):
 - 10-year retention: no automatic deletion, soft-close only
 - Current balance = opening_balance + sum of all transactions
 
-### 5.3 BankReconciliationService (src/application/services/bank_reconciliation_service.py)
+### 5.3 BankReconciliationService (src/bricks/bank_cash/services.py)
 
 **Pure Python — NO Flask/SQLAlchemy imports.**
 
@@ -388,11 +412,11 @@ class BankReconciliationRepositoryPort(Protocol):
 | `ACCOUNTANT` | Read all bank/cash; create/modify own company's accounts | Full mutation rights |
 | `CHIEF_ACCOUNTANT` | All ACCOUNTANT rights + SOD approval authority | Can approve 2nd actor |
 | `ADMIN` | All CHIEF_ACCOUNTANT rights + system config | Company-level admin |
-| `AUDITOR` | Read-only — cannot mutate any bank/cash | Read-only enforced by @casbin_required + service layer |
+| `AUDITOR` | Read-only — cannot mutate any bank/cash | Read-only enforced by @login_required + service layer |
 | `DIRECTOR` | All rights including system admin | Highest level |
 
 **RBAC Enforcement:**
-- `@casbin_required(*roles)` on all API routes
+- `@login_required` + `current_user.role` checks on all API routes (Flask built-in)
 - Service layer also checks actor permissions (defense in depth)
 - AUDITOR role explicitly cannot call mutation APIs
 - All mutations require actor UUID (D11) in request body
@@ -629,12 +653,12 @@ START → User resolves reconciliation → POST /api/v1/reconciliations/{id}/res
 | R-003 | Bank account account_number must be unique per company | DB unique constraint + service validation |
 | R-004 | All mutations require actor UUID (D11) in request body | API decorator + service layer |
 | R-005 | All mutations require non-empty reason string | API decorator + service layer validation |
-| R-006 | AUDITOR role is read-only; cannot create/update/delete bank/cash | @casbin_required + service layer check |
+| R-006 | AUDITOR role is read-only; cannot create/update/delete bank/cash | @login_required + current_user.role + service layer check |
 | R-007 | System accounts (is_system=TRUE) cannot be modified or deleted | CompanyConfig.check_system_account() |
 | R-008 | Bank reconciliation must balance within tolerance 0.01 | BankReconciliation.is_balanced(tolerance=0.01) |
 | R-009 | 10-year retention: no automatic deletion, soft-close only | Service layer + audit log policy |
 | R-010 | SHA-256 checksum chaining on all bank/cash/reconciliation events | Service layer append_checksum() |
-| R-011 | SOD (Separation of Duties): closure/primary change requires 2 actors | Service layer + @casbin_required roles |
+| R-011 | SOD (Separation of Duties): closure/primary change requires 2 actors | Service layer + @login_required + current_user.role |
 | R-012 | Currency on bank account must be valid ISO 4217 code ^[A-Z]{3}$ | Service layer validation |
 | R-013 | Period locked prevents new reconciliations (FY integration) | PeriodLockService.check_fiscal_year_lock() |
 | R-014 | Cash balance cannot go negative without chief accountant approval | CashAccountService.validate_negative_balance() |
@@ -653,7 +677,7 @@ START → User resolves reconciliation → POST /api/v1/reconciliations/{id}/res
 | `Currency` | Optional | ISO 4217 code on bank accounts |
 | `AuditLogService` | Required | All events logged via audit_log_service.append_event() |
 | `PeriodLockService` | Optional | Fiscal year period locking for reconciliations |
-| `CASRBAC` | Required | @casbin_required decorator on all API routes |
+| `Flask-Login RBAC` | Required | @login_required + current_user.role on all API routes |
 | `SQLAlchemyRepository` | Required | DB adapters for BankAccount, CashAccount, BankReconciliation |
 
 ### 16.2 External Dependencies
@@ -662,7 +686,7 @@ START → User resolves reconciliation → POST /api/v1/reconciliations/{id}/res
 |------------|---------|-------------|
 | `flask` | >= 3.0 | Web framework |
 | `flask-sqlalchemy` | >= 3.0 | ORM (SQLAlchemy 2.0) |
-| `pycasbin` | 2.8.0 | RBAC enforcement |
+| `pycasbin` | ❌ Removed | RBAC via Flask built-in only |
 | `sqlalchemy` | >= 2.0 | SQL toolkit |
 | `wtforms` | >= 3.0 | Form validation (if needed) |
 | `python-dotenv` | >= 1.0 | Environment config |

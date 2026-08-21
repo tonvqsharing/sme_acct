@@ -146,13 +146,13 @@
 | **R-002** | Payment term due_days must be ≥ 1 day | Entity validation on create/update |
 | **R-003** | All mutations require actor UUID (D11) in request body | API decorator + service layer entry check |
 | **R-004** | All mutations require non-empty reason string | API decorator + service layer validation |
-| **R-005** | AUDITOR role is read-only; cannot create/update/delete payment terms | @casbin_required + service layer role check |
+| **R-005** | AUDITOR role is read-only; cannot create/update/delete payment terms | @login_required + current_user.role + service layer role check |
 | **R-006** | 10-year retention: no automatic deletion, soft-deactivate only | Service layer policy + audit log configuration |
 | **R-007** | Series prefix must match GDT format: ^[A-Z]{2,}/$ (TT163 compliance) | Entity validation on create |
 | **R-008** | Maximum 15 active document numbering series per company (GDT Circular 163/2020/TT-BTC) | Service layer + DB constraint |
 | **R-009** | Series prefix must be unique per company | DB unique constraint + service validation |
 | **R-010** | SHA-256 checksum chaining on all payment term/series events | Service layer append_checksum() |
-| **R-011** | SOD (Separation of Duties): setting default/activating series requires 2 actors | Service layer + @casbin_required roles |
+| **R-011** | SOD (Separation of Duties): setting default/activating series requires 2 actors | Service layer + @login_required + current_user.role |
 | **R-012** | Due date calculation: issue_date + due_days (business days optional) | PaymentTermService.calculate_due_date() |
 
 ---
@@ -165,7 +165,7 @@
 | **R-008** | Maximum 15 active series per company (GDT Circular 163/2020/TT-BTC) | Service layer + DB constraint |
 | **R-009** | Series prefix must be unique per company | DB unique constraint + service validation |
 | **R-010** | SHA-256 checksum chaining on all payment term/series events | Service layer append_checksum() |
-| **R-011** | SOD (Separation of Duties): setting default/activating series requires 2 actors | Service layer + @casbin_required roles |
+| **R-011** | SOD (Separation of Duties): setting default/activating series requires 2 actors | Service layer + @login_required + current_user.role |
 | **R-012** | Due date calculation: issue_date + due_days (business days optional) | PaymentTermService.calculate_due_date() |
 
 ---

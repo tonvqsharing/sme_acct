@@ -1,288 +1,112 @@
 # RBAC Specifications — Vietnamese SME Accounting System
+_Flask built-in only. No pycasbin, no casbin_model.conf, no rbac_policy.csv._
 
 ## 1. Overview
 
-This document specifies the technical implementation of the Role-Based Access Control (RBAC) module for the Vietnamese SME accounting application. It integrates with the existing `pycasbin 2.8.0`, `flask-login`, `flask-security-too 5.8.2`, and `flask-principal 0.4.0` extensions installed in the project.
+This document specifies the technical implementation of the Role-Based Access Control (RBAC) module for the Vietnamese SME accounting application using **Flask-Login built-in only**. No `pycasbin`, no `casbin_model.conf`, no `rbac_policy.csv`. RBAC enforcement via `current_user.role` checks and `@login_required`.
 
-**Critical Gap Addressed**: P0-10 "No RBAC enforcement at backend — only UI/Flask-Login auth" (marked ❌ Not implemented in production-readiness-audit.md). This specs document provides the complete implementation blueprint.
+**Critical Gap Addressed**: P0-10 "No RBAC enforcement at backend — only UI/Flask-Login auth" is now resolved by Flask built-in checks. All role authorization uses `current_user.role` from Flask-Login.
 
-## 2. Model Definition (Casbin CONF Format)
+## 2. Model Definition
 
-### 2.1 `casbin_model.conf`
+RBAC is flat — no Casbin model, no policy CSV, no role hierarchy via `g,` directives. Roles are simple string values on `current_user.role`:
 
-```ini
-[request_definition]
-r = sub, obj, act
-; sub = subject (user.id UUID), obj = resource path (string), act = action/method (string)
+| Role String | Description |
+|---|---|
+| `ACCOUNTANT` | Staff accountant — create own-company invoices/vouchers, read-only access |
+| `CHIEF_ACCOUNTANT` | Chief accountant — approve invoices, period lock/unlock, system config edits |
+| `ADMIN` | System administrator — full access, user management, company config |
+| `AUDITOR` | External/internal auditor — **read-only**; no write/modify/delete permissions |
+| `DIRECTOR` | Company director — strategic decisions, dissolve company, authorize large transactions |
 
-[policy_definition]
-p = sub, obj, act, eft
-; eft = enforcement flag (0=deny-overrides, 1=allow-overrides, 2=priority); default v2 uses first match
+**Role Hierarchy** (advisory only; enforcement is flat-check via `current_user.role`):
 
-[role_definition]
-g = _, _
-; g, user, role — vertical role hierarchy (g, alice, admin means alice inherits admin)
-
-[matchers]
-m = r.sub == p.sub && r.obj == p.obj && r.act == p.act
-; Standard RBAC matcher: subject == policy subject AND object == policy object AND action == policy action
-
-[eft]
-e = some(where (p.sub == r.sub && p.obj == r.obj && p.act == r.act))
-; Extensible Function Template: returns True if any matching policy rule allows
+```
+DIRECTOR > ADMIN > CHIEF_ACCOUNTANT > ACCOUNTANT
+AUDITOR (standalone; read-access via explicit role check; no hierarchy inheritance)
 ```
 
-### 2.2 Model Explanation
+## 3. Subject Mapping (Flask-Login)
 
-| Section | Purpose | Key Details |
+| Flask Context | `current_user` Attribute | RBAC Role String |
 |---|---|---|
-| `request_definition` | Defines the input to the enforcer | `sub` (subject/user), `obj` (resource/path), `act` (action/method) |
-| `policy_definition` | Defines the policy structure | `p` = `sub, obj, act, eft`; eft enables advanced authorization logic |
-| `role_definition` | Defines role hierarchy | `g = _, _` = vertical hierarchy; `g, ACCOUNTANT, CHIEF_ACCOUNTANT` means ACCOUNTANT → CHIEF_ACCOUNTANT |
-| `matchers` | Boolean matching logic | Three-way AND: sub match + obj match + act match |
-| `eft` | Extensibility point | `some(where ...)` = true if ANY matching rule allows; enables deny-overrides, allow-overrides patterns |
+| `is_authenticated = True` | `current_user.role` | `str(current_user.role)` |
+| `is_authenticated = True` | `current_user.id` | UUID — used for audit logging only |
+| `is_authenticated = False` | unauthenticated | No role — `@login_required` redirects to login |
 
-## 3. Policy Configuration (CSV Format)
+**No pycasbin subject/role mapping needed.** The enforcer, model, and CSV are deleted.
 
-### 3.1 `rbac_policy.csv` — Initial Policy Set
+## 4. Enforcer Initialization — N/A
 
-```csv
-; Resource Pattern,Action,Role
-; ===== COMPANY (doanh nghiệp) =====
-p, /api/v1/companies, DIRECTOR
-p, /api/v1/companies/{id}, CHIEF_ACCOUNTANT
-p, /api/v1/companies/{id}/suspend, CHIEF_ACCOUNTANT|ADMIN
-p, /api/v1/companies/{id}/reactivate, CHIEF_ACCOUNTANT|ADMIN
-p, /api/v1/companies/{id}/dissolve, ADMIN|DIRECTOR
+No casbin enforcer, no model loading, no per-request initialization. Flask-Login handles authentication and `current_user` proxy is available after `@login_required`.
 
-; ===== INVOICE (hóa đơn) =====
-p, /api/v1/invoices, ACCOUNTANT
-p, /api/v1/invoices/{id}, CHIEF_ACCOUNTANT
-p, /api/v1/invoices/{id}/post, CHIEF_ACCOUNTANT
-p, /api/v1/invoices/{id}/cancel, ADMIN
-p, /api/v1/invoices/{id}/approve, CHIEF_ACCOUNTANT
+**No `before_request` hook initializes casbin.** No `get_casbin_enforcer()` function needed. No `casbin_required` decorator.
 
-; ===== VOUCHER (chứng từ) =====
-p, /api/v1/vouchers, ACCOUNTANT
-p, /api/v1/vouchers/{id}, CHIEF_ACCOUNTANT
-p, /api/v1/vouchers/{id}/post, CHIEF_ACCOUNTANT|ACCOUNTANT
-p, /api/v1/vouchers/{id}/lock, CHIEF_ACCOUNTANT|ADMIN
+## 5. RBAC Enforcement Pattern (Flask Built-in)
 
-; ===== SYSTEM CONFIG (cấu hình hệ thống) =====
-p, /api/v1/system-config, ADMIN
-p, /api/v1/system-config/vat-rates, ADMIN
-p, /api/v1/system-config/period-locks, ADMIN|CHIEF_ACCOUNTANT
-p, /api/v1/system-config/decimal-places, ADMIN
-p, /api/v1/system-config/default-currency, ADMIN
+All role checks use `current_user.role` from Flask-Login:
 
-; ===== AUDIT LOG (nhật ký audit) =====
-p, /api/v1/audit-log, AUDITOR
-p, /api/v1/audit-log, CHIEF_ACCOUNTANT
-; NOTE: No p, /api/v1/audit-log, AUDITOR, delete — read-only only
+```python
+from flask import current_user, abort
+from flask_login import login_required
 
-; ===== ROLE HIERARCHY (must match role_definition) =====
-g, ACCOUNTANT, CHIEF_ACCOUNTANT
-g, CHIEF_ACCOUNTANT, ADMIN
-; AUDITOR has NO hierarchy; read-access via explicit p, rules above only
+# Pattern 1: Basic auth + role check
+@bp.route("/api/v1/companies", methods=["POST"])
+@login_required
+def create_company():
+    if current_user.role != "ADMIN":
+        abort(403, description="RBAC denied: ADMIN role required")
+    # ... proceed
+
+# Pattern 2: Role check with OR logic
+@bp.route("/api/v1/period-locks/lock", methods=["POST"])
+@login_required
+def lock_period():
+    if current_user.role not in ("CHIEF_ACCOUNTANT", "ADMIN"):
+        abort(403, description="RBAC denied: CHIEF_ACCOUNTANT or ADMIN role required")
+    # ... proceed
+
+# Pattern 3: AUDITOR read-only
+@bp.route("/api/v1/audit-log", methods=["GET"])
+@login_required
+def audit_log():
+    if current_user.role == "AUDITOR":
+        # Read-only mode: allow GET, prohibit write methods
+        if request.method in ("POST", "PUT", "DELETE", "PATCH"):
+            abort(403, description="RBAC denied: AUDITOR read-only")
+    # ... proceed with read access
 ```
 
-### 3.2 Policy Field Descriptions
+## 6. API Blueprint RBAC Requirements
 
-| Field | Type | Description | Example |
-|---|---|---|---|
-| Resource Pattern | String | Flask route path; `{id}` = UUID wildcard; `*` = any resource | `/api/v1/invoices/{id}/post` |
-| Action | String | HTTP method lowered, or custom action name | `post`, `get`, `patch`, `delete`, `lock`, `unlock`, `read` |
-| Role | String | Role name must exist in `role_definition` hierarchy | `ACCOUNTANT`, `CHIEF_ACCOUNTANT`, `ADMIN`, `DIRECTOR`, `AUDITOR` |
-| `g,` prefix | CSV directive | Role hierarchy assignment (vertical) | `g, ACCOUNTANT, CHIEF_ACCOUNTANT` |
+All endpoints must have `@login_required`. RBAC role checks via `current_user.role`:
 
-### 3.3 Role Hierarchy (Vertical)
-
-```
-DIRECTOR
-  └── ADMIN
-       └── CHIEF_ACCOUNTANT
-            └── ACCOUNTANT
-                 (no further inheritance)
-AUDITOR (standalone; read-access via explicit p,/api/v1/audit-log, AUDITOR rules only; no g, rules)
-```
-
-### 3.4 Subject Mapping (Flask-Login → pycasbin)
-
-| Flask Context | pycasbin Subject | Notes |
+| Blueprint | Endpoint | Required Role Check |
 |---|---|---|
-| `current_user.is_authenticated = True` | `str(current_user.id)` (UUID as string) | `current_user.id` is UUID type from `app.py` `SECRET_KEY` / `user_loader` |
-| `current_user.role` | `str(current_user.role)` | Role string: `ACCOUNTANT`, `CHIEF_ACCOUNTANT`, `ADMIN`, `DIRECTOR`, `AUDITOR` |
-| `current_user.is_active` | Not directly mapped | Casbin enforcer does not check activity; handled by Flask-Login `LoginManager` |
-| Anonymous/unauthenticated | `None` or `"anonymous"` | Enforcer returns `False` for all checks; route returns `401 Unauthorized` first |
+| `api_bp` (Company) | `POST /api/v1/companies` | `current_user.role == "ADMIN"` |
+| | `GET /api/v1/companies` | `current_user.role in ("CHIEF_ACCOUNTANT", "ADMIN", "DIRECTOR")` |
+| | `GET /api/v1/companies/<id>` | `current_user.role in ("CHIEF_ACCOUNTANT", "ADMIN", "DIRECTOR")` for read |
+| | `PATCH /api/v1/companies/<id>` | `current_user.role in ("CHIEF_ACCOUNTANT", "ADMIN", "DIRECTOR")` |
+| | `POST /api/v1/companies/<id>/suspend` | `current_user.role in ("CHIEF_ACCOUNTANT", "ADMIN")` |
+| | `POST /api/v1/companies/<id>/dissolve` | `current_user.role in ("ADMIN", "DIRECTOR")` |
+| | `POST /api/v1/companies/<id>/reactivate` | `current_user.role in ("CHIEF_ACCOUNTANT", "ADMIN")` |
+| `audit_bp` (Audit Log) | `GET /api/v1/audit-log` | `current_user.role in ("AUDITOR", "CHIEF_ACCOUNTANT", "ADMIN", "ACCOUNTANT")` read-only |
+| | `POST /api/v1/audit-log/export` | `current_user.role in ("AUDITOR", "CHIEF_ACCOUNTANT", "ADMIN")` |
+| `system_settings_bp` | `GET /config` | `current_user.role in ("ACCOUNTANT", "ADMIN")` limited |
+| | `PATCH /config/flags/{flag_name}` | `current_user.role == "ADMIN"` for CONFIG; LAW-type requires migration |
+| `health` | `GET /health` | Public (no auth) — monitoring endpoint must be open |
 
-## 4. Enforcer Initialization & Per-Request Lifecycle
+**Service layer calls** assume RBAC is already enforced at the API decorator boundary (per Lego Brick Architecture: "Presentation translate HTTP"). Internal trusted calls bypass role checks.
 
-### 4.1 CasbinEnforcer Class (Python Wrapper)
+## 7. Audit Trail for RBAC Decisions
 
-```python
-from flask import g, current_app, request, jsonify
-from flask_casbin import CasbinEnforcer  # pip: uv pip install flask-casbin
-import logging
-
-logger = logging.getLogger(__name__)
-
-
-def get_casbin_enforcer() -> CasbinEnforcer:
-    """Get or create casbin enforcer per request (stored in Flask 'g')."""
-    if not hasattr(g, 'casbin'):
-        # Load model from package-resolved path; policy from config/
-        model_path = current_app.root_path + "/casbin_model.conf"
-        policy_path = current_app.root_path + "/rbac_policy.csv"
-        
-        g.casbin = CasbinEnforcer(
-            model_path=model_path,
-            policy_path=policy_path,
-            # debug=True  # Dev only: logs every enforce() call
-        )
-        logger.info(
-            "Casbin enforcer initialized",
-            extra={"model": model_path, "policy": policy_path}
-        )
-    return g.casbin
-
-
-def reload_casbin_policy():
-    """Reload policy CSV without restarting app (for role promotions etc.)."""
-    if hasattr(g, 'casbin'):
-        g.casbin.load_policy()
-        logger.info("Casbin policy reloaded without restart")
-        return True
-    return False
-```
-
-### 4.2 Before Request Hook (app.py or blueprint)
+Every RBAC decision must be logged via `AuditLogService.create()`:
 
 ```python
-# In app.py create_app() or src/presentation/api/__init__.py
-from functions import get_casbin_enforcer  # relative import from project functions/
-
-@app.before_request
-def _init_casbin_per_request():
-    """Initialize casbin enforcer with current user context before every request."""
-    from flask_login import current_user
-    
-    # Always initialize enforcer (lightweight; just loads model + policy)
-    enforcer = get_casbin_enforcer()
-    
-    # Map Flask-Login user to casbin subject + role
-    if current_user.is_authenticated:
-        enforcer.subject(str(current_user.id))
-        enforcer.role(str(current_user.role))
-    else:
-        enforcer.subject("anonymous")
-        enforcer.role("NONE")
-    
-    # Store enforcer in Flask 'g' for route access
-    g.casbin = enforcer
-```
-
-### 4.3 Route Decorator for RBAC Enforcement
-
-```python
-from functools import wraps
-from flask import jsonify, current_app
-
-def casbin_required(*allowed_roles):
-    """Decorator that enforces role membership AND action permission.
-    
-    Usage:
-        @api_bp.post("/api/v1/invoices")
-        @casbin_required("ACCOUNTANT")  # Must be ACCOUNTANT role
-        def create_invoice(): ...
-        
-        @api_bp.post("/api/v1/invoices/<uuid:id>/post")
-        @casbin_required("CHIEF_ACCOUNTANT", "ADMIN")  # Either role allowed
-        def post_invoice(id): ...
-    """
-    def decorator(f):
-        @wraps(f)
-        def wrapper(*args, **kwargs):
-            enforcer = get_casbin_enforcer()
-            
-            # 1. Check role membership (optional; can be checked inside enforce())
-            if allowed_roles:
-                user_role = enforcer.role
-                if user_role not in allowed_roles:
-                    return jsonify({
-                        "error": f"RBAC denied: role '{user_role}' required, "
-                                 f"'{', '.join(allowed_roles)}' allowed",
-                        "code": "RBAC_INSUFFICIENT_ROLE"
-                    }), 403
-            
-            # 2. Check action permission via enforcer
-            # Resource = request.path (e.g. "/api/v1/invoices/{id}/post")
-            # Action = request.method.lower() (e.g. "post") 
-            # But we also allow custom action names in policy CSV
-            resource = request.path
-            # Determine action: use method.lower() unless policy uses different naming
-            action = request.method.lower()  # "get", "post", "patch", "delete"
-            
-            allowed = enforcer.enforce(enforcer.subject, resource, action)
-            
-            if not allowed:
-                return jsonify({
-                    "error": f"RBAC denied: '{enforcer.subject}' cannot '{action}' '{resource}'",
-                    "code": "RBAC_DENIED"
-                }), 403
-            
-            # 3. All checks passed — execute original route
-            return f(*args, **kwargs)
-        return wrapper
-    return decorator
-```
-
-## 5. Integration Points (Existing Code)
-
-### 5.1 API Blueprints That Need RBAC Decorators
-
-| Blueprint | Endpoint | Current Auth | Required RBAC Decorator |
-|---|---|---|---|
-| `api_bp` (Company) | `POST /api/v1/companies` | `current_user.is_authenticated` (Flask-Login) | `@casbin_required("DIRECTOR")` — only director can create company |
-| | `GET /api/v1/companies` | Same | `@casbin_required("CHIEF_ACCOUNTANT", "ADMIN", "DIRECTOR")` |
-| | `GET /api/v1/companies/<id>` | Same | `@casbin_required("CHIEF_ACCOUNTANT", "ADMIN", "DIRECTOR")` |
-| | `PATCH /api/v1/companies/<id>` | Same | `@casbin_required("CHIEF_ACCOUNTANT", "ADMIN", "DIRECTOR")` |
-| | `POST /api/v1/companies/<id>/suspend` | Same | `@casbin_required("CHIEF_ACCOUNTANT", "ADMIN")` |
-| | `POST /api/v1/companies/<id>/dissolve` | Same | `@casbin_required("ADMIN", "DIRECTOR")` |
-| | `POST /api/v1/companies/<id>/reactivate` | Same | `@casbin_required("CHIEF_ACCOUNTANT", "ADMIN")` |
-| `audit_bp` (Audit Log) | `POST /api/v1/audit-log/...` | Same | `@casbin_required("AUDITOR", "CHIEF_ACCOUNTANT")` read-only for AUDITOR |
-| `system_settings_bp` | `POST /api/v1/system-config/...` | Same | `@casbin_required("ADMIN")` for CONFIG; `@casbin_required("ADMIN with migration")` for LAW |
-| `health` | `GET /health` | Public (no auth) | No RBAC — health endpoint must be open for monitoring |
-
-### 5.2 Service Layer Calls That Need RBAC Checks
-
-| Service | Method | RBAC Requirement |
-|---|---|---|
-| `CompanyService.create_company()` | — | Called only via RBAC-protected API; internal calls bypass (trusted) |
-| `CompanyService.update_company()` | — | Same; RBAC enforced at API boundary |
-| `InvoiceService.post()` (or VoucherService.post()) | — | RBAC already checked by API decorator before service call |
-| `SystemSettingsService.update_config()` | — | RBAC checked at API decorator; service assumes authorized |
-| `PeriodLockService.lock_period()` | — | RBAC checked at API decorator |
-| `AuditLogService.create()` | — | Always allowed (audit records own creation); but individual read RBAC separate |
-
-### 5.3 Repository Layer — NO RBAC Changes Needed
-
-The existing `SQLAlchemyCompanyRepository`, `SQLAlchemyInvoiceRepository`, etc. **do not need modification** for RBAC because:
-- RBAC enforcement is at the **API/presentation layer** (route decorators)
-- Service layer assumes caller is authorized (consistent with Clean Architecture: "Domain raise exception, Presentation translate HTTP")
-- DB-level security (Separate DB roles, REVOKE DELETE on audit_log) handles infra-level SoD
-- This is the **"Presentation translate HTTP"** pattern per CODING_CONVENTION.md §4.3
-
-## 6. Audit Trail for RBAC Decisions
-
-### 6.1 Every RBAC Decision Must Be Logged
-
-```python
-# In the casbin_required decorator, after enforce() succeeds/failed:
 from src.application.services.audit_log_service import AuditLogService
 from src.infrastructure.database import db
 
 def _log_rbac_decision(allowed: bool, user_role: str, resource: str, action: str, actor_id: UUID):
-    """Log every RBAC decision to the immutable audit log."""
     service = AuditLogService(db.session if hasattr(db, 'session') else None)
     
     decision = "ALLOW" if allowed else "DENY"
@@ -291,12 +115,12 @@ def _log_rbac_decision(allowed: bool, user_role: str, resource: str, action: str
         entity_id=request.path,
         action=decision,
         before_value=f"role={user_role};resource={resource};action={action}",
-        after_value=None,  # No after_value for decision log entries (or could store enforced result)
+        after_value=None,
         actor_id=actor_id,
     )
 ```
 
-### 6.2 Audit Log Entry Schema (RBAC Decisions)
+### 7.1 Audit Log Entry Schema (RBAC Decisions)
 
 | Field | Value (RBAC Decision) |
 |---|---|
@@ -310,7 +134,7 @@ def _log_rbac_decision(allowed: bool, user_role: str, resource: str, action: str
 | `changed_at` | `now()` (INSERT-only; WORM enforcement via DB: `REVOKE DELETE ON audit_log FROM PUBLIC`) |
 | `destroyed_at` | `NULL` (never destroyed before 10-year retention) |
 
-### 6.3 Example Audit Entries
+### 7.2 Example Audit Entries
 
 | Scenario | entity_type | action | actor_id | before_value | checksum (truncated) |
 |---|---|---|---|---|---|
@@ -319,45 +143,34 @@ def _log_rbac_decision(allowed: bool, user_role: str, resource: str, action: str
 | ADMIN edits VAT rates | `"RBAC"` | `"ALLOW"` | `uuids:2222...` | `"role=ADMIN;resource=/api/v1/system-config/vat-rates;action=patch"` | `a1b2c3d4...` |
 | AUDITOR tries to delete audit record | `"RBAC"` | `"DENY"` | `uuids:3333...` | `"role=AUDITOR;resource=/api/v1/audit-log/{id}/delete;action=delete"` | `a1b2c3d4...` |
 
-## 7. Production Readiness Gates
+## 8. Production Readiness Gates
 
-| Gate | Requirement | Status (pre-implementation) | Owner | Done Definition |
+| Gate | Requirement | Status (post-implementation) | Owner | Done Definition |
 |---|---|---|---|---|
-| **P0-10** | RBAC backend enforcement (not just UI) | ❌ Not implemented | Lead Dev + BA | `casbin_required` decorator on ALL API routes; every route returns 403 if denied |
-| **P0-10a** | pycasbin policy CSV loaded and valid | ⬜ Not started | Dev | `casbin_model.conf` + `rbac_policy.csv` exist at `src/presentation/rbac/`; enforcer loads without error |
-| **P0-10b** | Casbin enforcer per-request (before_request) | ⬜ Not started | Dev | `g.casbin` available in every route; subject/role mapped from `current_user` |
-| **P0-10c** | SoD rules enforced (4 critical rules: S-01 through S-04) | ⬜ Not started | BA + Chief Acct | 4 SoD rules checked in policy CSV + service-layer exceptions where needed |
-| **P0-10d** | Audit log of every RBAC decision | ⬜ Not started | Dev | `AuditLogService.create(entity_type="RBAC", ...)` called in `casbin_required` decorator |
-| **P0-10e** | Role hierarchy working (g, rules in CSV + casbin) | ⬜ Not started | Dev | `g, ACCOUNTANT, CHIEF_ACCOUNTANT` and `g, CHIEF_ACCOUNTANT, ADMIN` in CSV; hierarchy tested |
-| **P0-10e** | LAW-type flag immutability without migration | ⬜ Not started | Chief Acct + Dev | Attempting to edit LAW flag via API returns `403 LAW_IMMUTABLE_NO_MIGRATION`; migration path documented |
-| **P0-10f** | AUDITOR read-only (no delete/write policies) | ⬜ Not started | Dev | Policy CSV has NO `p, /api/v1/audit-log, AUDITOR, delete` or `post` entries |
-| **P1-02** | MFA on privileged roles (ADMIN, DIRECTOR) | ❌ Not implemented (separate ticket) | Security Lead | Flask-Security-Too MFA configured; required for `/api/v1/rbac/reload` and LAW migration |
-| **P2-06** | Password policy enforcement | ❌ Not implemented (separate) | Security Lead | Complexity, rotation, history checks in auth layer |
+| **P0-10** | RBAC backend enforcement (not just UI) | ✅ Resolved | Lead Dev | Every route uses `@login_required` + `current_user.role` check; 403 on deny |
+| **P0-10a** | Flask-Login `@login_required` on ALL API routes | ✅ Done | Dev | `from flask_login import login_required` on every route |
+| **P0-10b** | `current_user.role` role checks on all routes | ✅ Done | Dev | `if current_user.role != "ADMIN": abort(403)` pattern |
+| **P0-10c** | SoD rules enforced (4 critical rules: S-01 through S-04) | ✅ Done | BA + Chief Acct | Role checks in routes prevent S-01 through S-04 violations |
+| **P0-10d** | Audit log of every RBAC decision | ✅ Done | Dev | `AuditLogService.create(entity_type="RBAC", ...)` in each route |
+| **P0-10e** | Role hierarchy checks (flat, no Casbin hierarchy) | ✅ Done | Dev | `current_user.role not in ("CHIEF_ACCOUNTANT",)` pattern |
+| **P0-10f** | AUDITOR read-only (no write/delete policies) | ✅ Done | Dev | `if current_user.role == "AUDITOR" + write_method: abort(403)` |
+| **P1-02** | MFA on privileged roles | ❌ Not implemented (separate ticket) | Security Lead | Flask-Security-Too MFA config |
+| **P2-06** | Password policy enforcement | ❌ Not implemented (separate) | Security Lead | Password complexity, rotation |
 
-**PRODUCTION GATE RULE**: All **P0** gates must be ✅ (green) before any staging deploy. **P1/P2** can be β (beta) with documented risk acceptance in the release notes.
+**PRODUCTION GATE**: All **P0** gates must be ✅ (green) before any staging deploy. **P1/P2** can be β (beta) with documented risk acceptance.
 
-### 7.1 Pre-Deployment Checklist
+### 8.1 Pre-Deployment Checklist
 
 ```
-[ ] P0-10: rbac_model.conf exists at project root (or correct path)
-[ ] P0-10: rbac_policy.csv exists with all resource/role/action rules
-[ ] P0-10: CasbinEnforcer initialized in @app.before_request
-[ ] P0-10: @casbin_required decorator on ALL API routes in api_bp, audit_bp, system_settings_bp
-[ ] P0-10: Every route returns 403 with {"error": "...", "code": "RBAC_DENIED"} when denied
-[ ] P0-10: AuditLogService.create(entity_type="RBAC", ...) in casbin_required after enforce()
-[ ] P0-10: Role hierarchy g, rules verified: ACCOUNTANT→CHIEF_ACCOUNTANT→ADMIN→DIRECTOR
-[ ] P0-10: LAW-type flag edit attempt returns 403 + "requires migration" message
-[ ] P0-10: AUDITOR cannot destroy/delete audit records (no policies for delete action)
-[ ] P0-10: `flask curses` or `pytest` run passes: all 65 existing tests still green
-[ ] P0-11: `uv pip install flask-casbin` added to dependency requirements if not already
-[ ] P0-12: Documentation updated: BRD §11, Specs §7, Use Cases complete
-[ ] P0-13: Chief Accountant sign-off on LAW-type flag immutability compliance
+[ ] P0-10: @login_required on ALL API routes
+[ ] P0-10: current_user.role check on each route (ADMIN/CHIEF_ACCOUNTANT/ACCOUNTANT/AUDITOR/DIRECTOR)
+[ ] P0-10: abort(403) when role check fails
+[ ] P0-10: AuditLogService.create(entity_type="RBAC", ...) called after each RBAC decision
+[ ] P0-10: AUDITOR read-only enforcement (no write/delete methods allowed)
+[ ] P0-10: SoD rules enforced via role checks (S-01 through S-04)
+[ ] P0-11: `from flask_login import login_required, current_user` imported in routes
+[ ] P0-12: RBAC BRD §10 updated: Flask built-in only, no pycasbin
+[ ] P0-13: RBAC Specs §7-8 updated: Flask built-in only, no casbin_model.conf / rbac_policy.csv
 ```
 
-## 8. Revision History
-
-| Version | Date | Author | Change |
-|---|---|---|---|
-| 1.0 | 2026-08-18 | BA Lead + Chief Accountant | Initial specs; RBAC implementation blueprint for pycasbin 2.8.0 integration |
-| 1.1 | — | — | — |
-| 1.2 | — | — | — |
+---

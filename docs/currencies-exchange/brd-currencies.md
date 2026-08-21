@@ -72,7 +72,7 @@ no currency concept; all amounts are implicitly VND.
 7. Currency field on Invoice, Voucher, BankAccount; dual-currency amounts (original + VND).
 8. Period-lock integration (revaluation only in unlocked periods).
 9. Audit trail (audit_log) for rate changes and revaluation runs.
-10. RBAC: `@casbin_required` enforcement on all API routes.
+10. RBAC: `@login_required + current_user.role` enforcement on all API routes.
 
 ### Out of scope (v1)
 
@@ -146,7 +146,7 @@ BR-06.1 All rate changes, revaluation runs, config changes SHALL be audit-logged
 (actor, timestamp, old/new, reason).
 BR-06.2 RBAC SHALL enforce: ADMIN/ACCOUNTANT can manage rates; CHIEF_ACCOUNTANT
 approves; AUDITOR read-only.
-BR-06.3 No SQLAlchemy/Flask imports in domain layer (Clean Architecture rule).
+BR-06.3 No SQLAlchemy/Flask imports in domain layer (Lego brick rule).
 
 ## 6. Success criteria
 

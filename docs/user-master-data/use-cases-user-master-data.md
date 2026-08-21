@@ -68,7 +68,7 @@ Personas:
 - **EX-01:** Email already in use → 409 EMAIL_TAKEN (as above)
 - **EX-02:** Invalid role → 400 INVALID_ROLE: "Vai trò không hợp lệ. Chọn: accountant, chief_accountant, admin, auditor, director"
 - **EX-03:** Password policy violation → 422 PASSWORD_WEAK (v2)
-- **EX-04:** Attempt to create user without ADMIN role → 403 RBAC_DENIED (as per @casbin_required)
+- **EX-04:** Attempt to create user without ADMIN role → 403 RBAC_DENIED (as per @login_required + current_user.role check)
 
 ---
 
@@ -179,7 +179,7 @@ Personas:
 
 ### Exception Paths
 
-- **EX-01:** Unauthorized access → 403 RBAC_DENIED (as per @casbin_required)
+- **EX-01:** Unauthorized access → 403 RBAC_DENIED (as per @login_required + current_user.role check)
 
 ---
 

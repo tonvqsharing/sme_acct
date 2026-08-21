@@ -205,7 +205,7 @@ Configure company: (separate Company module workflow)
 WELCOME: System ready for operator onboarding
 ```
 
-**Success criteria:** Admin user exists in `users` table; pycasbin fallback active (or pycasbin initialized); audit_log table operational.
+**Success criteria:** Admin user exists in `users` table; Flask-Login session active; audit_log table operational.
 
 ---
 
@@ -377,7 +377,7 @@ WELCOME: System ready for operator onboarding
 [Step 6] All operators can log in with their credentials
       │
       ▼
-[Step 7] System enforces RBAC via @casbin_required on all API routes
+[Step 7] System enforces RBAC via @login_required + current_user.role on all API routes
       │
       ▼
 [Step 8] Every action logged to audit_log with full trail (who, what, when, checksum)
@@ -398,17 +398,16 @@ END: Fresh deployment complete; user master data operational
       │
       │  Behind the scenes:
       │  1. Flask-Login: current_user.id, current_user.role = "accountant"
-      │  2. @casbin_required("ACCOUNTANT") checks enforcement
-      │  3. enforcer.enforce("accountant-id", request.path, "POST")
-      │  4. If allowed → proceed; if denied → 403 RBAC_DENIED
+      │  2. @login_required + current_user.role == "ACCOUNTANT" check
+      │  3. If allowed → proceed; if denied → 403 RBAC_DENIED
       │
       ▼
 [Step 2] SA navigates to: POST /api/v1/invoices (create invoice)
       │
       │  Behind the scenes:
       │  1. Role=ACCOUNTANT, resource=/api/v1/invoices, action=POST
-      │  2. rbac_policy.csv: p, /api/v1/invoices, ACCOUNTANT → ALLOWED
-      │  3. @casbin_required allows access (fallback enforcer)
+      │  2. current_user.role in ("ACCOUNTANT", "CHIEF_ACCOUNTANT") → ALLOWED
+      │  3. @login_required allows access
       │
       ▼
 [Step 3] SA fills invoice form + submits
@@ -446,17 +445,16 @@ END: Fresh deployment complete; user master data operational
       │
       │  Behind the scenes:
       │  1. current_user.role = "auditor"
-      │  2. @casbin_required("AUDITOR") on /api/v1/audit-log GET
-      │  3. rbac_policy.csv: p, /api/v1/audit-log, AUDITOR → allowed (read-only)
-      │  4. enforcer.enforce() → allowed (read only)
+      │  2. @login_required + current_user.role == "AUDITOR" check on /api/v1/audit-log GET
+      │  3. AUDITOR allowed on GET → allowed (read-only)
       │
       ▼
 [Step 2] AU navigates to: GET /api/v1/audit-log (list all audit entries)
       │
       │  Behind the scenes:
       │  1. Role=AUDITOR, resource=/api/v1/audit-log, action=GET
-      │  2. rbac_policy.csv allows READ for AUDITOR
-      │  3. @casbin_required returns 200 + audit data
+      │  2. current_user.role == "AUDITOR" → allowed (read-only)
+      │  3. @login_required returns 200 + audit data
       │
       ▼
 [Step 3] AU reviews audit log entries for compliance
@@ -466,8 +464,8 @@ END: Fresh deployment complete; user master data operational
       │
       │  Behind the scenes:
       │  1. Role=AUDITOR, resource=/api/v1/audit-log, action=POST
-      │  2. rbac_policy.csv: NO policy for AUDITOR + POST → DENY
-      │  3. @casbin_required returns 403 RBAC_DENIED
+      │  2. current_user.role == "AUDITOR" → DENY (read-only)
+      │  3. @login_required returns 403 RBAC_DENIED
       │    Error: "RBAC denied: role 'AUDITOR' cannot 'post' '/api/v1/audit-log'"
       │
       ▼
@@ -489,7 +487,7 @@ END: Fresh deployment complete; user master data operational
       │
       │  Behind the scenes:
       │  1. current_user.role = "admin" or "director"
-      │  2. @casbin_required checks appropriate allowed_roles
+      │  2. @login_required + current_user.role in allowed_roles check
       │
       ▼
 [Step 2] Admin navigates to: GET /api/v1/users (list all users)

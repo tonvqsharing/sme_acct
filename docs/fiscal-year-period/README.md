@@ -22,7 +22,7 @@ bridge keeps legacy currencies D8 path green.
   `reopen_period` (reason required + SOD self-approval blocked),
   `close_fiscal_year` (all-periods-locked precondition, YEAR_CLOSED +
   opening-balance marker), `is_locked`, `validate_before_entry`.
-- REST: `/api/v1/fiscal-years*`, `/api/v1/periods*` (9 routes, `@casbin_required`,
+- REST: `/api/v1/fiscal-years*`, `/api/v1/periods*` (9 routes, `@login_required + current_user.role`,
   AUDITOR read-only, actor UUID required on mutations).
 - Tests: 80 new (unit entity/enums/service + integration repo/API). Full suite
   green except pre-existing `test_company_api.py` baseline (2 fail, 14 errors).

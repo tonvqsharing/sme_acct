@@ -49,7 +49,7 @@ This module makes fiscal years and period locks a first-class, enforced domain.
 5. Year-end close: close all periods → kết chuyển 911/421 → opening balances
    carry-forward into new fiscal year.
 6. Change of fiscal year: transition period BCTC + "Số đầu năm" opening balances.
-7. REST API + RBAC (`@casbin_required`) + domain service.
+7. REST API + RBAC (`@login_required + current_user.role`) + domain service.
 8. Reopen locked period (restricted, justified, audited) for correcting entries.
 
 ### Out of scope
@@ -122,7 +122,7 @@ immutable (append-only, checksum per audit-log module).
 - **NFR-4 Audit**: all state changes immutable; 10-year retention per
   Luật Kế toán 2015 (mirror audit-log module).
 - **NFR-5 Security**: enforcement in service layer, NOT only UI/templates;
-  REST routes behind `@casbin_required`.
+  REST routes behind `@login_required + current_user.role`.
 - **NFR-6 Data**: dates as `date`, amounts `Decimal`, UUID PKs for rows that
   need external references.
 

@@ -9,14 +9,14 @@ The Currencies & Exchange Rates module is fully implemented end-to-end per TDD:
 domain entities + rules + unit tests → models + migration → repository adapters
 → services → API + RBAC → import/reporting. All G1–G5 gates are green.
 
-Current codebase (Flask + Clean Architecture, src/) — verified implemented:
-- ✅ `Currency` entity in `src/domain/entities/currency.py` (Currency, ExchangeRate, RevaluationRun, FXDifference, RevaluationEntry)
+Current codebase (Flask + Lego Brick, src/bricks/currencies/) — verified implemented:
+- ✅ `Currency` entity in `src/bricks/currencies/domain.py` (Currency, ExchangeRate, RevaluationRun, FXDifference, RevaluationEntry)
 - ✅ `ExchangeRateService` with booking rate resolution (R1, D5: weighted avg) and CSV import (atomic all-or-nothing)
 - ✅ `RevaluationService` with period-end revaluation (D6 balance tol 0.01, D7 idempotent re-run, D8 period-lock guard, D9 self-approval block)
-- ✅ Currency tables in `src/infrastructure/database/models.py` (CurrencyModel, ExchangeRateModel, RevaluationRunModel, RevaluationEntryModel, FXDifferenceModel)
+- ✅ Currency tables in `src/bricks/currencies/storage.py` (CurrencyModel, ExchangeRateModel, RevaluationRunModel, RevaluationEntryModel, FXDifferenceModel)
 - ✅ Currency columns on InvoiceModel, VoucherModel, BankAccountModel (currency_code FK, amount_original, amount_vnd, fx_rate, fx_rate_type)
 - ✅ FX flags in CompanyConfig (base_currency, fx_rate_source, fx_revaluation_account, fx_gain_account, fx_loss_account, etc.)
-- ✅ 12 FX API endpoints in `currencies_bp.py` (@casbin_required; actor UUID required on mutations; AUDITOR read-only)
+- ✅ 12 FX API endpoints in `currencies_bp.py` (@login_required + current_user.role; actor UUID required on mutations; AUDITOR read-only)
 - ✅ 80 passing tests (unit + integration; pre-existing company API errors untouched)
 - ✅ Decimal(18,6) rates, Decimal(18,2) VND amounts; currency context preserved
 

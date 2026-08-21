@@ -64,7 +64,7 @@ Adopt the following design for v1 (specified in `docs/currencies-exchange/`):
 5. **Persistence**: SQLAlchemy 2.0 models (`currencies`, `exchange_rates`,
    `revaluation_runs`, `revaluation_entries`, `fx_differences`) + flask-migrate.
 
-6. **API + RBAC**: REST blueprint `currencies_bp.py`; every route `@casbin_required(...)`;
+6. **API + RBAC**: REST blueprint `currencies_bp.py`; every route `@login_required + current_user.role` check (Flask built-in);
    AUDITOR read-only; actor UUID required on all mutations; audit_log wiring.
 
 7. **Rate sources**: MANUAL + CSV import in v1; NHNN sync (provider pattern) v1.5 —

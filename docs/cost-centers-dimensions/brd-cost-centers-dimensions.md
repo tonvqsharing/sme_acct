@@ -76,7 +76,7 @@ The Cost Centers & Dimensions module enables analytical accounting for Vietnames
 - [x] Uniqueness per company per dimension
 - [x] REST API endpoints (13 endpoints)
 - [x] 7 CLI commands (manage.py)
-- [x] CASRBAC role-based enforcement (@casbin_required)
+- [x] Flask built-in role-based enforcement (@login_required + current_user.role)
 - [x] AUDITOR read-only restriction on writes
 
 ### 3.2 Out of Scope (v2)
@@ -145,9 +145,9 @@ CostCenter and Dimension are independent aggregates:
 ### 5.4 Actor & Audit Rules (D11)
 | Rule ID | Rule Description | Enforcement |
 |---------|-----------------|-------------|
-| D11-001 | Every mutation must include actor UUID | @casbin_required + service layer validation |
+| D11-001 | Every mutation must include actor UUID | @login_required + current_user.role check + service layer validation |
 | D11-002 | Every mutation must include reason string | Service method signature (reason parameter) |
-| D11-003 | AUDITOR role is read-only on writes | @casbin_required decorator restricts AUDITOR |
+| D11-003 | AUDITOR role is read-only on writes | @login_required + current_user.role check restricts AUDITOR |
 | D11-004 | Audit log entries chained via SHA-256 | Mirrors audit-log module pattern |
 | D11-005 | 10-year retention per Law on Accounting 2015 | Soft-delete + retention-status endpoint |
 
@@ -421,6 +421,6 @@ Request (id + actor + reason) → Service check (status transition valid) → Do
 - Circular 133/2016/TT-BTC (Chi phí trung tâm và quy đổi chi phí)
 - Circular 200/2014/TT-BTC (Kế toán phí và chi phí)
 - Vietnamese Chart of Accounts TT 99/2025/TT-BTC (effective 01/01/2026)
-- SME Accounting Application Codebase: src/domain/entities/cost_center.py
-- Audit Log Module: src/application/services/audit_log_service.py
-- CASRBAC Enforcement: src/presentation/rbac.py
+- SME Accounting Application Codebase: src/bricks/cost_centers/domain.py
+- Audit Log Module: src/bricks/audit_log/services.py
+- RBAC: Flask-Login `@login_required` + `current_user.role` checks

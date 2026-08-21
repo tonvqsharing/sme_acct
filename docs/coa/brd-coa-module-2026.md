@@ -5,7 +5,7 @@
 **Date:** 2026-08-18  
 **Prepared by:** BA Lead (20+ years experience) & Chief Accountant (20+ years experience)  
 **Alignment:** Circular 99/2025/TT-BTC (effective 01/01/2026), Circular 200/2014/TT-BTC, Circular 133/2016/TT-BTC  
-**Codebase:** Flask + Clean Architecture, src/domain/entities/, src/infrastructure/database/models.py
+**Codebase:** Flask + Lego Brick (`src/bricks/coa/`) with pure Python domain, port interfaces, SQLAlchemy storage adapters, and Flask blueprint adapters
 
 ---
 
@@ -122,7 +122,7 @@ The COA module is a core financial management component that:
 | ID | Requirement | Priority |
 |---|---|---|
 | **FR-14** | All COA changes logged: `account_id`, `old_code`, `new_code`, `old_name`, `new_name`, `changed_by` (UUID), `changed_at` (UTC), `reason`; immutable via SHA-256 checksum chain | Must |
-| **FR-15** | COA change requires Chief Accountant role (`@casbin_required(*FY_ADMIN_ROLES)` pattern) + written reason; reason stored in audit log | Must |
+| **FR-15** | COA change requires Chief Accountant role (`@login_required + current_user.role in FY_ADMIN_ROLES` pattern) + written reason; reason stored in audit log | Must |
 | **FR-16** | System shall prevent deletion of accounts with existing voucher history; archive account (status=Closed) instead | Must |
 | **FR-17** | Support COA versioning: each COA change creates a new version; prior version retained for audit 10-year retention per Law on Accounting | Should |
 
@@ -133,7 +133,7 @@ The COA module is a core financial management component that:
 | Requirement | Detail |
 |---|---|
 | **Performance** | COA lookup by code: ≤50ms; list by company: ≤200ms for typical SME (≤200 accounts) |
-| **Security** | Domain layer MUST stay free of sqlalchemy/web imports; COA entities free of Flask/SQLAlchemy; `@casbin_required` on all COA routes; AUDITOR read-only |
+| **Security** | Domain layer MUST stay free of sqlalchemy/web imports; COA entities free of Flask/SQLAlchemy; `@login_required + current_user.role` on all COA routes; AUDITOR read-only |
 | **Data Integrity** | Account code uniqueness per company; no orphan accounts (every account belongs to a category); referential integrity with vouchers |
 | **Extensibility** | New account tags addable without code change via admin UI + IGAP documentation; VAT rates configurable per enterprise regime |
 | **Compatibility** | TT99 compliant out-of-box; TT200/TT133 import supported; IFRS convergence roadmap (v2.1) |
@@ -298,7 +298,7 @@ The COA module is a core financial management component that:
 
 **Step-by-step:**
 
-1. **Login** as Chief Accountant → role check `@casbin_required(*FY_ADMIN_ROLES)`
+1. **Login** as Chief Accountant → role check `@login_required + current_user.role in FY_ADMIN_ROLES`
 2. **Navigate** to COA Manager → system shows empty COA or TT99 default template
 3. **Select regime:** TT99 (recommended) or TT200/TT133 (legacy)
 4. **Import COA** (if legacy): upload TT200/TT133 XML → system maps accounts; for each: code, name, category, VAT rate, tags → review import summary → approve
@@ -312,7 +312,7 @@ The COA module is a core financial management component that:
 
 ### 11.2 Accountant: Daily Voucher Entry
 
-1. **Login** as Accountant → role check (`@casbin_required(*READ_ROLES)` + voucher-type specific)
+1. **Login** as Accountant → role check (`@login_required + current_user.role in READ_ROLES` + voucher-type specific)
 2. **Create Voucher** → system presents COA dropdown per account code
 3. **Account Selection:** Account must be Active; if Closed → system blocks selection with message: "Account closed; select active account or reopen"
 4. **VAT Rate:** System auto-selects VAT rate based on account mapping; accountant can override with reason (audited)
@@ -383,7 +383,7 @@ The COA module is a core financial management component that:
 | **Audit Trail Completeness** | 100% of COA changes have audit event with SHA-256 checksum | Automated test: mutate account → verify log entry |
 | **Import Success Rate** | TT99 import: ≥95% accounts created successfully; duplicates skipped with log | Test import of sample TT99 template |
 | **Performance** | COA list by company: ≤200ms for ≤200 accounts; account lookup by code: ≤50ms | Load test with 500 accounts |
-| **Security** | No SQL injection via account code; no unauthorized COA modification; `@casbin_required` enforced | Pentest + code review |
+| **Security** | No SQL injection via account code; no unauthorized COA modification; `@login_required + current_user.role` enforced | Pentest + code review |
 | **Usability** | Chief Accountant can complete initial COA setup within 2 hours (new company) | UAT with target user |
 
 ---
@@ -413,7 +413,7 @@ The COA module is a core financial management component that:
 
 ---
 
-**Next Step:** Upon BRD approval, proceed to Technical Specifications (specs-tdd.md) detailing domain entities, repository ports, service layer, REST API blueprint, database migration, and test plan. All domain code must stay free of sqlalchemy/web imports (per Clean Architecture rules).
+**Next Step:** Upon BRD approval, proceed to Technical Specifications (specs-tdd.md) detailing domain entities, repository ports, service layer, REST API blueprint, database migration, and test plan. All domain code must stay free of sqlalchemy/web imports (per Lego brick rules).
 
 **Reference Materials (read alongside):**
 - `docs/fiscal-year-period/` — already implemented FY module (patterns to reuse)

@@ -68,7 +68,7 @@
 | R-10 | Entries in locked periods are immutable; corrections happen in current period (or reopen per R-06 with justification). |
 | R-11 | Actor UUID required on every mutation (D11 pattern from currencies). |
 | R-12 | Change of fiscal year requires: existing years closed → create transition period (per A2/A4) → opening balances move to "Số đầu năm". |
-| R-13 | Enforcement in service layer (backend), not only UI; REST routes guarded by `@casbin_required`. |
+| R-13 | Enforcement in service layer (backend), not only UI; REST routes guarded by `@login_required + current_user.role`. |
 | R-14 | Money = Decimal; dates = `date` (period boundaries local ICT). |
 | R-15 | `FISCAL_15` (15-month period starting 15/07) is ILLEGAL — deprecated, migration required. |
 

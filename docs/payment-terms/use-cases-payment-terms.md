@@ -238,7 +238,7 @@ This document captures all Use Cases (UC) for the Payment Terms & Document Numbe
 | **Title** | AUDITOR role attempting mutation operation |
 | **Actor** | AUDITOR user |
 | **Preconditions** | AUDITOR- authenticated user tries to create/update payment term or series |
-| **Basic Flow** | 1. AUDITOR sends POST/PATCH request to mutation endpoint<br>2. @casbin_required(ACCOUNTANT, CHIEF_ACCOUNTANT, ADMIN, DIRECTOR) decorator checks roles<br>3. AUDITOR not in allowed roles → Access denied<br>4. Return 403 AUDITOR_READ_ONLY<br>5. Response: `{"error": "AUDITOR chỉ đọc", "code": "AUDITOR_READ_ONLY"}`<br>6. Use case ends; mutation blocked |
+| **Basic Flow** | 1. AUDITOR sends POST/PATCH request to mutation endpoint<br>2. @login_required + current_user.role check: if role == 'AUDITOR' → deny<br>3. AUDITOR not in allowed roles → Access denied<br>4. Return 403 AUDITOR_READ_ONLY<br>5. Response: `{"error": "AUDITOR chỉ đọc", "code": "AUDITOR_READ_ONLY"}`<br>6. Use case ends; mutation blocked |
 | **Alternative Flows** | N/A |
 | **Exception Guarantees** | AUDITOR role strictly read-only; cannot mutate any payment terms or numbering series |
 | **Postconditions** | 403 returned; mutation blocked; attempt logged in audit_log with AUDITOR_ACCESS_DENIED event |

@@ -18,13 +18,13 @@ All G1–G5 gates are green as of 2026-08-19.
 
 | Check | Result |
 |---|---|
-| Currency entity in `src/domain/entities/currency.py` | ✅ IMPLEMENTED (Currency, ExchangeRate, RevaluationRun, FXDifference, RevaluationEntry) |
+| Currency entity in `src/bricks/currencies/domain.py` | ✅ IMPLEMENTED (Currency, ExchangeRate, RevaluationRun, FXDifference, RevaluationEntry) |
 | ExchangeRate entity | ✅ IMPLEMENTED (rate_type enum, source, actor, created_at, unique constraint) |
-| FX service (`application/services/`) | ✅ IMPLEMENTED (CurrencyService, ExchangeRateService, RevaluationService) |
-| Currency tables in `src/infrastructure/database/models.py` | ✅ IMPLEMENTED (CurrencyModel, ExchangeRateModel, RevaluationRunModel, RevaluationEntryModel, FXDifferenceModel) |
+| FX service (`src/bricks/currencies/services.py`) | ✅ IMPLEMENTED (CurrencyService, ExchangeRateService, RevaluationService) |
+| Currency tables in `src/bricks/currencies/storage.py` | ✅ IMPLEMENTED (CurrencyModel, ExchangeRateModel, RevaluationRunModel, RevaluationEntryModel, FXDifferenceModel) |
 | Currency column on Invoice/Voucher/BankAccount | ✅ IMPLEMENTED (currency_code FK, amount_original, amount_vnd, fx_rate, fx_rate_type) |
 | FX flags in CompanyConfig | ✅ IMPLEMENTED (base_currency, fx_rate_source, fx_revaluation_account, fx_gain_account, fx_loss_account, etc.) |
-| FX API routes | ✅ IMPLEMENTED (12 endpoints in currencies_bp.py; @casbin_required; actor UUID) |
+| FX API routes | ✅ IMPLEMENTED (12 endpoints in currencies_bp.py; @login_required + current_user.role; actor UUID) |
 | FX tests | ✅ 80 PASSING (unit + integration; pre-existing company API errors untouched) |
 | Money handling | ✅ Decimal(18,6) rates, Decimal(18,2) VND amounts; currency context preserved |
 
@@ -53,7 +53,7 @@ All G1–G5 gates are green as of 2026-08-19.
 5. Period-end revaluation: DRAFT → APPROVE → POST; idempotent re-run; balanced postings. ✅
 6. FX difference report + rate history report. ✅
 7. Period-lock integration; approval chain (CHIEF_ACCOUNTANT 2nd approval). ✅
-8. Audit log on every mutation; RBAC `@casbin_required` on all routes; AUDITOR read-only. ✅
+8. Audit log on every mutation; RBAC `@login_required + current_user.role` on all routes; AUDITOR read-only. ✅
 
 ### 3.3 Architecture (all verified per AGENTS.md / CODING_CONVENTION)
 
@@ -76,15 +76,15 @@ All capabilities are implemented. No remaining gaps for v1.
 | Rate changes after post → audit failure | ✅ MITIGATED | D3 immutability; new row supersedes; old rate locked (RateLockedError) |
 | Revaluation in locked period | ✅ MITIGATED | D8 period-lock guard → PeriodLockedError raised |
 | Non-compliance ND 254/2026 e-invoice FX | ✅ MITIGATED | R5: tỷ giá quy đổi captured on FX invoice; field mandatory on FX invoices |
-| Unauthorized revaluation posting | ✅ MITIGATED | D9 approval chain + RBAC @casbin enforced backend |
+| Unauthorized revaluation posting | ✅ MITIGATED | D9 approval chain + RBAC @login_required enforced backend |
 | NHNN source unavailable (v1.5) | ✅ MITIGATED | manual fallback; CSV import working; v1.5 optional |
 | Multi-company consolidation | ✅ MITIGATED | blocked per AGENTS.md; out of scope v1 (tenant isolation pending) |
 
 ## 6. Compliance checklist (all ✅ verified 2026-08-19)
 
-- [x] No SQLAlchemy/Flask imports in `src/domain/`.
-- [x] Enums synced domain + models.
-- [x] `@casbin_required` on all FX API routes; AUDITOR read-only backend-enforced.
+- [x] No SQLAlchemy/Flask imports in `src/bricks/currencies/domain.py`.
+- [x] Enums synced domain + storage.
+- [x] `@login_required + current_user.role` on all FX API routes; AUDITOR read-only backend-enforced.
 - [x] Tests: unit (domain rules) + integration (repo/API); no UI-level for pure logic.
 - [x] pytest green: 80 pass + 0 new failures (2 pre-existing company API errors untouched).
 - [x] Migration applied + tested on sqlite (default).

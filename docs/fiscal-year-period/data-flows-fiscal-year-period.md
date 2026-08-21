@@ -6,7 +6,7 @@
 Client (UI/API)
    │ POST /api/vouchers | /api/invoices | revaluation run | FX import
    ▼
-[Route] @casbin_required(roles)
+[Route] @login_required + current_user.role(roles)
    ▼
 [Service layer]  VoucherService.post / InvoiceService / RevaluationService
    │

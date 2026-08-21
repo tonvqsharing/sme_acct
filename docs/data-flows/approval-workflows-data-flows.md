@@ -55,7 +55,7 @@
 | invoice_amount | UI/Invoice creation | Threshold Service | Determine which band |
 | company_id | User session / context | Threshold Service | Look up company config |
 | threshold_band (T1-T5) | Threshold Service | Approval Router | Which approver role |
-| approver_role (MANAGER/CA/DIRECTOR/ADMIN) | Threshold Service | RBAC Decorator (@casbin_required) | Authorization check |
+| approver_role (MANAGER/CA/DIRECTOR/ADMIN) | Threshold Service | RBAC Check (@login_required + current_user.role) | Authorization check |
 | po_matched boolean | Invoice lines / UI | Threshold Service | Auto-approval condition |
 | splitting_detection_flag | System algorithm | Splitting Service | Pattern detection |
 | delegation_status | Approval Delegations table | Approval Router | Override delegator if applicable |
@@ -71,7 +71,7 @@
 5. Threshold Service returns: {band: "T2", approver: "MANAGER", auto_approve: false}
 6. Approval Router sends notification to manager via RBAC-enforced endpoint
 7. Manager receives notification, clicks "Approve" in UI
-8. @casbin_required('MANAGER') decorator validates manager role
+8. @login_required + current_user.role == "MANAGER" check validates manager role
 9. Invoice.approve() called → status DRAFT → APPROVED, updated_at=timestamp
 10. Audit Log Model created: entity_type="invoice", entity_id=<id>, action="approve", approver="MANAGER", amount=3500, timestamp
 11. Invoice now APPROVED → proceeds to payment run
@@ -153,7 +153,7 @@
 3. Deputy chief accountant acts:
    - Deputy logs in → sees "5 pending approvals (on behalf of CA)"
    - Deputy clicks "Approve" on invoice
-   - @casbin_required('CHIEF_ACCOUNTANT') but delegation flag present
+   - @login_required + current_user.role == "CHIEF_ACCOUNTANT" check but delegation flag present
    - System: "approve on behalf of delegator, record in audit"
 
 4. Audit Log entries:
@@ -279,8 +279,8 @@ The existing `invoices` table already has `status` column with values including 
 
 | Endpoint | Method | Description | Auth |
 |----------|--------|-------------|------|
-| `POST /invoices` | Create invoice | Creates invoice in DRAFT, triggers threshold check | `@casbin_required` (per role) |
-| `POST /invoices/{id}/approve` | Approve invoice | Performs approval with threshold/RBAC check | `@casbin_required('MANAGER'/'CHIEF_ACCOUNTANT'/'DIRECTOR'/'ADMIN')` |
+| `POST /invoices` | Create invoice | Creates invoice in DRAFT, triggers threshold check | `@login_required + current_user.role` (per role) |
+| `POST /invoices/{id}/approve` | Approve invoice | Performs approval with threshold/RBAC check | `@login_required + current_user.role in ("MANAGER", "CHIEF_ACCOUNTANT", "DIRECTOR", "ADMIN")` |
 | `GET /system-settings/thresholds` | Get current thresholds | Returns company's threshold matrix | Admin |
 | `PUT /system-settings/thresholds` | Update thresholds | Proposes new threshold config | Admin + 2nd approval (CA) |
 | `POST /approval/delegations` | Set delegation | Records delegation of authority | Chief Accountant |
@@ -288,22 +288,22 @@ The existing `invoices` table already has `status` column with values including 
 
 ### Integration with Existing Code
 
-1. **Invoice.approve()** (src/domain/entities/invoice.py:117-121):
+1. **Invoice.approve()** (cross-brick reference via contract.py):
    - Currently: checks status ≠ DRAFT → ValueError, then status = APPROVED
    - Enhanced: add threshold check before status change
    - If amount under T1 with PO → auto-approved
    - If amount in T2-T5 → route to appropriate approver via RBAC
    - If splitting detected → route to chief accountant
 
-2. **SystemSettingsService.update_config()** (src/application/services/system_settings_service.py):
+2. **SystemSettingsService.update_config()** (src/bricks/system_settings/services.py):
    - Currently: performs setattr directly, no LAW/2nd approval check
    - Enhanced: add CONFIG-type 2nd approval enforcement
    - Add LAW-type FlagLockedError for threshold changes
    - Increment config_version, emit audit events
 
-3. **@casbin_required decorator** (existing RBAC):
+3. **@login_required + current_user.role check** (Flask built-in RBAC):
    - Already on 8 API routes
-   - Enhanced: add threshold band checking within decorator or wrapper
+   - Enhanced: add threshold band checking within route handler
    - Role hierarchy: ACCOUNTANT → CHIEF_ACCOUNTANT → ADMIN → DIRECTOR maintained
 
 4. **Audit logging** (SystemAuditLogModel):
@@ -329,7 +329,7 @@ The existing `invoices` table already has `status` column with values including 
 ### BACKWARD COMPATIBILITY
 
 - Existing invoices: status field unchanged, approval workflow applies only to new DRAFT invoices
-- Existing API routes: `@casbin_required` decorators unchanged, enhanced with threshold checking internally
+- Existing API routes: `@login_required + current_user.role` checks unchanged, enhanced with threshold checking internally
 - Existing tests: 92 passing tests unchanged; 2 pre-existing failures (Python 3.13 UUID), 14 pre-existing errors (SQLAlchemy session) unaffected
 - New functionality opt-in: companies can use defaults or configure; no forced upgrade
 

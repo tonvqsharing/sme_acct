@@ -113,7 +113,7 @@
 ✅ **All 50 unit tests pass**: No regressions introduced  
 ✅ **Migration backward-compatible**: Existing integration tests unaffected (78 pass, 2 fail pre-existing)  
 ✅ **Domain-driven design**: Domain layer completely free of SQLAlchemy/web imports  
-✅ **Enums synced**: Between `src/domain/entities/base.py` and SQLAlchemy models (via string-based SQLEnum)  
+✅ **Enums synced**: Between `src/bricks/system_settings/domain.py` and SQLAlchemy models (via string-based SQLEnum)  
 ✅ **Exception hierarchy**: 6 new SystemSettings exceptions properly exported  
 
 ---

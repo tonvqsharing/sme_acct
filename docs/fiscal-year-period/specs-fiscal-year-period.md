@@ -2,15 +2,34 @@
 
 ## 1. Overview
 
-Extend Clean Architecture with a real fiscal-year/period domain. Replace the
+Extend Lego Brick architecture with a real fiscal-year/period domain. Replace the
 stub `PeriodLockService`, rebuild `period_locks` table, add `FiscalYear` /
 `AccountingPeriod` entities, enforcement hooks on posting services, and a REST
 API following the currencies-blueprint pattern (test-engine hooks,
-`@casbin_required`, `_req_session`).
+`@login_required + current_user.role`, `_req_session`).
 
-## 2. Domain layer (`src/domain/`)
+## 2. Brick Position
 
-### 2.1 Enums (extend `src/domain/entities/base.py`)
+```
+src/bricks/
+  fiscal_year_period/          ← 🧱 NEW brick
+    contract.py                ← 🔌 Public interface (FiscalYearCode, PeriodCode, primitive IDs only)
+    domain.py                  ← 🎯 FiscalYear, AccountingPeriod, PeriodLock entities (pure Python)
+    services.py                ← ⚙️ FiscalYearService, PeriodLockService
+    storage.py                 ← 💾 SQLAlchemy models + repository adapters
+    web_adapter.py             ← 🌐 Flask blueprint + REST endpoints (fiscal_year_bp)
+```
+
+**Brick boundaries:**
+- `domain.py` — pure Python; NO Flask, NO SQLAlchemy, NO flask_login imports
+- `contract.py` — public interface; accepts/returns only `str`, `int`, `float`, `dict`, `Decimal`, `UUID`
+- `storage.py` — SQLAlchemy models + repo adapters (the ONLY file with SQLAlchemy imports)
+- `services.py` — orchestration with injected port; no Flask/SQLAlchemy imports
+- `web_adapter.py` — Flask blueprint; `@login_required` + `current_user.role` checks (no Casbin)
+
+## 3. Domain layer (`src/bricks/fiscal_year_period/domain.py`)
+
+### 3.1 Enums (extend `src/bricks/fiscal_year_period/domain.py`)
 
 Replace the current `AccountingPeriodType` (has illegal `FISCAL_15`):
 
@@ -42,9 +61,9 @@ class LockScope(Enum):
     JOURNAL = "JOURNAL"      # per-journal lock (enhancement, Tryton parity)
 ```
 
-Mirror all three in `src/infrastructure/database/models.py` (duplication rule).
+Mirror all three in `src/bricks/fiscal_year_period/storage.py` (duplication rule).
 
-### 2.2 Entities
+### 3.2 Entities
 
 `FiscalYear` (aggregate root):
 - `id: UUID`, `company_id: UUID`, `year_code: str` (e.g. `"2026"`, `"FY2026"`),
@@ -66,7 +85,7 @@ Mirror all three in `src/infrastructure/database/models.py` (duplication rule).
   `approved_by`, `requested_at`, `approved_at`, `reason`, `approval_ref`,
   `checksum` (SHA-256 chain, audit-log parity).
 
-### 2.3 Exceptions (extend `src/domain/exceptions/__init__.py`)
+### 3.3 Exceptions (in `src/bricks/fiscal_year_period/domain.py`)
 - `PeriodLockedError(period_id, date)` — posting into locked period.
 - `InvalidFiscalYearError` — non-quarter-aligned start, wrong length.
 - `PeriodNotClosableError` — open entries / prerequisites missing.
@@ -75,9 +94,9 @@ Mirror all three in `src/infrastructure/database/models.py` (duplication rule).
 - `PeriodTransitionError` — illegal state transition.
 - `FiscalYearExistsError` — duplicate year_code.
 
-## 3. Application layer (`src/application/`)
+## 4. Services layer (`src/bricks/fiscal_year_period/services.py`)
 
-### 3.1 Ports (`src/application/ports/__init__.py`)
+### 4.1 FiscalYearService
 
 ```python
 class FiscalYearRepositoryPort(Protocol):
@@ -94,7 +113,7 @@ class PeriodLockRepositoryPort(Protocol):
     def history(self, period_id: UUID) -> list[PeriodLockEvent]: ...
 ```
 
-### 3.2 Services (`src/application/services/period_lock_service.py` — full rewrite)
+### 4.2 PeriodLockService (full rewrite)
 
 - `is_locked(company_id, entry_date) -> bool`
 - `validate_before_entry(company_id, entry_date, actor)` — raises
@@ -116,7 +135,7 @@ class PeriodLockRepositoryPort(Protocol):
 - Remove the `SystemSettingsService.lock_period/unlock_period` duplicate —
   route through this service (or keep as thin delegators).
 
-### 3.3 Enforcement integration
+### 4.3 Enforcement integration
 
 | Caller | Hook |
 |---|---|
@@ -126,9 +145,9 @@ class PeriodLockRepositoryPort(Protocol):
 | `ExchangeRateService` CSV import | validate each row date before bulk insert |
 | `CompanyService` (dissolve) | require current period state consistent with dissolution (A1) |
 
-## 4. Infrastructure (`src/infrastructure/`)
+## 5. Storage layer (`src/bricks/fiscal_year_period/storage.py`)
 
-### 4.1 Models — rebuild `period_locks` (currently `PeriodLockModel`, models.py:301)
+### 5.1 Models — rebuild `period_locks` (currently `PeriodLockModel`)
 
 ```python
 class FiscalYearModel(Base):
@@ -179,23 +198,22 @@ class PeriodLockEventModel(Base):
 
 Drop/replace the old `period_locks` table via migration (`flask db migrate`).
 
-### 4.2 Repository adapter
-- New file `src/infrastructure/repositories/fiscal_year_repo.py` (separate file,
-  mirroring `currency_repo.py` pattern) with `SQLAlchemyFiscalYearRepository`
+### 5.2 Repository adapter
+- New file `src/bricks/fiscal_year_period/storage.py` with `SQLAlchemyFiscalYearRepository`
   + `SQLAlchemyPeriodLockRepository`.
 - `is_locked`: single overlap query against `accounting_periods`
-  (`status != 'OPEN'`), same shape as `currency_repo.period_is_locked()` (line ~203).
+  (`status != 'OPEN'`), same shape as `currency_repo.period_is_locked()`.
 
-### 4.3 Migration
+### 5.3 Migration
 - New migration: create `fiscal_years`, `accounting_periods`,
   `period_lock_events`; migrate legacy `period_locks` rows (map to
   `accounting_periods.status`); seed default fiscal year per existing company
   (CALENDAR 2026) + 12 periods; data-fix any `FISCAL_15` config → require
   admin confirmation.
 
-## 5. REST API (`src/presentation/api/fiscal_year_bp.py`)
+## 6. REST API (`src/bricks/fiscal_year_period/web_adapter.py`)
 
-Register in `app.py`; `@casbin_required` on all; AUDITOR read-only.
+Register in `app.py`; `@login_required + current_user.role` on all; AUDITOR read-only.
 Copy test-engine hook pattern from `currencies_bp.py` (init_test_engine /
 `_req_session` / teardown session restore).
 

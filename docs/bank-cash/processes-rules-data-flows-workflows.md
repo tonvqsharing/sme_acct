@@ -116,12 +116,12 @@ Legend:
 | **R-003** | Bank account account_number must be unique per company | DB unique constraint + service validation | 409 DUPLICATE_ACCOUNT_NUMBER |
 | **R-004** | All mutations require actor UUID (D11) in request body | API decorator + service layer entry check | 400 MISSING_ACTOR |
 | **R-005** | All mutations require non-empty reason string | API decorator + service layer validation | 400 MISSING_REASON |
-| **R-006** | AUDITOR role is read-only; cannot create/update/delete bank/cash | @casbin_required + service layer role check | 403 AUDITOR_READ_ONLY |
+| **R-006** | AUDITOR role is read-only; cannot create/update/delete bank/cash | @login_required + current_user.role + service layer role check | 403 AUDITOR_READ_ONLY |
 | **R-007** | System accounts (is_system=TRUE) cannot be modified or deleted | CompanyConfig.check_system_account() | 403 SYSTEM_ACCOUNT_MODIFICATION_ERROR |
 | **R-008** | Bank reconciliation must balance within tolerance 0.01 | BankReconciliation.is_balanced(tolerance=0.01) | 409 RECONCILIATION_IMBALANCED |
 | **R-009** | 10-year retention: no automatic deletion, soft-close only | Service layer + audit log policy | N/A (retention policy) |
 | **R-010** | SHA-256 checksum chaining on all bank/cash/reconciliation events | Service layer append_checksum() | N/A (audit integrity) |
-| **R-011** | SOD (Separation of Duties): closure/primary change requires 2 actors | Service layer + @casbin_required roles | 403 SOD_VIOLATION (same actor both roles) |
+| **R-011** | SOD (Separation of Duties): closure/primary change requires 2 actors | Service layer + @login_required + current_user.role | 403 SOD_VIOLATION (same actor both roles) |
 | **R-012** | Currency on bank account must be valid ISO 4217 code ^[A-Z]{3}$ | Service layer validation | 422 INVALID_CURRENCY_CODE |
 | **R-013** | Period locked prevents new reconciliations (FY integration) | PeriodLockService.check_fiscal_year_lock() | 409 PERIOD_LOCKED_ERROR |
 | **R-014** | Cash balance cannot go negative without chief accountant approval | CashAccountService.validate_negative_balance() | 422 INSUFFICIENT_BALANCE |
@@ -136,8 +136,8 @@ Legend:
 ```
 ┌──────────────────┐     POST     ┌─────────────────────┐
 │  User Interface  │ ───────────▶ │  Flask API Layer    │
-│  (HTMX + Bulma)    │            │  @casbin_required   │
-└──────────────────┘            │  _require_actor()  │
+│  (HTMX + Bulma)    │            │  @login_required    │
+└──────────────────┘            │  current_user.role  │
                               └─────────────────────┘
                                         │
                                         ▼
@@ -189,8 +189,8 @@ Legend:
 ```
 ┌──────────────────┐     POST     ┌─────────────────────┐
 │  User Interface  │ ───────────▶ │  Flask API Layer    │
-│  (HTMX + Bulma)    │            │  @casbin_required   │
-└──────────────────┘            │  _require_actor()  │
+│  (HTMX + Bulma)    │            │  @login_required    │
+└──────────────────┘            │  current_user.role  │
                               └─────────────────────┘
                                         │
                                         ▼
@@ -238,8 +238,8 @@ Legend:
 ```
 ┌──────────────────┐     POST     ┌─────────────────────┐
 │  User Interface  │ ───────────▶ │  Flask API Layer    │
-│  (HTMX + Bulma)    │            │  @casbin_required   │
-└──────────────────┘            │  _require_actor()  │
+│  (HTMX + Bulma)    │            │  @login_required    │
+└──────────────────┘            │  current_user.role  │
                               └─────────────────────┘
                                         │
                                         ▼
@@ -438,7 +438,7 @@ START
 │                                                                 │
 │  Integrations:                                                    │
 │  ├─ AuditLogService (append_event, get_retention_status)         │
-│  ├─ CASRBAC ( @casbin_required )                                  │
+│  ├─ RBAC ( @login_required + current_user.role )                 │
 │  ├─ PeriodLockService (period status checks)                     │
 │  ├─ CurrencyService (ISO 4217 validation)                        │
 │  └─ CompanyService (company existence FK checks)                 │

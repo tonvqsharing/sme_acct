@@ -32,9 +32,9 @@ Current state: **NO Company entity exists in database. NO company_id FK on any f
 ## Gap Analysis by Domain
 
 ### Domain Layer
-- [ ] No `Company` entity (`src/domain/entities/company.py` missing)
-- [ ] No `CompanyStatus` enum in `base.py`
-- [ ] No `CompanyType` enum in `base.py`
+- [ ] No `Company` entity (`src/bricks/company/domain.py` missing)
+- [ ] No `CompanyStatus` enum in `domain.py`
+- [ ] No `CompanyType` enum in `domain.py`
 - [ ] No `BankAccount` value object
 - [ ] Existing entities (Partner, Invoice, Voucher) lack `company_id` attribute
 - [ ] No `DuplicateMSTError`, `CompanyNotFoundError`, `CompanyLockedError` exceptions

@@ -32,7 +32,7 @@ We need a Company module that:
 
 ## Decision
 
-Add a `Company` domain entity in `src/domain/entities/company.py`, backed by a `companies` table, with these key properties:
+Add a `Company` domain entity in `src/bricks/company/domain.py`, backed by a `companies` table, with these key properties:
 
 1. **Root aggregate**: Company is the root. Partner, Invoice, Voucher all have non-nullable `company_id` FK after migration.
 

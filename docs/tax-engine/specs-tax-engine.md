@@ -8,23 +8,24 @@
 
 ## 1. Architecture placement
 
-Follows existing Clean Architecture (see AGENTS.md, system-settings module pattern):
+Follows existing Lego Brick Architecture (see AGENTS.md, system-settings module pattern):
 
 ```
-src/
-  domain/
-    entities/
-      base.py          # TaxRate enum, VATMethod, FlagType, FlagScope, FlagCategory
-      company_config.py # CompanyConfig with vat_rates frozenset, TaxRate import
-    exceptions/
-      tax.py           # InvalidVATRateError, InvalidRegimeError (if not in base)
-  application/
-    ports/
-      SystemSettingsRepositoryPort  # get_config, update_config, etc.
-    services/
-      system_settings_service.py  # VAT validation, e-invoice series, config updates
-  infrastructure/
-    database/
+src/bricks/
+  tax_engine/                  ← 🧱 NEW brick
+    contract.py                ← 🔌 Public interface (TaxRate, VATMethod, FlagType, etc.)
+    domain.py                  ← 🎯 TaxRate enum, VATMethod, FlagType, FlagScope, FlagCategory (pure Python)
+    services.py                ← ⚙️ SystemSettingsService with VAT validation, e-invoice series, config updates
+    storage.py                 ← 💾 SQLAlchemy models + repository adapters
+    web_adapter.py             ← 🌐 Flask blueprint + REST endpoints
+```
+
+**Brick boundaries:**
+- `domain.py` — pure Python; NO Flask, NO SQLAlchemy, NO flask_login imports
+- `contract.py` — public interface; accepts/returns only `str`, `int`, `float`, `dict`, `Decimal`, `UUID`
+- `storage.py` — SQLAlchemy models + repo adapters (the ONLY file with SQLAlchemy imports)
+- `services.py` — orchestration with injected port; no Flask/SQLAlchemy imports
+- `web_adapter.py` — Flask blueprint; `@login_required` + `current_user.role` checks (no Casbin)
       models.py        # SystemSettingsModel, CompanyConfigModel + vat_rates column
     repositories/
       system_settings_repo.py  # SQLAlchemySystemSettingsRepository (MISSING — causes 500)
@@ -164,7 +165,7 @@ class EInvoiceSeriesModel(Base):
 | POST | /api/v1/system_settings/e-invoice-series | ADMIN, CHIEF_ACCOUNTANT | add e-invoice series (2nd approval) |
 | GET | /api/v1/system_settings/tax-rates | all above | list TaxRate enum values {0, 5, 10, -1} |
 
-All routes decorated `@casbin_required(...)`; AUDITOR read-only backend-enforced; actor UUID required
+All routes decorated `@login_required + current_user.role`; AUDITOR read-only backend-enforced; actor UUID required
 for all mutations.
 
 ## 6. CSV / import format (for e-invoice series or config changes, if needed)

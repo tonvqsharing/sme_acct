@@ -26,13 +26,13 @@ src/
     serializers/       ← NEW: domain↔JSON serializers
 ```
 
-**Critical:** User is a domain entity. Domain layer MUST NOT import Flask/SQLAlchemy. RBAC enforcement via `@casbin_required` at presentation layer only.
+**Critical:** User is a domain entity in `src/bricks/user_master_data/domain.py` (Lego brick). Domain layer MUST NOT import Flask/SQLAlchemy. RBAC enforcement via Flask built-in `@login_required` + `current_user.role` checks at `web_adapter.py` only. No Casbin, no `pycasbin`, no `casbin_model.conf`, no `rbac_policy.csv`.
 
 ---
 
 ## 2. Domain Model
 
-### 2.1 User Entity (`src/domain/entities/user.py`)
+### 2.1 User Entity (`src/bricks/user_master_data/domain.py`)
 
 ```python
 @dataclass
@@ -56,9 +56,9 @@ class User:
     config_version: int        # Optimistic lock version
 ```
 
-### 2.2 UserRole Enum (`src/domain/entities/base.py` — extend)
+### 2.2 UserRole Enum (`src/bricks/user_master_data/domain.py` — extend)
 
-Add to existing base.py:
+Add to domain.py:
 
 ```python
 class UserRole(Enum):
@@ -76,9 +76,9 @@ No changes needed — TaxId and AccountCode already defined.
 
 ---
 
-## 3. Port Interface
+## 3. Contract Interface
 
-### 3.1 UserRepositoryPort (`src/application/ports/__init__.py` — extend)
+### 3.1 UserRepositoryPort (`src/bricks/user_master_data/contract.py` — extend)
 
 ```python
 class UserRepositoryPort(ABC):
@@ -110,7 +110,7 @@ class UserRepositoryPort(ABC):
     def exists_by_email(self, email: str) -> bool: ...
 ```
 
-### 3.2 SQLAlchemyUserRepository Adapter (`src/infrastructure/repositories/` — new)
+### 3.2 SQLAlchemyUserRepository Adapter (`src/bricks/user_master_data/storage.py` — new)
 
 Adapts `UserRepositoryPort` to `SQLAlchemyUserRepository` using SQLAlchemy 2.0 models.
 
@@ -120,7 +120,7 @@ Adapts `UserRepositoryPort` to `SQLAlchemyUserRepository` using SQLAlchemy 2.0 m
 
 ### 4.1 users (extend from raw SQL to SQLAlchemy 2.0 model)
 
-Replace raw SQL table with SQLAlchemy 2.0 `UserModel` in `src/infrastructure/database/models.py`.
+Replace raw SQL table with SQLAlchemy 2.0 `UserModel` in `src/bricks/user_master_data/storage.py`.
 
 **Current raw SQL (auth_service.py:_ensure_users_table):**
 
@@ -281,15 +281,15 @@ class UserRoleEnum(enum.Enum):
 
 ### Phase 1 — Entity + Model + Migration
 
-- [ ] Add `UserRoleEnum` to `src/infrastructure/database/models.py`
-- [ ] Add `UserModel` to `src/infrastructure/database/models.py` (SQLAlchemy 2.0)
+- [ ] Add `UserRoleEnum` to `src/bricks/user_master_data/storage.py`
+- [ ] Add `UserModel` to `src/bricks/user_master_data/storage.py` (SQLAlchemy 2.0)
 - [ ] Run `flask db migrate` — generates migration script
 - [ ] Run `flask db upgrade` — applies new `users` table
 - [ ] Verify: `users` table exists with correct columns + constraints
 
 ### Phase 2 — Repository Adapter + Service
 
-- [ ] Create `SQLAlchemyUserRepository` in `src/infrastructure/repositories/`
+- [ ] Create `SQLAlchemyUserRepository` in `src/bricks/user_master_data/storage.py`
 - [ ] Implement all `UserRepositoryPort` methods via SQLAlchemy
 - [ ] Update `AuthService` to use `SQLAlchemyUserRepository` instead of raw SQL
 - [ ] Migrate `_ensure_users_table` to use new model (or deprecate)
@@ -297,7 +297,7 @@ class UserRoleEnum(enum.Enum):
 ### Phase 3 — API + RBAC
 
 - [ ] Create `users_blueprint` in `src/presentation/api/`
-- [ ] Add `@casbin_required` decorator on all user endpoints
+- [ ] Add `@login_required` + `current_user.role` checks on all user endpoints (Flask built-in, no Casbin)
 - [ ] Update `DEFAULT_ALLOWED_ROUTES` in `rbac.py` with user endpoint policies
 - [ ] Add audit logging for every user CRUD action (entity_type="USER")
 

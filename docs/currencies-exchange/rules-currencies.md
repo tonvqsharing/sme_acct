@@ -85,11 +85,11 @@
 - Revaluation POST requires APPROVED status; APPROVED requires CHIEF_ACCOUNTANT
   (2nd-approval pattern from system-settings).
 
-### D10 — Clean Architecture
+### D10 — Lego Brick Architecture
 - Domain layer: no sqlalchemy, no Flask imports (lint-enforced, per AGENTS.md).
 
 ### D11 — RBAC
-- All API mutations require actor UUID + `@casbin_required(*roles)`.
+- All API mutations require actor UUID + `@login_required + current_user.role` check.
 - AUDITOR read-only everywhere (RBAC backend enforcement, not just UI).
 
 ## 3. Rule conflicts / precedence

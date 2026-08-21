@@ -5,9 +5,33 @@
 **Module:** Payment Terms & Document Numbering  
 **Version:** 1.0.0  
 **Status:** PARTIALLY IMPLEMENTED (document numbering exists, payment terms need implementation)  
-**Base Framework:** Flask + SQLAlchemy 2.0 + pycasbin 2.8.0  
-**Architecture:** Clean Architecture (domain → application → infrastructure → presentation)  
-**Integration:** Invoice module (add payment_terms_id FK), System Settings (e-invoice series extension)  
+**Base Framework:** Flask + SQLAlchemy 2.0 + Flask-Login (Flask built-in RBAC — no pycasbin)
+**Architecture:** Lego Brick (`src/bricks/payment_terms/`) with pure Python domain, port interfaces, SQLAlchemy storage adapters, and Flask blueprint adapters
+**Integration:** Invoice module (add payment_terms_id FK), System Settings (e-invoice series extension)
+
+---
+
+# Payment Terms & Document Numbering Module (Lego Brick)
+_Brick: `src/bricks/payment_terms/`. Pure Python domain. Flask built-in RBAC. SQLite3 default DB._
+
+## 1.1 Brick Position
+
+```
+src/bricks/
+  payment_terms/               ← 🧱 NEW brick
+    contract.py                ← 🔌 Public interface (PaymentTermCode, DocumentNumberingCode, primitive IDs only)
+    domain.py                  ← 🎯 PaymentTerm, DocumentNumberingSeries entities (pure Python)
+    services.py                ← ⚙️ PaymentTermService, DocumentNumberingSeriesService
+    storage.py                 ← 💾 SQLAlchemy models + repository adapters
+    web_adapter.py             ← 🌐 Flask blueprint + REST endpoints (payment_terms_bp)
+```
+
+**Brick boundaries:**
+- `domain.py` — pure Python; NO Flask, NO SQLAlchemy, NO flask_login imports
+- `contract.py` — public interface; accepts/returns only `str`, `int`, `float`, `dict`, `Decimal`, `UUID`
+- `storage.py` — SQLAlchemy models + repo adapters (the ONLY file with SQLAlchemy imports)
+- `services.py` — orchestration with injected port; no Flask/SQLAlchemy imports
+- `web_adapter.py` — Flask blueprint; `@login_required` + `current_user.role` checks (no Casbin)
 
 ---
 
@@ -65,7 +89,7 @@
 
 ## 3. Domain Entities
 
-### 3.1 PaymentTerm (src/domain/entities/payment_term.py)
+### 3.1 PaymentTerm (src/bricks/payment_terms/domain.py)
 
 ```python
 @dataclass
@@ -94,7 +118,7 @@ class PaymentTerm:
         return True  # Enforced in service/repo
 ```
 
-### 3.2 DocumentNumberingSeries (src/domain/entities/document_numbering_series.py)
+### 3.2 DocumentNumberingSeries (src/bricks/payment_terms/domain.py)
 
 ```python
 @dataclass
@@ -129,9 +153,9 @@ class DocumentNumberingSeries:
 
 ---
 
-## 4. Repository Ports
+## 4. Contract Interface
 
-### 4.1 PaymentTermRepositoryPort (src/application/ports/__init__.py)
+### 4.1 PaymentTermRepositoryPort (src/bricks/payment_terms/contract.py)
 
 ```python
 class PaymentTermRepositoryPort(Protocol):
@@ -147,7 +171,7 @@ class PaymentTermRepositoryPort(Protocol):
     def validate_name_unique(self, company_id: UUID, name: str) -> bool: ...
 ```
 
-### 4.2 DocumentNumberingSeriesRepositoryPort (src/application/ports/__init__.py)
+### 4.2 DocumentNumberingSeriesRepositoryPort (src/bricks/payment_terms/contract.py)
 
 ```python
 class DocumentNumberingSeriesRepositoryPort(Protocol):
@@ -166,9 +190,9 @@ class DocumentNumberingSeriesRepositoryPort(Protocol):
 
 ---
 
-## 5. Service Layer
+## 5. Services Layer
 
-### 5.1 PaymentTermService (src/application/services/payment_term_service.py)
+### 5.1 PaymentTermService (src/bricks/payment_terms/services.py)
 
 **Pure Python — NO Flask/SQLAlchemy imports.**
 
@@ -190,7 +214,7 @@ class DocumentNumberingSeriesRepositoryPort(Protocol):
 - R-006: SHA-256 checksum chaining on all payment term events
 - R-012: Due date calculation = issue_date + due_days
 
-### 5.2 DocumentNumberingSeriesService (src/application/services/document_numbering_series_service.py)
+### 5.2 DocumentNumberingSeriesService (src/bricks/payment_terms/services.py)
 
 **Pure Python — NO Flask/SQLAlchemy imports.**
 
@@ -291,11 +315,11 @@ class DocumentNumberingSeriesRepositoryPort(Protocol):
 | `ACCOUNTANT` | Read all payment terms/document numbering; create/modify own company's | Full mutation rights (except AUDITOR restriction) |
 | `CHIEF_ACCOUNTANT` | All ACCOUNTANT rights + SOD approval authority | Can approve 2nd actor |
 | `ADMIN` | All CHIEF_ACCOUNTANT rights + system config | Company-level admin |
-| `AUDITOR` | Read-only — cannot mutate any payment terms/document numbering | Read-only enforced by @casbin_required + service layer |
+| `AUDITOR` | Read-only — cannot mutate any payment terms/document numbering | Read-only enforced by @login_required + service layer |
 | `DIRECTOR` | All rights including system admin | Highest level |
 
 **RBAC Enforcement:**
-- `@casbin_required(*roles)` on all API routes
+- `@login_required` + `current_user.role` checks on all API routes (Flask built-in)
 - Service layer also checks actor permissions (defense in depth)
 - AUDITOR role explicitly cannot call mutation APIs
 - All mutations require actor UUID (D11) in request body
@@ -342,8 +366,8 @@ checksum = SHA-256(prev_checksum + actor_uuid + timestamp + action + reason + en
 ```
 ┌──────────────────┐     POST     ┌─────────────────────┐
 │  User Interface  │ ───────────▶ │  Flask API Layer    │
-│  (HTMX + Bulma)    │            │  @casbin_required   │
-└──────────────────┘            │  _require_actor()  │
+│  (HTMX + Bulma)    │            │  @login_required    │
+└──────────────────┘            │  current_user.role  │
                               └─────────────────────┘
                                         │
                                         ▼
@@ -389,8 +413,8 @@ checksum = SHA-256(prev_checksum + actor_uuid + timestamp + action + reason + en
 ```
 ┌──────────────────┐     POST     ┌─────────────────────┐
 │  User Interface  │ ───────────▶ │  Flask API Layer    │
-│  (HTMX + Bulma)    │            │  @casbin_required   │
-└──────────────────┘            │  _require_actor()  │
+│  (HTMX + Bulma)    │            │  @login_required    │
+└──────────────────┘            │  current_user.role  │
                               └─────────────────────┘
                                         │
                                         ▼
@@ -580,13 +604,13 @@ START
 | R-002 | Payment term due_days must be ≥ 1 day | Entity validation on create |
 | R-003 | All mutations require actor UUID (D11) in request body | API decorator + service layer entry check |
 | R-004 | All mutations require non-empty reason string | API decorator + service layer validation |
-| R-005 | AUDITOR role is read-only; cannot create/update/delete payment terms/document numbering | @casbin_required + service layer check |
+| R-005 | AUDITOR role is read-only; cannot create/update/delete payment terms/document numbering | @login_required + current_user.role + service layer check |
 | R-006 | 10-year retention: no automatic deletion, soft-deactivate only | Service layer + audit log policy |
 | R-007 | Series prefix must match GDT format: ^[A-Z]{2,}/$ (TT163 compliance) | Entity validation on create |
 | R-008 | Maximum 15 active document numbering series per company (GDT Circular 163/2020/TT-BTC) | Service layer + DB constraint |
 | R-009 | Series prefix must be unique per company | DB unique constraint + service validation |
 | R-010 | SHA-256 checksum chaining on all payment term/series events | Service layer append_checksum() |
-| R-011 | SOD (Separation of Duties): setting default/activating series requires 2 actors | Service layer + @casbin_required roles |
+| R-011 | SOD (Separation of Duties): setting default/activating series requires 2 actors | Service layer + @login_required + current_user.role |
 | R-012 | Due date calculation: issue_date + due_days (business days optional) | PaymentTermService.calculate_due_date() |
 | R-013 | When creating invoice, apply payment terms due date auto-calculation | Invoice module integration (add payment_terms_id FK) |
 
@@ -602,7 +626,7 @@ START
 | `User` / Actor UUID | Must exist | All mutations must include actor UUID (D11) |
 | `Company` | Must exist | Payment terms/series belong to a company (company_id FK) |
 | `AuditLogService` | Required | All events logged via audit_log_service.append_event() |
-| `CASRBAC` | Required | @casbin_required decorator on all API routes |
+| `Flask-Login RBAC` | Required | @login_required + current_user.role on all API routes |
 | `SQLAlchemyRepository` | Required | DB adapters for PaymentTerm, DocumentNumberingSeries |
 
 ### 14.2 External Dependencies
@@ -611,7 +635,7 @@ START
 |------------|---------|-------------|
 | `flask` | >= 3.0 | Web framework |
 | `flask-sqlalchemy` | >= 3.0 | ORM (SQLAlchemy 2.0) |
-| `pycasbin` | 2.8.0 | RBAC enforcement |
+| `pycasbin` | ❌ Removed | RBAC via Flask built-in only |
 | `sqlalchemy` | >= 2.0 | SQL toolkit |
 | `python-dotenv` | >= 1.0 | Environment config |
 | `flask-migrate` | >= 4.0 | Database migration management |

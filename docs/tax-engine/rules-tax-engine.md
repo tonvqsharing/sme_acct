@@ -63,7 +63,7 @@ Legal rules (hard-coded, source-cited) + Domain rules.
 
 ### R8 — AUDITOR read-only backend enforcement
 
-- All API mutations require `@casbin_required(*allowed_roles)` with AUDITOR excluded from
+- All API mutations require `@login_required + current_user.role` check with AUDITOR excluded from
   write roles.
 - Backend service methods also enforce RBAC; UI-only checks prohibited.
 - AUDITOR can GET all tax config / invoice data; POST/PATCH/PUT → 403.
@@ -100,7 +100,7 @@ Legal rules (hard-coded, source-cited) + Domain rules.
 
 ### D6 — AUDITOR read-only backend enforcement
 
-- RBAC enforced in service layer + `@casbin_required` decorator.
+- RBAC enforced in service layer + `@login_required + current_user.role` check.
 - AUDITOR role constant: read-only; cannot mutate CompanyConfig, e-invoice series, invoices.
 - Violations → 403 Permission denied.
 

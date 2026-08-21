@@ -7,6 +7,28 @@
 
 ---
 
+# Specifications: Cost Centers & Dimensions Module (Lego Brick)
+_Brick: `src/bricks/cost_centers/`. Pure Python domain. Flask built-in RBAC. SQLite3 default DB._
+
+## 0. Brick Position
+
+```
+src/bricks/
+  cost_centers/                ← 🧱 NEW brick
+    contract.py                ← 🔌 Public interface (CostCenterCode, DimensionCode, primitive IDs only)
+    domain.py                  ← 🎯 CostCenter, Dimension, DimensionValue entities (pure Python)
+    services.py                ← ⚙️ CoaCostCenterService, CoaDimensionService, CoaDimensionValueService
+    storage.py                 ← 💾 SQLAlchemy models + repository adapters
+    web_adapter.py             ← 🌐 Flask blueprint + REST endpoints (cost_centers_bp)
+```
+
+**Brick boundaries:**
+- `domain.py` — pure Python; NO Flask, NO SQLAlchemy, NO flask_login imports
+- `contract.py` — public interface; accepts/returns only `str`, `int`, `float`, `dict`, `Decimal`, `UUID`
+- `storage.py` — SQLAlchemy models + repo adapters (the ONLY file with SQLAlchemy imports)
+- `services.py` — orchestration with injected port; no Flask/SQLAlchemy imports
+- `web_adapter.py` — Flask blueprint; `@login_required` + `current_user.role` checks (no Casbin)
+
 ## 1. Domain Layer Specifications
 
 ### 1.1 Enums
@@ -486,19 +508,33 @@ CREATE INDEX ix_dimension_values_status ON dimension_values(status);
 
 ## 4. API Specification
 
-### 4.1 Authentication & Authorization
+### 4.1 Authentication & Authorization (Flask Built-in)
 
 **Actor UUID (D11):**
 - Every mutation endpoint requires `actor` field in request JSON
 - AUDITOR role is read-only; write operations return 403 for AUDITOR
 - Actor UUID validated and passed to domain layer for audit logging
 
-**Role Enforcement:**
-- `@casbin_required(*roles)` decorator on all blueprint routes
+**Role Enforcement (Flask built-in only — no Casbin, no pycasbin):**
+- `@login_required` decorator on all blueprint routes
+- `current_user.role` checks for role membership
 - READ_ROLES = ("ACCOUNTANT", "CHIEF_ACCOUNTANT", "ADMIN", "AUDITOR", "DIRECTOR")
 - WRITE_ROLES = ("ACCOUNTANT", "CHIEF_ACCOUNTANT", "ADMIN")  # no AUDITOR
 - FY_ADMIN_ROLES = ("CHIEF_ACCOUNTANT", "ADMIN", "DIRECTOR")
 - AUTO_SEED_ROLES = ("ACCOUNTANT", "CHIEF_ACCOUNTANT", "ADMIN", "DIRECTOR")  # no AUDITOR
+
+**Pattern (Flask built-in):**
+```python
+from flask_login import login_required, current_user
+from flask import abort
+
+@bp.route("/v1/cost-centers", methods=["POST"])
+@login_required
+def create_cost_center():
+    if current_user.role not in WRITE_ROLES:
+        abort(403, description="RBAC denied: write role required")
+    # ... proceed
+```
 
 ### 4.2 Endpoint Pattern
 
@@ -817,7 +853,7 @@ new_checksum = sha256(raw.encode("utf-8")).hexdigest()
 
 ## 7. Exception Specification
 
-### 7.1 Domain Exceptions (src/domain/exceptions/)
+### 7.1 Domain Exceptions (src/bricks/cost_centers/domain.py)
 
 | Exception Class | Inheritance | HTTP Status | Condition |
 |-----------------|-------------|-------------|-----------|
@@ -855,7 +891,7 @@ Client Request
   ├── Flask route receives JSON body
   │   └── Extract actor, reason, other fields
   │
-  ├── @casbin_required decorator checks RBAC
+  ├── @login_required + current_user.role check (Flask built-in)
   │   └── AUDITOR → read-only (403 on write)
   │
   ├── Service method validates:
@@ -949,7 +985,7 @@ audit_log_service.create(
 - [x] Repository adapters (SQLAlchemyCostCenterRepository, etc.)
 - [x] Service layer (CoaCostCenterService, CoaDimensionService, CoaDimensionValueService)
 - [x] REST API blueprint (cost_center_bp.py) with 13 endpoints
-- [x] CASRBAC role enforcement (@casbin_required)
+- [x] Flask built-in role enforcement (@login_required + current_user.role)
 - [x] AUDITOR read-only restriction on writes
 - [x] Actor UUID (D11) requirement on all mutations
 - [x] SHA-256 audit checksum chaining
@@ -1014,13 +1050,13 @@ audit_log_service.create(
 - **User Journeys:** docs/cost-centers-dimensions/user-journeys-cost-centers-dimensions.md
 - **Workflows:** docs/cost-centers-dimensions/workflows-cost-centers-dimensions.md
 - **Templates:** docs/cost-centers-dimensions/templates/
-- **Codebase:** src/domain/entities/cost_center.py
-- **Repository Ports:** src/application/ports/__init__.py
-- **Repository Adapters:** src/infrastructure/repositories/__init__.py
-- **Service Layer:** src/application/services/cost_center_service.py
-- **REST API:** src/presentation/api/cost_center_bp.py
-- **Audit Log Module:** src/application/services/audit_log_service.py
-- **CASRBAC:** src/presentation/rbac.py
+- **Codebase:** src/bricks/cost_centers/domain.py
+- **Contract Interface:** src/bricks/cost_centers/contract.py
+- **Storage Adapters:** src/bricks/cost_centers/storage.py
+- **Service Layer:** src/bricks/cost_centers/services.py
+- **REST API:** src/bricks/cost_centers/web_adapter.py
+- **Audit Log Module:** src/bricks/audit_log/services.py
+- **RBAC:** Flask-Login `@login_required` + `current_user.role` checks
 - **Law on Accounting 2015:** Chap IX, 10-year retention
 - **Circular 99/2025/TT-BTC:** Effective 01/01/2026
 - **Vietnamese Chart of Accounts:** TT 99/2025/TT-BTC (effective 01/01/2026)

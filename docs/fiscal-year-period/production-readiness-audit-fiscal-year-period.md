@@ -12,15 +12,15 @@ Posting to any date is currently unrestricted; period locks are cosmetic.
 
 | Artifact | Location | State |
 |---|---|---|
-| `AccountingPeriodType` enum | `src/domain/entities/base.py:124` | ❌ Contains `FISCAL_15` (illegal, see G-01) |
-| `Company.get_fiscal_year_and_period()` | `src/domain/entities/company.py:188-209` | ✅ Logic sound (fiscal_year_start_month/day, default 1/1) |
+| `AccountingPeriodType` enum | `src/bricks/fiscal_year_period/domain.py` | ❌ Contains `FISCAL_15` (illegal, see G-01) |
+| `Company.get_fiscal_year_and_period()` | `src/bricks/company/domain.py` | ✅ Logic sound (fiscal_year_start_month/day, default 1/1) |
 | `CompanyConfig.accounting_period_type` + start fields | system-settings domain | ✅ Field exists |
-| `PeriodLockModel` (`period_locks` table) | `src/infrastructure/database/models.py:301` | ❌ Primitive: no fiscal_year, period_number, status enum, audit fields (G-02) |
-| `PeriodLockService` | `src/application/services/period_lock_service.py` | ❌ Stub: `is_locked` always False; `validate_before_entry` never blocks (G-03) |
-| `SystemSettingsService.lock_period/unlock_period` | `src/application/services/system_settings_service.py` | ❌ 500 — calls missing `SQLAlchemySystemSettingsRepository` (G-04) |
-| `currency_repo.period_is_locked()` | `src/infrastructure/repositories/currency_repo.py:203` | ✅ Working overlap query — pattern to copy |
-| `RevaluationService.create_run` raises `PeriodLockedError` | `src/application/services/revaluation_service.py:75` | ✅ Raises — but backed by stub → never fires |
-| `SystemSettingsRepositoryPort` / `period_is_locked` port | `src/application/ports/__init__.py` | ⚠️ Port exists; no real adapter |
+| `PeriodLockModel` (`period_locks` table) | `src/bricks/fiscal_year_period/storage.py` | ❌ Primitive: no fiscal_year, period_number, status enum, audit fields (G-02) |
+| `PeriodLockService` | `src/bricks/fiscal_year_period/services.py` | ❌ Stub: `is_locked` always False; `validate_before_entry` never blocks (G-03) |
+| `SystemSettingsService.lock_period/unlock_period` | `src/bricks/system_settings/services.py` | ❌ 500 — calls missing `SQLAlchemySystemSettingsRepository` (G-04) |
+| `currency_repo.period_is_locked()` | `src/bricks/currencies/storage.py` | ✅ Working overlap query — pattern to copy |
+| `RevaluationService.create_run` raises `PeriodLockedError` | `src/bricks/currencies/services.py` | ✅ Raises — but backed by stub → never fires |
+| `FiscalYearRepositoryPort` / `period_is_locked` port | `src/bricks/fiscal_year_period/contract.py` | ⚠️ Port exists; no real adapter |
 
 ## Gap analysis (critical → minor)
 
@@ -72,7 +72,7 @@ carry per TT133 Đ.73.
 
 ### G-08 MEDIUM — No REST API / RBAC
 No blueprint for fiscal years/periods. Posting enforcement absent at API
-layer; `@casbin_required` gap.
+layer; `@login_required + current_user.role` gap.
 **Fix**: `fiscal_year_bp.py` per specs §5, registered in `app.py`.
 
 ### G-09 MEDIUM — No cache/concurrency guards

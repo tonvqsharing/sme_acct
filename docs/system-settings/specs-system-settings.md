@@ -26,34 +26,26 @@
 
 ---
 
-## 2. Architecture Position
+## 2. Architecture Position (Lego Brick)
 
 ```
-src/
-  domain/
-    entities/
-      company_config.py          ← NEW: CompanyConfig aggregate
-      base.py                    ← EXTEND: add SystemFlag enum, AccountingRegime enum
-    exceptions/
-      system_settings.py         ← NEW: SystemSettingsError, FlagLockedError, ConfigVersionConflict
-    repositories/
-      system_settings_repo.py    ← NEW: port (interface)
-  application/
-    services/
-      system_settings_service.py ← NEW: orchestration, validation, change management
-      period_lock_service.py     ← NEW: period boundary checks
-      audit_log_service.py       ← NEW: audit event publication
-  infrastructure/
-    database/
-      models.py                  ← EXTEND: CompanyConfigModel, SystemFlagModel, AuditLogModel, PeriodLockModel
-    repositories/
-      sqlalchemy_system_settings.py ← NEW: adapter
-  presentation/
-    api/
-      system_settings.py         ← NEW: REST endpoints
-    ui/
-      system_settings/           ← NEW: HTML pages (if applicable)
+src/bricks/
+  system_settings/                ← 🧱 NEW brick
+    contract.py                   ← 🔌 Public interface (CompanyConfig, SystemFlag, AuditLogEntry primitives)
+    domain.py                     ← 🎯 CompanyConfig aggregate (pure Python, no Flask/SQLAlchemy)
+    services.py                   ← ⚙️ SystemSettingsService, PeriodLockService, AuditLogService (pure Python)
+    storage.py                    ← 💾 SQLAlchemy models + repository adapters
+    web_adapter.py                ← 🌐 Flask blueprint + REST endpoints
 ```
+
+**Brick boundaries:**
+- `domain.py` — pure Python; NO Flask, NO SQLAlchemy, NO flask_login imports
+- `contract.py` — public interface; accepts/returns only `str`, `int`, `float`, `dict`, `Decimal`, `UUID`
+- `storage.py` — SQLAlchemy models + repo adapters (the ONLY file with SQLAlchemy imports)
+- `services.py` — orchestration with injected port; no Flask/SQLAlchemy imports
+- `web_adapter.py` — Flask blueprint; `@login_required` + `current_user.role` checks (no Casbin)
+
+**Database:** SQLite3 default. `SQLALCHEMY_DATABASE_URI=sqlite:///./dev.db` for local dev. Override via env if using MySQL/PostgreSQL later.
 
 ---
 
@@ -103,7 +95,7 @@ class CompanyConfig:
 
 ### 3.2 Supporting Enums
 
-Add to `src/domain/entities/base.py`:
+Add to `src/bricks/system_settings/domain.py`:
 
 ```python
 class AccountingPeriodType(Enum):
@@ -165,9 +157,9 @@ class FlagCategory(Enum):
 
 ---
 
-## 4. Port Interface (Repository Contract)
+## 4. Contract Interface (Repository Contract)
 
-Add to `src/application/ports/__init__.py`:
+Add to `src/bricks/system_settings/contract.py`:
 
 ```python
 class SystemSettingsRepositoryPort(ABC):
@@ -278,21 +270,21 @@ class AuditLogService:
 
 All endpoints prefixed with `/api/v1/companies/{company_id}/settings`.
 
-| Method | Path | Auth | RBAC | Description |
-|--------|------|------|------|-------------|
-| `GET` | `/config` | JWT | ACCOUNTANT, ADMIN | Retrieve full CompanyConfig (LAW fields masked or shown per policy) |
-| `GET` | `/config/flags` | JWT | ACCOUNTANT, ADMIN | List all flags with current values, types, categories |
-| `GET` | `/config/flags/{flag_name}` | JWT | ACCOUNTANT, ADMIN | Single flag value |
-| `PATCH` | `/config/flags/{flag_name}` | JWT | ADMIN | Update CONFIG-flagged value (LAW-flagged rejected 403) |
-| `POST` | `/config/audit-log/export` | JWT | ADMIN, AUDITOR | Trigger audit export (JSON + CSV) for date range |
-| `POST` | `/config/period/lock` | JWT | ACCOUNTANT, ADMIN | Lock a specific accounting period |
-| `POST` | `/config/period/close-fyear` | JWT | CHIEF_ACCOUNTANT | Close fiscal year (irreversible) |
-| `GET` | `/config/period/status` | JWT | ACCOUNTANT, ADMIN | Period lock status for date range |
-| `POST` | `/invoice-series/advance` | JWT | ACCOUNTANT | Advance next_seq atomically; returns new sequence |
-| `GET` | `/invoice-series` | JWT | ACCOUNTANT, ADMIN | List active e-invoice series |
-| `POST` | `/invoice-series` | JWT | ADMIN | Add new series (max 15 active) |
-| `PATCH` | `/invoice-series/{prefix}` | JWT | ADMIN | Update active flag (cannot modify prefix or next_seq via API) |
-| `POST` | `/config/legal-review` | JWT | CHIEF_ACCOUNTANT | Mark config as legally reviewed (stamps legal_reviewed_at/by) |
+| Method | Path | Auth | Role Check (Flask built-in) | Description |
+|--------|------|------|---------------------------|-------------|
+| `GET` | `/config` | `@login_required` | `current_user.role in ("ACCOUNTANT", "ADMIN")` | Retrieve full CompanyConfig (LAW fields masked or shown per policy) |
+| `GET` | `/config/flags` | `@login_required` | `current_user.role in ("ACCOUNTANT", "ADMIN")` | List all flags with current values, types, categories |
+| `GET` | `/config/flags/{flag_name}` | `@login_required` | `current_user.role in ("ACCOUNTANT", "ADMIN")` | Single flag value |
+| `PATCH` | `/config/flags/{flag_name}` | `@login_required` | `current_user.role == "ADMIN"` | Update CONFIG-flagged value (LAW-flagged rejected 403) |
+| `POST` | `/config/audit-log/export` | `@login_required` | `current_user.role in ("ADMIN", "AUDITOR")` | Trigger audit export (JSON + CSV) for date range |
+| `POST` | `/config/period/lock` | `@login_required` | `current_user.role in ("ACCOUNTANT", "ADMIN")` | Lock a specific accounting period |
+| `POST` | `/config/period/close-fyear` | `@login_required` | `current_user.role == "CHIEF_ACCOUNTANT"` | Close fiscal year (irreversible) |
+| `GET` | `/config/period/status` | `@login_required` | `current_user.role in ("ACCOUNTANT", "ADMIN")` | Period lock status for date range |
+| `POST` | `/invoice-series/advance` | `@login_required` | `current_user.role == "ACCOUNTANT"` | Advance next_seq atomically; returns new sequence |
+| `GET` | `/invoice-series` | `@login_required` | `current_user.role in ("ACCOUNTANT", "ADMIN")` | List active e-invoice series |
+| `POST` | `/invoice-series` | `@login_required` | `current_user.role == "ADMIN"` | Add new series (max 15 active) |
+| `PATCH` | `/invoice-series/{prefix}` | `@login_required` | `current_user.role == "ADMIN"` | Update active flag (cannot modify prefix or next_seq via API) |
+| `POST` | `/config/legal-review` | `@login_required` | `current_user.role == "CHIEF_ACCOUNTANT"` | Mark config as legally reviewed (stamps legal_reviewed_at/by) |
 
 ### 6.2 Response Schemas
 
@@ -490,8 +482,8 @@ CREATE INDEX idx_config_changes_company ON config_changes(company_id, config_ver
 ### 8.1 At Domain Boundary (Value Objects — immutable regardless of global flag state)
 
 Already implemented:
-- `TaxId`: `r"^\d{10}(-\d{3})?$"` — `src/domain/entities/base.py:68`
-- `AccountCode`: `r"^[1-9]\d{2}$|^[1-9]\d{3}$"` — `src/domain/entities/base.py:84`
+- `TaxId`: `r"^\d{10}(-\d{3})?$"` — `src/bricks/company/domain.py`
+- `AccountCode`: `r"^[1-9]\d{2}$|^[1-9]\d{3}$"` — `src/bricks/coa/domain.py`
 
 ### 8.2 At Config Layer (LAW-type Flags — cannot be bypassed)
 

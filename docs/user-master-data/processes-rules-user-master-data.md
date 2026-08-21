@@ -90,7 +90,7 @@
 
 ---
 
-## 2. RBAC Rules (from rbac.py + casbin_model.conf)
+## 2. RBAC Rules (Flask built-in — no Casbin, no pycasbin)
 
 ### 2.1 Role Hierarchy
 
@@ -104,39 +104,28 @@
 
 **Anomaly:** AUDITOR level(4) > ADMIN level(3), but AUDITOR is **read-only** (no write/delete policies).
 
-### 2.2 DEFAULT_ALLOWED_ROUTES (fallback when pycasbin unavailable)
+### 2.2 Role-based Access (Flask built-in)
 
-| Route | Allowed Roles |
-|-------|--------------|
-| `api.v1.company.create` | {DIRECTOR} |
-| `api.v1.company.list` | {CHIEF_ACCOUNTANT, ADMIN, DIRECTOR} |
-| `api.v1.company.get` | {CHIEF_ACCOUNTANT, ADMIN, DIRECTOR} |
-| `api.v1.company.update` | {CHIEF_ACCOUNTANT, ADMIN, DIRECTOR} |
-| `api.v1.company.suspend` | {CHIEF_ACCOUNTANT, ADMIN} |
-| `api.v1.company.reactivate` | {CHIEF_ACCOUNTANT, ADMIN} |
-| `api.v1.company.dissolve` | {ADMIN, DIRECTOR} |
-| `api.health` | set() (public) |
-| `api.v1.invoice.*` | {ACCOUNTANT, CHIEF_ACCOUNTANT} (per rbac_policy.csv) |
-| `api.v1.voucher.*` | {ACCOUNTANT, CHIEF_ACCOUNTANT} (per rbac_policy.csv) |
+| Route Pattern | Roles |
+|---|---|
+| `api.v1.invoice.*` | {ACCOUNTANT, CHIEF_ACCOUNTANT} (per Flask built-in role check) |
+| `api.v1.voucher.*` | {ACCOUNTANT, CHIEF_ACCOUNTANT} (per Flask built-in role check) |
 | `api.v1.system-config.*` | {ADMIN} |
 | `api.v1.audit-log.*` | {AUDITOR, CHIEF_ACCOUNTANT} |
 
-### 2.3 casbin_required Decorator Logic
+### 2.3 RBAC Enforcement Pattern (Flask built-in)
 
-1. Get enforcer (pycasbin or fallback)
-2. Get user role from `flask_login.current_user`
-3. If no authenticated user: **allow request** (preserve pre-RBAC compatibility)
-4. Set enforcer.subject = current_user.id, enforcer.role = user_role
-5. If allowed_roles specified: check `enforcer.role in allowed_roles` → 403 if not
-6. `enforcer.enforce(subject, resource, action)` — role hierarchy check
-7. Log RBAC decision to audit_log
-8. If not allowed: 403 `RBAC_DENIED`
-9. Else: proceed to route handler
+1. Get user role from `flask_login.current_user.role`
+2. Check if user is authenticated via `@login_required`
+3. If allowed_roles specified: check `current_user.role in allowed_roles` → 403 if not
+4. Log RBAC decision to audit_log
+5. If not allowed: 403 `RBAC_DENIED`
+6. Else: proceed to route handler
 
 ### 2.4 AUDITOR Read-Only Enforcement
 
-- **No write policies** in `rbac_policy.csv` for `/api/v1/audit-log` with AUDITOR role alone
-- `@casbin_required("AUDITOR")` on read endpoints only (GET, LIST)
+- No write access for AUDITOR on `/api/v1/audit-log` write endpoints
+- `@login_required + current_user.role == "AUDITOR"` on read endpoints only (GET, LIST)
 - Attempt to POST/PUT/DELETE as AUDITOR → 403 RBAC_DENIED
 - Exception: CHIEF_ACCOUNTANT can access audit-log (has write policies)
 

@@ -38,7 +38,7 @@
 2. Approver clicks invoice → full invoice context displayed (vendor, items, totals, PO, etc.)
 3. Approver evaluates: amount validity, vendor compliance, tax correctness, business necessity
 4. Approver clicks "Approve" or "Reject"
-5. System validates RBAC: `@casbin_required('ROLE')` decorator checks:
+5. System validates RBAC: `@login_required + current_user.role` check:
    - Approver has required role (MANAGER/CHIEF_ACCOUNTANT/DIRECTOR/ADMIN)
    - If delegation active → delegate acts on behalf, audit records delegation
    - Self-approval blocked: `creator_id != current_user_id` → ValidationError
@@ -52,7 +52,7 @@
 8. If all invoices in approval chain approved → invoice proceeds to payment run
 9. If any invoice rejected → approval chain stops, invoice returns to creator with reason
 
-**Triggers:** Approver UI action, `@casbin_required` decorator enforcement
+**Triggers:** Approver UI action, `@login_required + current_user.role` enforcement
 
 ---
 
@@ -145,7 +145,7 @@
    - Delegator's pending approvals flagged in system
    - Delegate logs in → sees: "5 pending approvals (on behalf of Chief Accountant)"
    - Delegate acts on invoices via normal UI
-   - `@casbin_required('CHIEF_ACCOUNTANT')` but delegation flag present in DB
+   - `@login_required + current_user.role == 'CHIEF_ACCOUNTANT'` but delegation flag present in DB
    - System: "approve on behalf of delegator, audit records delegation"
    - Audit log: `action=approve`, `approver=DELEGATE (on behalf of CHIEF_ACCOUNTANT)`, `delegation_id` referenced
 3. **Delegation expiry (automatic):**
@@ -272,7 +272,7 @@
 
 **Detail:** 
 - If status ∈ {APPROVED, REJECTED, CANCELLED, REPLACED} → raise ValueError
-- Existing behavior in `Invoice.approve()` (src/domain/entities/invoice.py:118-119)
+- Existing behavior in `Invoice.approve()` (cross-brick reference via contract.py)
 - New threshold check integrates BEFORE this status check or as part of it
 
 **Exception Paths:** None - this is a hard constraint for data integrity

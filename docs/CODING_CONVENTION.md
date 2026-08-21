@@ -162,9 +162,9 @@ project-root/
 └── pyproject.toml                # Single source of truth
 ```
 
-**MUST:** Tuân thủ Clean Architecture. Domain layer **không** được import `flask`, `sqlalchemy`, hoặc bất kỳ framework nào.
+**MUST:** Tuân thủ Lego Brick Architecture. Domain layer **không** được import `flask`, `sqlalchemy`, hoặc bất kỳ framework nào.
 
-**MUST:** Khi thêm enum mới, thêm vào **cả** `src/domain/entities/base.py` **và** `src/infrastructure/database/models.py`. Hai nơi phải sync.
+**MUST:** Khi thêm enum mới, thêm vào **cả** `src/bricks/<module>/domain.py` **và** `src/bricks/<module>/storage.py`. Hai nơi phải sync.
 
 ### 4.2 API Quy ước
 
@@ -280,7 +280,7 @@ def process_partner_and_generate_report_and_send_email(...):
 
 - **SHOULD:** Trích xuất hàm khi copy-paste ≥ 3 lần.
 - **MUST:** Không trích xuất sớm. Duplication rõ ràng tốt hơn abstraction sai.
-- **Ở đâu:** Business logic trong `src/domain/` hoặc `src/application/`. Không để duplicate ở presentation layer.
+- **Ở đâu:** Business logic trong `src/bricks/<module>/domain.py` hoặc `src/bricks/<module>/services.py`. Không để duplicate ở presentation layer.
 
 ### 5.4 Anti-pattern cấm
 - ❌ Magic number: `if status == 3:` → `if status == InvoiceStatus.DRAFT:`
@@ -543,7 +543,7 @@ repos:
 - SQLAlchemy 2.0 Documentation: https://docs.sqlalchemy.org/en/20/
 - Conventional Commits: https://www.conventionalcommits.org/
 - OWASP Top 10 (bảo mật web): https://owasp.org/www-project-top-ten/
-- Clean Architecture (Robert C. Martin) – tham khảo khái niệm, không áp dụng giáo điều.
+- Lego Brick Architecture (Modular Hexagonal) – self-contained modules with pure Python domain, port interfaces, SQLAlchemy storage adapters, and Flask blueprint adapters.
 - [CẦN XÁC NHẬN] SonarQube quality gate rules – cần config phù hợp với Python 3.11.
 
 ---

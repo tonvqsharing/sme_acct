@@ -1,77 +1,137 @@
-# Implementation Plan: Fiscal Years & Accounting Periods Module
+# Implementation Plan: Company Module (Root Aggregate)
 
 ## Overview
-Implement spec `docs/fiscal-year-period/` (signed off 2026-08-18). Domain-first:
-enums/exceptions → entities (period math) → ports → repo adapters → services →
-enforcement hooks → REST API → migration. TDD per slice, vertical core-to-edge.
-No third-party integration (next version).
+Implement Company module per `docs/company-module/specs-company.md`. Lego brick architecture.
+Company is root aggregate — ALL other bricks need `company_id`. Build from domain out:
+enums/exceptions → entities → contract → storage → services → web_adapter → migration → tests.
+TDD per slice. No third-party integration (next version). SQLite3 default.
 
 ## Architecture Decisions
-- `PeriodLockService` has ZERO external callers — free redesign, zero breakage.
-- `FISCAL_15` referenced nowhere but its definition — safe removal per law.
-- Keep `PeriodLockModel` (legacy currencies D8 path + 80 green tests). New
-  service dual-writes: `accounting_periods.status` (new truth) + legacy
-  `period_locks` row (keeps `RevaluationRepositoryPort.period_is_locked`
-  working without touching currency_repo).
-- No Voucher/Invoice services exist → enforcement hooks only where services
-  exist: `RevaluationService` (existing), `ExchangeRateService` CSV import
-  (optional repo injection, default None → no behavior change).
-- Lazy FY auto-seed: `ensure_fiscal_year(company_id, entry_date)` in service
-  (idempotent) creates default calendar FY + 12 periods. Mirrors MISA/Fast.
-- Domain layer stays free of sqlalchemy/web imports (repo convention).
+- Company is root aggregate. All other bricks reference via `company_id: str` (UUID passed as primitive).
+- No cross-brick SQLAlchemy joins. Communication via `contract.py` primitives only.
+- Domain layer pure Python — no Flask/SQLAlchemy imports.
+- RBAC: Flask-Login `@login_required` + `current_user.role` checks only.
+- MST uniqueness enforced at DB level + domain validation.
+- Audit trail via `created_by`, `updated_by`, `config_version` (optimistic lock).
+- `BankAccount` stored as JSON field (not separate table) per spec v1.
 
-## Task List (slices, TDD red→green)
+## Task List (slices, TDD red-green)
 
 ### Slice 1: Domain enums + exceptions
-- [ ] base.py: fix AccountingPeriodType (CALENDAR/FISCAL_APR/FISCAL_JUL/FISCAL_OCT), add PeriodStatus, PeriodLockAction
-- [ ] exceptions: FiscalYearError base + InvalidFiscalYearError, FiscalYearExistsError, PeriodTransitionError, PeriodNotClosableError, YearEndPreconditionsError, SelfApprovalError
-- [ ] tests/unit/fiscal_year/test_fiscal_year_enums.py (red first)
+- [ ] `src/bricks/company/domain.py`: CompanyType, CompanyStatus, AccountingRegime enums
+- [ ] `src/bricks/company/domain.py`: Company dataclass, BankAccount dataclass, TaxId value object
+- [ ] `src/bricks/company/domain.py`: CompanyError base + DuplicateMSTError, CompanyNotFoundError, CompanyLockedError, InvalidCompanyStateError
+- [ ] `tests/unit/company/test_company_enums.py` (red first)
+- [ ] `tests/unit/test_company_domain.py` (entity construction, validation, state machine)
 
-### Slice 2: FiscalYear/AccountingPeriod/PeriodLockEvent entities
-- [ ] src/domain/entities/fiscal_year.py — period math, state machine, invariants
-- [ ] tests/unit/fiscal_year/test_fiscal_year_entity.py (U-01..U-16)
+**Acceptance criteria:**
+- [ ] Enums match spec values exactly
+- [ ] TaxId validates format: `r"^\d{10}(-\d{3})?$"`
+- [ ] Company dataclass has all 30+ fields from spec
+- [ ] All domain tests pass, zero Flask/SQLAlchemy imports in domain.py
 
-### Slice 3: Models + ports + repo adapters
-- [ ] models.py: FiscalYearModel, AccountingPeriodModel, PeriodLockEventModel + enum mirrors
-- [ ] ports: FiscalYearRepositoryPort, PeriodLockRepositoryPort
-- [ ] src/infrastructure/repositories/fiscal_year_repo.py
-- [ ] tests/integration/test_fiscal_year_repository.py (I-01..I-05)
+### Slice 2: Contract interface
+- [ ] `src/bricks/company/contract.py`: CompanyRepositoryPort (ABC)
+- [ ] `src/bricks/company/contract.py`: CompanyServiceProtocol (typing.Protocol)
+- [ ] `tests/unit/test_company_contract.py` (verify interface shape)
 
-### Slice 4: PeriodLockService (real implementation)
-- [ ] Rewrite period_lock_service.py: ensure_fiscal_year, is_locked, validate_before_entry, close_period (SOD), reopen_period, close_fiscal_year (911/421 + opening balances), create_fiscal_year, change_fiscal_year
-- [ ] tests/unit/fiscal_year/test_period_lock_service.py (fake repos)
+**Acceptance criteria:**
+- [ ] Port methods match spec: create, get_by_id, get_by_mst, list_active, update, deactivate, list_subsidiaries
+- [ ] Only primitive types in/out (str, int, float, dict, Decimal, UUID)
+- [ ] No domain/model imports in contract.py
 
-### Slice 5: Enforcement hooks
-- [x] ExchangeRateService CSV hook: SKIPPED by design — rates are company-agnostic
-      (create_rate/import_csv carry no company_id; currency table is global), period
-      locks are company-scoped → enforcing lock on CSV import would wrongly couple a
-      global rate table to one company's period state. Enforcement stays where company
-      context exists: RevaluationService D8 period_is_locked (already wired, verified
-      via dual-write PeriodLockModel bridge in slice 3) + future Voucher/Invoice services.
+### Slice 3: Storage layer (models + repo adapters)
+- [ ] `src/bricks/company/storage.py`: CompanyModel (SQLAlchemy 2.0 mapped_column)
+- [ ] `src/bricks/company/storage.py`: SQLAlchemyCompanyRepository (implements CompanyRepositoryPort)
+- [ ] `tests/integration/test_company_repository.py` (CRUD + MST uniqueness + list_active)
 
-### Slice 6: Serializers + REST API
-- [ ] serializers/fiscal_year.py
-- [ ] presentation/api/fiscal_year_bp.py (currencies test-engine hook pattern, @casbin_required)
-- [ ] app.py registration
-- [ ] tests/integration/test_fiscal_year_api.py (A-01..A-09)
+**Acceptance criteria:**
+- [ ] CompanyModel maps all DB columns per spec schema
+- [ ] MST unique constraint enforced
+- [ ] company_id as UUID PK with default gen_random_uuid
+- [ ] JSON fields for business_fields, bank_accounts
+- [ ] Audit fields: created_at, updated_at, created_by, updated_by, config_version
+- [ ] Repository tests use SQLite in-memory
 
-### Slice 7: Migration
-- [ ] migrations/versions/xxx_fiscal_years_periods.py (3 tables, manual, alembic style)
+### Slice 4: Service layer
+- [ ] `src/bricks/company/services.py`: CompanyService (create, get, update, deactivate, dissolve)
+- [ ] `src/bricks/company/services.py`: TenantService (resolve_company, check_access, scope_query)
+- [ ] `tests/unit/test_company_service.py` (business rules, RBAC, audit log)
 
-### Slice 8: Docs sync + review + git
-- [ ] Update docs status (README, audit, AGENTS.md)
-- [ ] ruff/black/mypy scoped + full pytest green
-- [ ] codegraph sync, commit (no push — review required)
+**Acceptance criteria:**
+- [ ] create_company: validates MST uniqueness, legal fields completeness
+- [ ] update_company: MST locked after invoicing, config_version increment
+- [ ] deactivate_company: checks no open periods, no pending invoices
+- [ ] dissolve_company: CHIEF_ACCOUNTANT only, all periods closed
+- [ ] TenantService.scope_query appends WHERE company_id = :cid
+- [ ] All service tests use fake repo (no DB)
+
+### Slice 5: Web adapter (Flask blueprint + REST API)
+- [ ] `src/bricks/company/web_adapter.py`: companies_bp Blueprint
+- [ ] `src/bricks/company/web_adapter.py`: REST endpoints (POST/GET/PATCH/DELETE /api/v1/companies)
+- [ ] `tests/integration/test_company_api.py` (endpoint tests with test client)
+
+**Acceptance criteria:**
+- [ ] All endpoints have `@login_required`
+- [ ] Role checks: ACCOUNTANT/CHIEF_ACCOUNTANT can CRUD, AUDITOR read-only
+- [ ] POST validates MST format + uniqueness
+- [ ] PATCH returns 409 on MST change if invoices exist
+- [ ] DELETE (deactivate) returns 200 with updated status
+- [ ] Error responses match spec format: `{"error": "Mô tả lỗi", "code": "ERROR_CODE"}`
+
+### Slice 6: App registration + migration
+- [ ] `src/app.py`: Register companies_bp blueprint
+- [ ] `migrations/versions/xxx_add_companies_table.py`: Alembic migration
+- [ ] Verify migration applies on fresh SQLite
+
+**Acceptance criteria:**
+- [ ] Blueprint registered at `/api/v1/companies`
+- [ ] Migration creates companies table with all columns + constraints
+- [ ] Migration rollback works
+
+### Slice 7: Full test suite + quality gates
+- [ ] Run `ruff check src/bricks/company/`
+- [ ] Run `black --check src/bricks/company/`
+- [ ] Run `mypy src/bricks/company/`
+- [ ] Run `pytest tests/unit/company/ tests/integration/test_company_*`
+- [ ] Verify all tests pass, no regressions
+
+### Slice 8: Docs sync + git
+- [ ] Update `docs/company-module/README.md` status
+- [ ] Update `AGENTS.md` Company module status
+- [ ] codegraph sync
+- [ ] git commit (no push — review required)
 
 ## Checkpoints
-- After Slice 2: domain math tests green; period boundaries exact.
-- After Slice 4: service tests green; full pytest (191 baseline) still green.
-- After Slice 6: API integration green; currencies tests untouched (80 green).
-- After Slice 7: migration applies on fresh sqlite; seed FY works.
+- After Slice 2: Domain + contract defined; unit tests green.
+- After Slice 4: Service tests green; full pytest still green.
+- After Slice 5: API integration tests green.
+- After Slice 6: Migration applies; app starts.
+- After Slice 8: Ready for review.
 
 ## Risks
 | Risk | Mitigation |
 |---|---|
-| Breaking 80 currency tests | dual-write PeriodLockModel bridge; default-None injection |
-| Migration drift vs models | manual alembic file matching models.py; verify on sqlite |
-| FISCAL_15 legacy data | service flags non-quarter-aligned configs on ensure |
+| Breaking existing tests | Run full suite after each slice |
+| MST validation drift | TaxId value object centralizes format |
+| JSON field portability | SQLite JSON function limited; keep queries simple |
+| Audit trail gaps | Service layer enforces created_by/updated_by |
+
+## Files Likely Touched
+```
+src/bricks/company/__init__.py
+src/bricks/company/domain.py
+src/bricks/company/contract.py
+src/bricks/company/storage.py
+src/bricks/company/services.py
+src/bricks/company/web_adapter.py
+src/app.py
+migrations/versions/xxx_add_companies_table.py
+tests/unit/company/__init__.py
+tests/unit/test_company_domain.py
+tests/unit/test_company_enums.py
+tests/unit/test_company_contract.py
+tests/unit/test_company_service.py
+tests/integration/test_company_repository.py
+tests/integration/test_company_api.py
+```

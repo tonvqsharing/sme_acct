@@ -45,8 +45,8 @@ Vietnamese accounting law (Luật Kế toán 2015 Art. 6; Luật Doanh nghiệp 
 |-----|-------------|
 | `docs/system-settings/` | Dependent — SystemSettings assumes CompanyConfig exists and is scoped to company_id |
 | `docs/multi-company/` | Builds on this — Multi-company consolidation requires base Company entity first |
-| `src/domain/entities/` | Extends — this module adds Company entity to domain |
-| `src/infrastructure/database/models.py` | Extends — adds companies table + company_id FKs |
+| `src/bricks/company/domain.py` | Extends — this module adds Company entity to domain |
+| `src/bricks/company/storage.py` | Extends — adds companies table + company_id FKs |
 
 ---
 

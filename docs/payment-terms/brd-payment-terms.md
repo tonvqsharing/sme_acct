@@ -92,7 +92,7 @@ The module is ready for PRODUCTION when ALL of the following are satisfied:
 - [ ] Series prefix format validated per GDT Circular 163/2020/TT-BTC
 - [ ] Maximum 15 active series constraint enforced per company
 - [ ] Actor UUID (D11) required on all mutations, validated at API layer
-- [ ] CASRBAC roles properly enforced (@casbin_required)
+- [ ] Flask built-in RBAC properly enforced (@login_required + current_user.role)
 - [ ] Database migration generated and applied
 - [ ] All unit tests passing (≥90%)
 - [ ] All integration tests passing
@@ -111,7 +111,7 @@ The module is ready for PRODUCTION when ALL of the following are satisfied:
 | `EInvoiceSeries` | Partial exists | Document numbering series already implemented in system_settings (max 15 active, prefix + next_sequence); needs extension for full document numbering |
 | `Company` | Already exists | Payment terms/series belong to a company (company_id FK) |
 | `AuditLogService` | Required | All events logged via audit_log_service.append_event() |
-| `CASRBAC` | Required | @casbin_required decorator on all API routes |
+| `Flask-Login RBAC` | Required | @login_required + current_user.role on all API routes |
 | `SQLAlchemyRepository` | Required | DB adapters for PaymentTerm, DocumentNumberingSeries |
 
 ---

@@ -18,7 +18,7 @@
 | 6 | System performs threshold check: `$500 < $3,500 ≤ $5,000` → T2 band | Threshold service evaluates band |
 | 7 | System routes approval request to manager | Notification sent to manager's dashboard/email |
 | 8 | Manager logs in → sees pending approvals count | Pending approvals badge: 1 |
-| 9 | Manager reviews invoice → clicks "Approve" | `@casbin_required('MANAGER')` decorator enforces RBAC |
+| 9 | Manager reviews invoice → clicks "Approve" | `@login_required + current_user.role == 'MANAGER'` check enforces RBAC |
 | 10 | System changes status DRAFT → APPROVED | `Invoice.approve()` called, status updated |
 | 11 | Audit log entry created | `entity_type=invoice, action=approve, approver=MANAGER, amount=$3,500` |
 | 12 | Invoice proceeds to payment run | Ready for next AP cycle |
@@ -48,7 +48,7 @@
 | 5 | Approval request routed to chief accountant | Notification: "22 pending approvals from accountants" |
 | 6 | Chief accountant logs in → sees "Chief Accountant approvals" section | Badge: 1 high-value invoice pending |
 | 7 | Chief accountant reviews invoice details | Vendor, tax compliance, overall impact displayed |
-| 8 | Chief accountant clicks "Approve" | `@casbin_required('CHIEF_ACCOUNTANT')` enforces RBAC |
+| 8 | Chief accountant clicks "Approve" | `@login_required + current_user.role == 'CHIEF_ACCOUNTANT'` check enforces RBAC |
 | 9 | System changes status DRAFT → APPROVED | `Invoice.approve()` updates status |
 | 10 | Audit log: `action=approve, approver=CHIEF_ACCOUNTANT, amount=$22,000` | Immutable audit record created |
 | 11 | Invoice proceeds to payment run | Added to next payment batch |
@@ -76,7 +76,7 @@
 | 3 | System threshold check: `$25,000 < $85,000 ≤ $100,000` → T4 band | Threshold service identifies T4 |
 | 4 | Approval request routed to director | Notification with executive context |
 | 5 | Director reviews: strategic alignment, budget impact, multi-entity considerations | Full invoice context displayed |
-| 6 | Director clicks "Approve" | `@casbin_required('DIRECTOR')` enforces RBAC |
+| 6 | Director clicks "Approve" | `@login_required + current_user.role == 'DIRECTOR'` check enforces RBAC |
 | 7 | System changes status DRAFT → APPROVED | Status updated in DB |
 | 8 | Audit log: `action=approve, approver=DIRECTOR, amount=$85,000, special_justification` | Records executive sign-off |
 | 9 | Invoice proceeds to payment run with director sign-off | High-value payment batch |
@@ -169,7 +169,7 @@
 |   | - scope = "all_pending_approvals" | - covers all pending |
 |   | - reason = "On maternity leave" | - documented reason |
 | 4 | System notifications: deputy receives all chief accountant's pending approval alerts | Badge on deputy's dashboard: "5 pending (CA's delegate)" |
-| 5 | Deputy reviews and approves invoices on behalf | `@casbin_required('CHIEF_ACCOUNTANT')` but delegation flag overrides |
+| 5 | Deputy reviews and approves invoices on behalf | `@login_required + current_user.role == 'CHIEF_ACCOUNTANT'` check but delegation flag overrides |
 | 6 | Audit log: `action=approve, approver=DELEGATE (on behalf of CHIEF_ACCOUNTANT)` | Records delegation in audit |
 | 7 | After 14 days: delegation expires automatically | Original chief accountant resumes approvals |
 | 8 | Any remaining approvals: revert to chief accountant | System: "delegation expired, returning to original approver" |

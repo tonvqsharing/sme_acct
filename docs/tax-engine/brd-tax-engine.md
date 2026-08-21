@@ -81,7 +81,7 @@ real estate, metals/mining/petroleum, goods subject to special consumption tax.
    recalc on item add/edit; rounding tol implied.
 5. **E-invoice series management** — `add_e_invoice_series()` — max 15 active series per
    company; requires CA signer; audit-logged; CONFIG-type with 2nd-approval pattern.
-6. **RBAC** — `@casbin_required` on all API routes; AUDITOR read-only everywhere.
+6. **RBAC** — `@login_required + current_user.role` on all API routes; AUDITOR read-only everywhere.
 7. **Audit trail** — every VAT rate change, e-invoice series add, config update logged
    (actor, timestamp, old/new, reason).
 

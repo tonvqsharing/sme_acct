@@ -248,12 +248,11 @@
 |---|---|---|---|
 | 1 | CHIEF_ACCOUNTANT | Current role: `CHIEF_ACCOUNTANT` |  |
 | 2 | Admin action | Updates `auth_user_roles` table: `user_id = ?`, `role = 'ADMIN'` |  |
-| 3 | Policy reload | `/api/v1/rbac/reload` triggered → enforcer reloads `rbac_policy.csv` |  |
-| 4 | Enforcer | Now has `g, CHIEF_ACCOUNTANT, ADMIN` in role_definition |  |
-| 5 | Previous actions | `enforce("CHIEF_ACCOUNTANT", "...", "...")` still ALLOWED (legacy) |  |
-| 6 | New actions | `enforce("ADMIN", "...", "...")` now ALLOWED (expanded permissions) |  |
-| 7 | AuditLog | `action="ROLE_PROMOTION"`, `after_value="CHIEF_ACCOUNTANT→ADMIN"`, `actor_id=promoter_id` |  |
-| 8 | Response | `200 OK` + new role assignment confirmed |  |
+| 3 | Role change | Flask-Login session updated: `current_user.role = 'ADMIN'` immediately effective |  |
+| 4 | Previous actions | `current_user.role == "CHIEF_ACCOUNTANT"` still ALLOWED (legacy) |  |
+| 5 | New actions | `current_user.role == "ADMIN"` now ALLOWED (expanded permissions) |  |
+| 6 | AuditLog | `action="ROLE_PROMOTION"`, `after_value="CHIEF_ACCOUNTANT→ADMIN"`, `actor_id=promoter_id` |  |
+| 7 | Response | `200 OK` + new role assignment confirmed |  |
 
 ### AP-01: Self-Service Role Promotion (Not Recommended)
 | Step | Actor | RBAC Check | Outcome |
@@ -281,4 +280,4 @@
 | U-05-EP | AUDITOR | Destroy audit record (early) | DENIED | 403 | 10-yr retention |
 | U-06-HP | CHIEF_ACCOUNTANT → ADMIN | Role promotion | ALLOWED with reload | 200 | Hierarchy: g, CHA, ADMIN |
 
-All 65 existing unit/integration tests should continue passing since pycasbin has **no existing code** in the codebase to break — this is a new implementation layer.
+All unit/integration tests should continue passing since RBAC enforcement is via Flask built-in `current_user.role` checks — no external dependency required.

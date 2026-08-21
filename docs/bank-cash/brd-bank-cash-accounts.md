@@ -86,7 +86,7 @@ The module is ready for PRODUCTION when ALL of the following are satisfied:
 - [ ] 10-year retention policy enforced (no automatic deletion)
 - [ ] System account protection active (cannot modify/delete system accounts)
 - [ ] Actor UUID (D11) required on all mutations, validated at API layer
-- [ ] CASRBAC roles properly enforced (@casbin_required)
+- [ ] Flask built-in RBAC properly enforced (@login_required + current_user.role)
 - [ ] Bank reconciliation tolerance 0.01 verified
 - [ ] ISO currency code validation ^[A-Z]{3}$ working
 - [ ] Database migration generated and applied (a1f2b3c4d5e6 pattern)

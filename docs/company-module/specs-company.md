@@ -4,46 +4,38 @@
 
 ---
 
-## 1. Position in Architecture
+## 1. Position in Architecture (Lego Brick)
 
 ```
-src/
-  domain/
-    entities/
-      company.py          ← NEW: Company aggregate root
-      base.py             ← EXTEND: add CompanyStatus, CompanyType, AccountingRegime, Currency
-      contact.py          ← EXTEND: add company_id FK
-      invoice.py          ← EXTEND: add company_id FK
-      voucher.py          ← EXTEND: add company_id FK
-    exceptions/
-      company.py          ← NEW: CompanyNotFoundError, DuplicateMSTError, CompanyLockedError
-    repositories/
-      company_repo.py     ← NEW: port (interface)
-  application/
-    ports/
-      company_repo.py     ← NEW: abstract interface
-    services/
-      company_service.py  ← NEW: orchestration, validation, change management
-      tenant_service.py   ← NEW: request-scoped company resolution
-  infrastructure/
-    database/
-      models.py           ← EXTEND: CompanyModel + company_id FKs on PartnerModel, InvoiceModel, VoucherModel
-    repositories/
-      sqlalchemy_company.py ← NEW: adapter
-  presentation/
-    api/
-      companies.py        ← NEW: REST endpoints
-    ui/
-      companies/          ← NEW: HTML setup wizard
+src/bricks/
+  company/                 ← 🧱 NEW brick: company-module
+    contract.py            ← 🔌 Public interface (only cross-brick touchpoint)
+    domain.py              ← 🎯 Pure Python entities (no Flask/SQLAlchemy imports)
+    services.py            ← ⚙️ Business orchestration
+    storage.py             ← 💾 SQLAlchemy models + repository adapters
+    web_adapter.py         ← 🌐 Flask blueprint + REST endpoints
+  contact/                 ← existing brick (extend with company_id FK)
+    ...
+  invoice/                 ← existing brick (extend with company_id FK)
+    ...
+  voucher/                 ← existing brick (extend with company_id FK)
+    ...
 ```
 
-**Critical positioning:** Company is the root aggregate. ALL other domain entities (Partner, Invoice, Voucher) MUST carry `company_id` as non-nullable FK once Company module is live.
+**Brick boundaries (enforced):**
+- `domain.py` — pure Python; NO `flask`, NO `sqlalchemy`, NO `flask_login` imports
+- `contract.py` — public interface; receives/returns only `str`, `int`, `float`, `dict`, `Decimal`, `UUID`
+- `storage.py` — SQLAlchemy models + repo adapters (the ONLY file with SQLAlchemy imports)
+- `services.py` — orchestration, validation, accepts injected port, no Flask/SQLAlchemy imports
+- `web_adapter.py` — Flask blueprint + REST endpoints; `@login_required` + `current_user.role` checks (no Casbin)
+
+**Critical positioning:** Company is the root aggregate. ALL other bricks MUST carry `company_id` (as `str` UUID passed via `contract.py`) once Company module is live. **No cross-brick SQLAlchemy joins** — communicate via primitive IDs only.
 
 ---
 
 ## 2. Domain Model
 
-### 2.1 Company Entity (`src/domain/entities/company.py`)
+### 2.1 Company Entity (`src/bricks/company/domain.py`)
 
 ```python
 @dataclass
@@ -105,7 +97,7 @@ class Company:
 
 ### 2.2 Supporting Value Objects
 
-Add to `src/domain/entities/base.py`:
+Add to `src/bricks/company/domain.py`:
 
 ```python
 class CompanyType(Enum):
@@ -143,15 +135,15 @@ class BankAccount:
 ### 2.3 Changes to Existing Entities (add `company_id`)
 
 ```python
-# src/domain/entities/contact.py — Partner
+# Partner entity (cross-brick reference via contract.py)
 class Partner:
     company_id: UUID  # NEW — FK to Company; partners are per-entity
 
-# src/domain/entities/invoice.py — Invoice
+# Invoice entity (cross-brick reference via contract.py)
 class Invoice:
     company_id: UUID  # NEW — issuing entity
 
-# src/domain/entities/voucher.py — Voucher
+# Voucher entity (cross-brick reference via contract.py)
 class Voucher:
     company_id: UUID  # NEW — owning entity
 ```
@@ -205,9 +197,11 @@ class CompanyRepositoryPort(ABC):
 
 | Method | Responsibility |
 |--------|---------------|
-| `resolve_company(request)` | Extract company_id from JWT sub / header / subdomain |
-| `check_access(user_id, company_id)` | Enforce user belongs to company (future RBAC); v1: single company implicit |
+| `resolve_company(request)` | Extract company_id from JWT sub / header / subdomain via Flask request context |
+| `check_access(user_id, company_id)` | Enforce user belongs to company (Flask built-in: `current_user.role` check) |
 | `scope_query(query, company_id)` | Append `WHERE company_id = :cid` to all queries |
+
+**Flask built-in RBAC:** `TenantService.check_access` uses `current_user.role` and `current_user.company_id` from Flask-Login session. No Casbin, no `pycasbin`, no policy CSV.
 
 ---
 
@@ -324,17 +318,30 @@ ALTER TABLE vouchers ADD CONSTRAINT fk_vouchers_company FOREIGN KEY (company_id)
 
 ### 7.1 Endpoints
 
-| Method | Path | Auth | RBAC | Description |
-|--------|------|------|------|-------------|
-| `POST` | `/api/v1/companies` | JWT | ADMIN | Create company (one-time setup) |
-| `GET` | `/api/v1/companies` | JWT | AUTH | List companies user can access |
-| `GET` | `/api/v1/companies/{id}` | JWT | AUTH | Company detail |
-| `PATCH` | `/api/v1/companies/{id}` | JWT | ADMIN + ACCOUNTANT | Update company (restricted fields only) |
-| `POST` | `/api/v1/companies/{id}/suspend` | JWT | CHIEF_ACCOUNTANT | Suspend operations |
-| `POST` | `/api/v1/companies/{id}/reactivate` | JWT | ADMIN | Reactivate from suspended |
-| `POST` | `/api/v1/companies/{id}/change-mst` | JWT | ADMIN + LEGAL_REVIEW | MST change (requires re-registration proof) |
-| `POST` | `/api/v1/companies/{id}/legal-review` | JWT | CHIEF_ACCOUNTANT | Stamp legal review |
-| `GET` | `/api/v1/companies/{id}/audit-log` | JWT | ACCOUNTANT, AUDITOR | Company change history |
+| Method | Path | Auth | Role Check | Description |
+|--------|------|------|------------|-------------|
+| `POST` | `/api/v1/companies` | `@login_required` | `current_user.role == "ADMIN"` | Create company (one-time setup) |
+| `GET` | `/api/v1/companies` | `@login_required` | any auth role | List companies user can access |
+| `GET` | `/api/v1/companies/{id}` | `@login_required` | any auth role | Company detail |
+| `PATCH` | `/api/v1/companies/{id}` | `@login_required` | `current_user.role in ("ADMIN", "ACCOUNTANT")` | Update company (restricted fields only) |
+| `POST` | `/api/v1/companies/{id}/suspend` | `@login_required` | `current_user.role == "CHIEF_ACCOUNTANT"` | Suspend operations |
+| `POST` | `/api/v1/companies/{id}/reactivate` | `@login_required` | `current_user.role == "ADMIN"` | Reactivate from suspended |
+| `POST` | `/api/v1/companies/{id}/change-mst` | `@login_required` | `current_user.role in ("ADMIN", "LEGAL_REVIEW")` | MST change (requires re-registration proof) |
+| `POST` | `/api/v1/companies/{id}/legal-review` | `@login_required` | `current_user.role == "CHIEF_ACCOUNTANT"` | Stamp legal review |
+| `GET` | `/api/v1/companies/{id}/audit-log` | `@login_required` | `current_user.role in ("ACCOUNTANT", "AUDITOR")` | Company change history |
+
+**RBAC pattern (Flask built-in):**
+```python
+from flask_login import login_required, current_user
+from flask import abort
+
+@web_adapter_bp.post("/api/v1/companies")
+@login_required
+def create_company():
+    if current_user.role != "ADMIN":
+        abort(403, description="RBAC denied: ADMIN role required")
+    # ... proceed
+```
 
 ### 7.2 Request/Response Schemas
 
@@ -396,33 +403,44 @@ ALTER TABLE vouchers ADD CONSTRAINT fk_vouchers_company FOREIGN KEY (company_id)
 
 ## 8. Migration Plan
 
-### Phase 1 — Entity + Repo + Tests
-- Create `Company` entity in domain
-- Add `CompanyModel` to SQLAlchemy
-- Add `company_id` columns (nullable) to `partners`, `invoices`, `vouchers`
-- Create `companies` table
-- Write domain unit tests
+Database: **SQLite3** (default). `SQLALCHEMY_DATABASE_URI=sqlite:///./dev.db` for local dev. Override via env if using MySQL/PostgreSQL later.
 
-### Phase 2 — Service + Validation
-- `CompanyService` with all business rules
-- `TenantService` for request-scoped resolution
+### Phase 1 — Brick Domain + Storage + Tests
+- Create `Company` entity in `src/bricks/company/domain.py` (pure Python, no Flask/SQLAlchemy)
+- Add `CompanyModel` to `src/bricks/company/storage.py` (SQLAlchemy adapter only)
+- Add `company_id` columns (nullable) to `partners`, `invoices`, `vouchers` in respective brick `storage.py`
+- Create `companies` table
+- Write domain unit tests (mock `contract.py` of cross-brick targets)
+
+### Phase 2 — Brick Service + Validation
+- `CompanyService` in `src/bricks/company/services.py` with all business rules (pure Python)
+- `TenantService` for request-scoped resolution (Flask context only in `web_adapter.py`)
 - MST uniqueness enforcement
 - Company status lifecycle
 
-### Phase 3 — API + Integration
-- REST endpoints
-- Update `InvoiceService`, `VoucherService`, `PartnerService` to require `company_id`
+### Phase 3 — Brick Web Adapter + Integration
+- Flask blueprint in `src/bricks/company/web_adapter.py`
+- `@login_required` + `current_user.role` checks on all routes
+- Update `InvoiceService`, `VoucherService`, `PartnerService` to require `company_id` (via `contract.py` primitive)
 - Update all repositories to scope by `company_id`
 
 ### Phase 4 — Audit + Backfill
-- Audit log for company changes
+- Audit log for company changes (in audit-log brick)
 - Data migration script to backfill `company_id` on existing records
-- Integration tests for tenant isolation
+- Integration tests for tenant isolation (mock cross-brick contracts)
 
 ### Phase 5 — UI
 - Company setup wizard
 - Company profile page
 - Change notification form (Mẫu 12 simulation)
+
+### Migration Commands (SQLite3 default)
+```bash
+# Local dev
+SQLALCHEMY_DATABASE_URI=sqlite:///./dev.db flask db init
+SQLALCHEMY_DATABASE_URI=sqlite:///./dev.db flask db migrate -m "company_init"
+SQLALCHEMY_DATABASE_URI=sqlite:///./dev.db flask db upgrade
+```
 
 ---
 
