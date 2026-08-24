@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import pytest
 
@@ -52,7 +52,7 @@ def _setup_company(svc_app):
         date(2026, 1, 1),
         date(2026, 12, 31),
         "MONTHLY",
-        actor="00000000-0000-0000-0000-000000000003",
+        actor=uuid4(),
         reason="fy",
     )
     coa = svc_app.coa_service
@@ -63,6 +63,15 @@ def _setup_company(svc_app):
         "1311",
         "Phải thu KH",
         parent_code="131",
+        actor=SYS,
+        reason="coa",
+    )
+    coa.create_account(COMPANY, "333", "Thuế phải nộp", actor=SYS, reason="coa")
+    coa.create_account(
+        COMPANY,
+        "3331",
+        "Thuế GTGT đầu ra",
+        parent_code="333",
         actor=SYS,
         reason="coa",
     )
@@ -77,17 +86,18 @@ def _setup_company(svc_app):
         name="Net 30",
         due_days=30,
         interest_rate=Decimal(0),
-        actor="00000000-0000-0000-0000-000000000003",
+        actor=uuid4(),
         reason="terms",
         is_default=True,
     )
     assert _series_service is not None
-    _series_service.create_series(
-        company_id=UUID(COMPANY),
-        prefix="HD/",
-        actor="00000000-0000-0000-0000-000000000003",
-        reason="series",
-    )
+    for pfx in ("HD/", "PT/"):
+        _series_service.create_series(
+            company_id=UUID(COMPANY),
+            prefix=pfx,
+            actor=uuid4(),
+            reason="series",
+        )
 
 
 BODY = {

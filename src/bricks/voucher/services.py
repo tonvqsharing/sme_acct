@@ -35,9 +35,9 @@ def _d(v: Any) -> Decimal:
 
 
 class InvoiceServiceAdapter:
-    """Maps a posted invoice to Nợ 1311 / Có 5111 (+ VAT to 33311)."""
+    """Maps a posted invoice to Nợ 1311 / Có 5111 (+ VAT to 3331)."""
 
-    VAT_ACCOUNT = "33311"
+    VAT_ACCOUNT = "3331"
 
     @staticmethod
     def lines_from_invoice(inv: Any) -> list[JournalLine]:

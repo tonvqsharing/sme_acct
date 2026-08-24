@@ -79,8 +79,24 @@ def _stamp(
 class PaymentTermService:
     """Orchestrates payment term use cases."""
 
-    def __init__(self, repo: PaymentTermRepositoryPort) -> None:
+    def __init__(
+        self,
+        repo: PaymentTermRepositoryPort,
+        audit: Any | None = None,
+    ) -> None:
         self._repo = repo
+        self._audit = audit
+
+    def _log(self, action: str, entity_id: UUID, actor: UUID, reason: str) -> None:
+        if self._audit is not None:
+            self._audit.append(
+                entity_type="payment_term",
+                entity_id=entity_id,
+                action=action,
+                actor_id=actor,
+                reason=reason,
+                after_value=None,
+            )
 
     def create_payment_term(
         self,
@@ -108,7 +124,9 @@ class PaymentTermService:
             is_default=is_default,
         )
         term.checksum = _stamp(term, "CREATE", actor, reason)
-        return self._repo.create(term)
+        saved = self._repo.create(term)
+        self._log("CREATE", saved.id, actor, reason)
+        return saved
 
     def get_payment_term(self, payment_term_id: UUID) -> PaymentTerm | None:
         return self._repo.get_by_id(payment_term_id)
@@ -198,8 +216,24 @@ class DocumentNumberingSeriesService:
 
     MAX_ACTIVE_SERIES = MAX_ACTIVE_SERIES
 
-    def __init__(self, repo: DocumentNumberingSeriesRepositoryPort) -> None:
+    def __init__(
+        self,
+        repo: DocumentNumberingSeriesRepositoryPort,
+        audit: Any | None = None,
+    ) -> None:
         self._repo = repo
+        self._audit = audit
+
+    def _log(self, action: str, entity_id: UUID, actor: UUID, reason: str) -> None:
+        if self._audit is not None:
+            self._audit.append(
+                entity_type="document_numbering_series",
+                entity_id=entity_id,
+                action=action,
+                actor_id=actor,
+                reason=reason,
+                after_value=None,
+            )
 
     def create_series(
         self,
@@ -227,7 +261,9 @@ class DocumentNumberingSeriesService:
             next_sequence=1,
         )
         series.checksum = _stamp(series, "CREATE", actor, reason)
-        return self._repo.create(series)
+        saved = self._repo.create(series)
+        self._log("CREATE", saved.id, actor, reason)
+        return saved
 
     def get_series(self, series_id: UUID) -> DocumentNumberingSeries | None:
         return self._repo.get_by_id(series_id)
@@ -307,6 +343,7 @@ class DocumentNumberingSeriesService:
             raise
         series.checksum = _stamp(series, "INCREMENT", actor, reason)
         self._repo.update(series)
+        self._log("INCREMENT", series.id, actor, str(reason))
         return seq_used
 
 

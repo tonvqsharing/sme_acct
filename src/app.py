@@ -20,9 +20,14 @@ from src.bricks.audit_log.storage import (
 from src.bricks.audit_log.storage import (
     SQLAlchemyAuditLogRepository,
 )
+from src.bricks.audit_log.web_adapter import (
+    audit_log_bp,
+    init_audit_service,
+)
 from src.bricks.coa.services import AccountService
 from src.bricks.coa.storage import Base as CoaBase
 from src.bricks.coa.storage import SQLAlchemyAccountRepository
+from src.bricks.coa.web_adapter import coa_bp, init_coa_service
 from src.bricks.company.services import CompanyService, TenantService
 from src.bricks.company.storage import Base as CompanyBase
 from src.bricks.company.storage import SQLAlchemyCompanyRepository
@@ -34,6 +39,10 @@ from src.bricks.fiscal_year_period.storage import (
 from src.bricks.fiscal_year_period.storage import (
     SQLAlchemyFiscalYearRepository,
     SQLAlchemyPeriodRepository,
+)
+from src.bricks.fiscal_year_period.web_adapter import (
+    fiscal_year_bp,
+    init_fy_service,
 )
 from src.bricks.invoice.services import InvoiceService
 from src.bricks.invoice.storage import Base as InvBase
@@ -118,9 +127,13 @@ def create_app(config: dict | None = None) -> Flask:
     pt_session = session_factory()
     term_repo = SQLAlchemyPaymentTermRepository(pt_session)
     series_repo = SQLAlchemyDocumentNumberingSeriesRepository(pt_session)
+    pt_audit = session_factory()  # dedicated session for audit writes
+    from src.bricks.audit_log.storage import SQLAlchemyAuditLogRepository as _ALR
+
+    _pt_audit_svc = AuditLogService(_ALR(pt_audit))
     init_payment_terms_services(
-        PaymentTermService(term_repo),
-        DocumentNumberingSeriesService(series_repo),
+        PaymentTermService(term_repo, audit=_pt_audit_svc),
+        DocumentNumberingSeriesService(series_repo, audit=_pt_audit_svc),
     )
 
     audit_svc = AuditLogService(SQLAlchemyAuditLogRepository(session_factory()))
@@ -138,6 +151,9 @@ def create_app(config: dict | None = None) -> Flask:
     app.register_blueprint(invoice_bp)
     app.register_blueprint(voucher_bp)
     app.register_blueprint(ledger_bp)
+    app.register_blueprint(coa_bp)
+    app.register_blueprint(fiscal_year_bp)
+    app.register_blueprint(audit_log_bp)
 
     from src.bricks.payment_terms.web_adapter import init_approval_service
 
@@ -193,7 +209,31 @@ def create_app(config: dict | None = None) -> Flask:
         audit=audit_svc,
         repo=SQLAlchemyInvoiceRepository(inv_session),
     )
-    init_invoice_service(invoice_svc)
+
+    def _auto_journal(posted_invoice):
+        """Posting an invoice generates + posts its balanced journal."""
+        from uuid import NAMESPACE_URL, uuid5
+
+        sys_actor = uuid5(NAMESPACE_URL, "system:numbering")
+        v = voucher_svc.create_voucher(
+            company_id=posted_invoice.company_id,
+            entry_date=posted_invoice.issue_date,
+            description=f"Auto journal for {posted_invoice.number}",
+            lines=[
+                {"account_code": l.account_code, "debit": str(l.debit), "credit": str(l.credit)}
+                for l in InvoiceServiceAdapter.lines_from_invoice(posted_invoice)
+            ],
+            actor=sys_actor,
+            reason=f"auto:{posted_invoice.number}",
+        )
+        posted = voucher_svc.post_voucher(
+            v.id,
+            actor=sys_actor,
+            reason=f"auto:{posted_invoice.number}",
+        )
+        return {"id": str(posted.id), "number": posted.number}
+
+    init_invoice_service(invoice_svc, on_posted=_auto_journal)
 
     class _VNumbering:
         def __init__(self, dns):
@@ -219,8 +259,13 @@ def create_app(config: dict | None = None) -> Flask:
     )
     init_voucher_service(voucher_svc)
 
+    from src.bricks.voucher.services import InvoiceServiceAdapter
+
     ledger_svc = LedgerService(source=SQLAlchemyLedgerSource(session_factory()))
     init_ledger_service(ledger_svc)
+    init_coa_service(app.coa_service)
+    init_fy_service(app.fy_service)
+    init_audit_service(audit_svc)
 
     # ── Health check ────────────────────────────────────────────────────
     @app.route("/health")

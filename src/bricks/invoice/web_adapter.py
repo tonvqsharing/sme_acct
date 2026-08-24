@@ -19,11 +19,13 @@ from src.bricks.invoice.services import (
 invoice_bp = Blueprint("invoice", __name__)
 
 _invoice_service: Any = None
+_on_posted: Any = None  # optional callback(invoice)->dict, wired by app factory
 
 
-def init_invoice_service(svc: Any) -> None:
-    global _invoice_service
+def init_invoice_service(svc: Any, on_posted: Any | None = None) -> None:
+    global _invoice_service, _on_posted
     _invoice_service = svc
+    _on_posted = on_posted
 
 
 def _svc() -> Any:
@@ -131,4 +133,10 @@ def post_invoice(invoice_id: str) -> tuple[Any, int]:
         return jsonify({"error": str(exc), "code": "ALREADY_POSTED"}), 409
     except InvoiceNotFoundError:
         abort(404, description="Invoice not found")
-    return jsonify({"data": serialize(posted)}), 200
+
+    payload = serialize(posted)
+    if _on_posted is not None:
+        journal = _on_posted(posted)
+        payload["voucher_id"] = journal["id"]
+        payload["voucher_number"] = journal["number"]
+    return jsonify({"data": payload}), 200
