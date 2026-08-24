@@ -49,12 +49,14 @@ class InvoiceService:
         terms: Any,
         audit: Any,
         repo: Any | None = None,
+        regime_of: Any | None = None,
     ) -> None:
         self._fy = fy
         self._coa = coa
         self._numbering = numbering
         self._terms = terms
         self._audit = audit
+        self._regime_of = regime_of
         self._repo = repo if repo is not None else _MemoryRepo()
 
     # ── create ──────────────────────────────────────────────────────────
@@ -80,9 +82,11 @@ class InvoiceService:
         if self._fy.find_open_period(company_id, issue_date) is None:
             raise NoOpenPeriodError("Kỳ sổ chưa mở cho ngày hạch toán")
 
-        # Gate 2: every line posts to an ACTIVE detail account
+        # Gate 2: every line posts to an ACTIVE posting-level account,
+        # validated under the company's own regime catalog.
+        regime = self._regime_of(company_id) if self._regime_of else "tt133"
         for it in items:
-            self._coa.validate_posting_account(company_id, it["account_code"])
+            self._coa.validate_posting_account(company_id, it["account_code"], regime)
 
         # Number from document-numbering series
         number = self._numbering.issue(company_id)

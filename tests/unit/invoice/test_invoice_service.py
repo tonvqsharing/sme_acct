@@ -42,7 +42,7 @@ class ClosedFY(FakeFY):
 
 
 class FakeCOA:
-    def validate_posting_account(self, company_id, code):
+    def validate_posting_account(self, company_id, code, regime="tt133"):
         if code == "9999":
             raise UnknownAccountError(code)
         if code == "1120":

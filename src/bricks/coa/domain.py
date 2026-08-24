@@ -39,12 +39,14 @@ CHART_TEMPLATES: dict[str, dict[str, str]] = {
     },
 }
 CHART_TEMPLATES["tt58_micro"] = CHART_TEMPLATES["tt133"]
+# Posting-level defaults (non-zero trailing group) so journals can
+# validate + post without extra chart setup.
 CHART_TEMPLATES["tt99"] = {
-    "cash": "1110000000",
-    "bank": "1121000000",
-    "ar": "1310000000",
-    "revenue": "5110000000",
-    "vat_output": "3331100000",
+    "cash": "1110000001",
+    "bank": "1121000001",
+    "ar": "1311000001",
+    "revenue": "5111000001",
+    "vat_output": "3331100001",
 }
 
 

@@ -25,6 +25,9 @@ class AccountModel(Base):
     parent_code: Mapped[str | None] = mapped_column(String(16), nullable=True)
     normal_balance: Mapped[str] = mapped_column(String(10), default="debit")
     status: Mapped[str] = mapped_column(String(20), default="active")
+    # Regime governs code pattern + posting rules; persisted so entities
+    # survive repo round-trips without silently reverting to tt133.
+    regime: Mapped[str] = mapped_column(String(12), default="tt133")
 
     __table_args__ = None
 
@@ -43,6 +46,7 @@ class SQLAlchemyAccountRepository(AccountRepositoryPort):
             id=UUID(m.id),
             normal_balance=NormalBalance(m.normal_balance),
             status=AccountStatus(m.status),
+            regime=m.regime,
         )
 
     def create(self, account: Account) -> Account:
@@ -55,6 +59,7 @@ class SQLAlchemyAccountRepository(AccountRepositoryPort):
                 parent_code=account.parent_code,
                 normal_balance=account.normal_balance.value,
                 status=account.status.value,
+                regime=account.regime,
             )
         )
         self._session.commit()
@@ -87,6 +92,7 @@ class SQLAlchemyAccountRepository(AccountRepositoryPort):
         m.name = account.name
         m.normal_balance = account.normal_balance.value
         m.status = account.status.value
+        m.regime = account.regime
         self._session.commit()
         return account
 

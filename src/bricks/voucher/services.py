@@ -62,12 +62,20 @@ class InvoiceServiceAdapter:
 
 class VoucherService:
     def __init__(
-        self, *, fy: Any, coa: Any, numbering: Any, audit: Any, repo: Any | None = None
+        self,
+        *,
+        fy: Any,
+        coa: Any,
+        numbering: Any,
+        audit: Any,
+        repo: Any | None = None,
+        regime_of: Any | None = None,
     ) -> None:
         self._fy = fy
         self._coa = coa
         self._numbering = numbering
         self._audit = audit
+        self._regime_of = regime_of
         self._repo = repo if repo is not None else _MemoryRepo()
 
     def create_voucher(
@@ -108,8 +116,9 @@ class VoucherService:
         # Gate order matches invoice brick: period → accounts → balance
         if self._fy.find_open_period(company_id, entry_date) is None:
             raise NoOpenPeriodError("Kỳ sổ chưa mở cho ngày hạch toán")
+        regime = self._regime_of(company_id) if self._regime_of else "tt133"
         for line in jl:
-            self._coa.validate_posting_account(company_id, line.account_code)
+            self._coa.validate_posting_account(company_id, line.account_code, regime)
         if not voucher.is_balanced:
             raise UnbalancedVoucherError(
                 f"Nợ {voucher.total_debit} ≠ Có {voucher.total_credit}" " (tolerance 0.01)"

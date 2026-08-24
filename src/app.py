@@ -123,6 +123,18 @@ def create_app(config: dict | None = None) -> Flask:
     tenant_svc = TenantService(company_svc)
     init_company_services(company_svc, tenant_svc)
 
+    class _RegimeOf:
+        """company_id -> regime string via company contract."""
+
+        def __init__(self, company_svc):
+            self._companies = company_svc
+
+        def __call__(self, company_id):
+            c = self._companies.get_by_id(company_id)
+            return c.accounting_regime.value if c else "tt133"
+
+    regime_provider = _RegimeOf(company_svc)
+
     # ── Wire Payment Terms brick services ───────────────────────────────
     pt_session = session_factory()
     term_repo = SQLAlchemyPaymentTermRepository(pt_session)
@@ -208,20 +220,27 @@ def create_app(config: dict | None = None) -> Flask:
         terms=_TermsAdapter(PaymentTermService(pt_repo2)),
         audit=audit_svc,
         repo=SQLAlchemyInvoiceRepository(inv_session),
+        regime_of=_RegimeOf(company_svc),
     )
 
     def _auto_journal(posted_invoice):
         """Posting an invoice generates + posts its balanced journal."""
         from uuid import NAMESPACE_URL, uuid5
 
+        from src.bricks.coa.domain import resolve_chart_role
+
         sys_actor = uuid5(NAMESPACE_URL, "system:numbering")
+        regime = regime_provider(posted_invoice.company_id)
+        role_codes = {
+            role: resolve_chart_role(role, regime) for role in ("ar", "revenue", "vat_output")
+        }
         v = voucher_svc.create_voucher(
             company_id=posted_invoice.company_id,
             entry_date=posted_invoice.issue_date,
             description=f"Auto journal for {posted_invoice.number}",
             lines=[
                 {"account_code": l.account_code, "debit": str(l.debit), "credit": str(l.credit)}
-                for l in InvoiceServiceAdapter.lines_from_invoice(posted_invoice)
+                for l in InvoiceServiceAdapter.lines_from_invoice(posted_invoice, role_codes)
             ],
             actor=sys_actor,
             reason=f"auto:{posted_invoice.number}",
@@ -256,6 +275,7 @@ def create_app(config: dict | None = None) -> Flask:
         numbering=_VNumbering(dns_service),
         audit=audit_svc,
         repo=SQLAlchemyVoucherRepository(session_factory()),
+        regime_of=_RegimeOf(company_svc),
     )
     init_voucher_service(voucher_svc)
 

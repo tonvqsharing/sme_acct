@@ -31,7 +31,11 @@ class ClosedFY:
 
 
 class OkCOA:
-    def validate_posting_account(self, company_id, code):
+    def __init__(self) -> None:
+        self.calls: list = []
+
+    def validate_posting_account(self, company_id, code, regime="tt133"):
+        self.calls.append((company_id, code, regime))
         if code == "9999":
             raise ValueError("unknown")
 
