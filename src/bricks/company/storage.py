@@ -3,11 +3,10 @@
 Only file with SQLAlchemy imports in the brick.
 """
 
-from typing import Any, List, Dict
-
 import json
 from datetime import date
 from decimal import Decimal
+from typing import Any
 from uuid import UUID, uuid4
 
 from sqlalchemy import (
@@ -109,7 +108,9 @@ class CompanyModel(Base):
     email: Mapped[str] = mapped_column(String(120), nullable=False, default="")
     website: Mapped[str] = mapped_column(String(255), nullable=False, default="")
     short_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    bank_accounts: Mapped[list[dict[str, Any]] | None] = mapped_column(JSONType, nullable=True, default="[]")
+    bank_accounts: Mapped[list[dict[str, Any]] | None] = mapped_column(
+        JSONType, nullable=True, default="[]"
+    )
 
     # Audit
     created_at: Mapped[date | None] = mapped_column(

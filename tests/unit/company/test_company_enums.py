@@ -1,9 +1,11 @@
 """Tests for Company domain enums."""
+
 import pytest
+
 from src.bricks.company.domain import (
-    CompanyType,
-    CompanyStatus,
     AccountingRegime,
+    CompanyStatus,
+    CompanyType,
     TaxId,
 )
 

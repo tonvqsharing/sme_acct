@@ -91,11 +91,8 @@ def _parse_uuid(value: str) -> UUID:
 # ─── Routes ────────────────────────────────────────────────────────────────
 
 
-# type: ignore[untyped-decorator]
-# type: ignore[untyped-decorator]
-@web_adapter_bp.post("/api/v1/companies")  # type: ignore[untyped-decorator]
-# type: ignore[untyped-decorator]
-@login_required
+@web_adapter_bp.post("/api/v1/companies")
+@login_required  # type: ignore[untyped-decorator]
 def create_company() -> tuple[Any, int]:
     """Create new company. ADMIN role required."""
     if current_user.role != "ADMIN":
@@ -156,11 +153,8 @@ def create_company() -> tuple[Any, int]:
     return jsonify({"data": _company_to_dict(company)}), 201
 
 
-# type: ignore[untyped-decorator]
-# type: ignore[untyped-decorator]
-@web_adapter_bp.get("/api/v1/companies")  # type: ignore[untyped-decorator]
-# type: ignore[untyped-decorator]
-@login_required
+@web_adapter_bp.get("/api/v1/companies")
+@login_required  # type: ignore[untyped-decorator]
 def list_companies() -> tuple[Any, int]:
     """List active companies."""
     svc = _get_service()
@@ -169,28 +163,21 @@ def list_companies() -> tuple[Any, int]:
     return jsonify({"data": [_company_to_dict(c) for c in companies]}), 200
 
 
-# type: ignore[untyped-decorator]
-# type: ignore[untyped-decorator]
-@web_adapter_bp.get("/api/v1/companies/<company_id>")  # type: ignore[untyped-decorator]
-# type: ignore[untyped-decorator]
-@login_required
+@web_adapter_bp.get("/api/v1/companies/<company_id>")
+@login_required  # type: ignore[untyped-decorator]
 def get_company(company_id: str) -> tuple[Any, int]:
     """Get company detail by ID."""
     cid = _parse_uuid(company_id)
     svc = _get_service()
     assert svc is not None
-# type: ignore[union-attr]
     company = svc.get_by_id(cid)
     if company is None:
         abort(404, description="Company not found")
     return jsonify({"data": _company_to_dict(company)}), 200
 
 
-# type: ignore[untyped-decorator]
-# type: ignore[untyped-decorator]
-@web_adapter_bp.patch("/api/v1/companies/<company_id>")  # type: ignore[untyped-decorator]
-# type: ignore[untyped-decorator]
-@login_required
+@web_adapter_bp.patch("/api/v1/companies/<company_id>")
+@login_required  # type: ignore[untyped-decorator]
 def update_company(company_id: str) -> tuple[Any, int]:
     """Update company. ADMIN or ACCOUNTANT role required."""
     if current_user.role not in ("ADMIN", "ACCOUNTANT"):
@@ -199,7 +186,6 @@ def update_company(company_id: str) -> tuple[Any, int]:
     cid = _parse_uuid(company_id)
     svc = _get_service()
     assert svc is not None
-# type: ignore[union-attr]
     company = svc.get_by_id(cid)
     if company is None:
         abort(404, description="Company not found")
@@ -229,12 +215,8 @@ def update_company(company_id: str) -> tuple[Any, int]:
     return jsonify({"data": _company_to_dict(updated)}), 200
 
 
-# type: ignore[untyped-decorator]
-# type: ignore[untyped-decorator]
-# type: ignore[untyped-decorator]
-@web_adapter_bp.post("/api/v1/companies/<company_id>/suspend")  # type: ignore[untyped-decorator]
-# type: ignore[untyped-decorator]
-@login_required
+@web_adapter_bp.post("/api/v1/companies/<company_id>/suspend")
+@login_required  # type: ignore[untyped-decorator]
 def suspend_company(company_id: str) -> tuple[Any, int]:
     """Suspend company. CHIEF_ACCOUNTANT role required."""
     if current_user.role != "CHIEF_ACCOUNTANT":
@@ -243,12 +225,10 @@ def suspend_company(company_id: str) -> tuple[Any, int]:
     cid = _parse_uuid(company_id)
     svc = _get_service()
     assert svc is not None
-# type: ignore[union-attr]
     company = svc.get_by_id(cid)
     if company is None:
         abort(404, description="Company not found")
 
-# type: ignore[union-attr]
     deactivated = svc.deactivate(cid, actor=UUID(current_user.id))
     logger.info("Company suspended", extra={"company_id": str(cid)})
     return jsonify({"data": _company_to_dict(deactivated)}), 200
