@@ -14,8 +14,25 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from src.bricks.company.services import CompanyService, TenantService
-from src.bricks.company.storage import Base, SQLAlchemyCompanyRepository
+from src.bricks.company.storage import Base as CompanyBase
+from src.bricks.company.storage import SQLAlchemyCompanyRepository
 from src.bricks.company.web_adapter import init_company_services, web_adapter_bp
+from src.bricks.payment_terms.services import (
+    DocumentNumberingSeriesService,
+    PaymentTermService,
+)
+from src.bricks.payment_terms.storage import (
+    Base as PaymentTermsBase,
+)
+from src.bricks.payment_terms.storage import (
+    SQLAlchemyDocumentNumberingSeriesRepository,
+    SQLAlchemyPaymentTermRepository,
+)
+from src.bricks.payment_terms.web_adapter import (
+    document_numbering_bp,
+    init_payment_terms_services,
+    payment_terms_bp,
+)
 
 
 def create_app(config: dict | None = None) -> Flask:
@@ -39,7 +56,8 @@ def create_app(config: dict | None = None) -> Flask:
 
     # ── Database ────────────────────────────────────────────────────────
     engine = create_engine(app.config["SQLALCHEMY_DATABASE_URI"])
-    Base.metadata.create_all(engine)
+    CompanyBase.metadata.create_all(engine)
+    PaymentTermsBase.metadata.create_all(engine)
     session_factory = sessionmaker(bind=engine)
     app.db_session = session_factory  # type: ignore[attr-defined]
 
@@ -60,8 +78,19 @@ def create_app(config: dict | None = None) -> Flask:
     tenant_svc = TenantService(company_svc)
     init_company_services(company_svc, tenant_svc)
 
+    # ── Wire Payment Terms brick services ───────────────────────────────
+    pt_session = session_factory()
+    term_repo = SQLAlchemyPaymentTermRepository(pt_session)
+    series_repo = SQLAlchemyDocumentNumberingSeriesRepository(pt_session)
+    init_payment_terms_services(
+        PaymentTermService(term_repo),
+        DocumentNumberingSeriesService(series_repo),
+    )
+
     # ── Register blueprints ─────────────────────────────────────────────
     app.register_blueprint(web_adapter_bp)
+    app.register_blueprint(payment_terms_bp)
+    app.register_blueprint(document_numbering_bp)
 
     # ── Health check ────────────────────────────────────────────────────
     @app.route("/health")
