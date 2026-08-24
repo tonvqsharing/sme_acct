@@ -29,7 +29,7 @@ jobs:
 
       - name: Install project
         run: |
-          uv sync --frozen --no-dev
+          uv sync --frozen
 
       - name: Activate venv
         run: source .venv/bin/activate
