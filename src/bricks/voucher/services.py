@@ -104,6 +104,9 @@ class VoucherService:
                     account_code=l["account_code"],
                     debit=debit,
                     credit=credit,
+                    bank_account_id=(
+                        UUID(l["bank_account_id"]) if l.get("bank_account_id") else None
+                    ),
                 )
             )
 

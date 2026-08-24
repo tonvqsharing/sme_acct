@@ -23,6 +23,7 @@ class JournalLine:
     account_code: str
     debit: Decimal = Decimal(0)
     credit: Decimal = Decimal(0)
+    bank_account_id: UUID | None = None
 
     def __post_init__(self) -> None:
         if self.debit > 0 and self.credit > 0:

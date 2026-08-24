@@ -45,6 +45,11 @@ class SQLAlchemyVoucherRepository:
                     "account_code": l.account_code,
                     "debit": str(l.debit),
                     "credit": str(l.credit),
+                    **(
+                        {"bank_account_id": str(l.bank_account_id)}
+                        if getattr(l, "bank_account_id", None)
+                        else {}
+                    ),
                 }
                 for l in v.lines
             ],
@@ -73,6 +78,9 @@ class SQLAlchemyVoucherRepository:
                     account_code=l["account_code"],
                     debit=Decimal(l["debit"]),
                     credit=Decimal(l["credit"]),
+                    bank_account_id=(
+                        UUID(l["bank_account_id"]) if l.get("bank_account_id") else None
+                    ),
                 )
                 for l in m.lines
             ],

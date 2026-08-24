@@ -78,3 +78,37 @@ class CashAccount:
     def apply_delta(self, amount: Decimal) -> None:
         """Caller enforces the negative-balance approval rule."""
         self.current_balance += amount
+
+
+@dataclass
+class Reconciliation:
+    """Bank reconciliation snapshot per specs-bank-cash-accounts.md §2.3.
+
+    internal_balance is captured at creation via the balance provider;
+    resolution requires |difference| ≤ 0.01 and a second actor (SOD).
+    """
+
+    TOLERANCE = Decimal("0.01")
+
+    company_id: UUID
+    bank_account_id: UUID
+    reconciliation_date: date
+    statement_balance: Decimal
+    internal_balance: Decimal
+    created_by: UUID
+    id: UUID = field(default_factory=uuid4)
+    is_resolved: bool = False
+    resolved_at: date | None = None
+    approved_by: UUID | None = None
+    checksum: str = ""
+
+    @property
+    def difference(self) -> Decimal:
+        return self.statement_balance - self.internal_balance
+
+    def mark_resolved(self, approver: UUID, on_date: date) -> None:
+        if self.is_resolved:
+            raise ValueError("ALREADY_RESOLVED")
+        object.__setattr__(self, "is_resolved", True)
+        object.__setattr__(self, "resolved_at", on_date)
+        object.__setattr__(self, "approved_by", approver)

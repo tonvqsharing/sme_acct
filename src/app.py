@@ -314,9 +314,49 @@ def create_app(config: dict | None = None) -> Flask:
     init_coa_service(app.coa_service)
 
     bc_session = session_factory()
+    from decimal import Decimal
+
+    class _BankInternalBalanceProvider:
+        """Σ(debit-credit) over POSTED voucher lines tagged to a bank."""
+
+        def __init__(self, session):
+            self._session = session
+
+        def __call__(self, company_id, bank_account_id, as_of):
+
+            from src.bricks.voucher.storage import VoucherModel
+
+            rows = (
+                self._session.query(VoucherModel)
+                .filter(
+                    VoucherModel.company_id == str(company_id),
+                    VoucherModel.status == "POSTED",
+                )
+                .all()
+            )
+            total = Decimal(0)
+            target = str(bank_account_id)
+            for v in rows:
+                if v.entry_date > as_of:
+                    continue
+                for ln in v.lines:
+                    if ln.get("bank_account_id") != target:
+                        continue
+                    total += Decimal(ln["debit"]) - Decimal(ln["credit"])
+            return total
+
+    from src.bricks.bank_cash.services import ReconciliationService
+    from src.bricks.bank_cash.storage import (
+        SQLAlchemyReconciliationRepository,
+    )
+
     init_bank_cash_services(
         BankAccountService(SQLAlchemyBankAccountRepository(bc_session)),
         CashAccountService(SQLAlchemyCashAccountRepository(bc_session)),
+        ReconciliationService(
+            SQLAlchemyReconciliationRepository(bc_session),
+            internal_provider=_BankInternalBalanceProvider(session_factory()),
+        ),
     )
     init_fy_service(app.fy_service)
     init_audit_service(audit_svc)

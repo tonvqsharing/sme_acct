@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from datetime import date as _date
 from decimal import Decimal
+from decimal import Decimal as _Decimal
 from typing import Any
 from uuid import UUID
 
@@ -17,17 +19,31 @@ from src.bricks.bank_cash.services import (
     NotFoundError,
     SystemAccountProtectedError,
 )
+from src.bricks.bank_cash.services import (
+    AlreadyResolvedError as _AlreadyResolved,
+)
+from src.bricks.bank_cash.services import (
+    NotBalancedError as _NotBalanced,
+)
+from src.bricks.bank_cash.services import (
+    NotFoundError as _NotFound,
+)
+from src.bricks.bank_cash.services import (
+    SodViolationError as _Sod,
+)
 
 bank_cash_bp = Blueprint("bank_cash", __name__)
 
 _bank_service: Any = None
 _cash_service: Any = None
+_recon_service: Any = None
 
 
-def init_bank_cash_services(bank_svc: Any, cash_svc: Any) -> None:
-    global _bank_service, _cash_service
+def init_bank_cash_services(bank_svc: Any, cash_svc: Any, recon_svc: Any | None = None) -> None:
+    global _bank_service, _cash_service, _recon_service
     _bank_service = bank_svc
     _cash_service = cash_svc
+    _recon_service = recon_svc
 
 
 def _banks() -> Any:
@@ -197,3 +213,80 @@ def _closed(e: AccountClosedError) -> tuple[Any, int]:
 @bank_cash_bp.errorhandler(SystemAccountProtectedError)
 def _protected(e: SystemAccountProtectedError) -> tuple[Any, int]:
     return jsonify({"error": str(e), "code": "SYSTEM_ACCOUNT_PROTECTED"}), 403
+
+
+# ─── Bank reconciliation ───────────────────────────────────────────────────
+
+
+def ser_rec(r: Any) -> dict[str, Any]:
+    return {
+        "id": str(r.id),
+        "bank_account_id": str(r.bank_account_id),
+        "reconciliation_date": r.reconciliation_date.isoformat(),
+        "statement_balance": float(r.statement_balance),
+        "internal_balance": float(r.internal_balance),
+        "difference": float(r.difference),
+        "is_resolved": r.is_resolved,
+        "created_by": str(r.created_by),
+        "approved_by": str(r.approved_by) if r.approved_by else None,
+        "checksum": r.checksum,
+    }
+
+
+@bank_cash_bp.get("/api/v1/bank-reconciliations")
+@login_required  # type: ignore[untyped-decorator]
+def list_reconciliations() -> tuple[Any, int]:
+    if _recon_service is None:
+        abort(500, description="ReconciliationService not initialized")
+    cid = _company_id()
+    resolved_param = request.args.get("resolved")
+    resolved = None if resolved_param is None else resolved_param.lower() == "true"
+    rows = _recon_service.list_by_company(cid, resolved=resolved)
+    return jsonify({"data": [ser_rec(r) for r in rows]}), 200
+
+
+@bank_cash_bp.post("/api/v1/bank-reconciliations")
+@login_required  # type: ignore[untyped-decorator]
+def create_reconciliation() -> tuple[Any, int]:
+    if _recon_service is None:
+        abort(500, description="ReconciliationService not initialized")
+    body = request.get_json(silent=True) or {}
+    try:
+        rec = _recon_service.create_reconciliation(
+            company_id=UUID(body["company_id"]),
+            bank_account_id=UUID(body["bank_account_id"]),
+            reconciliation_date=_date.fromisoformat(body["reconciliation_date"]),
+            statement_balance=_Decimal(str(body["statement_balance"])),
+            actor=UUID(str(current_user.id)),
+            reason=body.get("reason") or "month end",
+        )
+    except KeyError as exc:
+        abort(422, description=f"missing {exc}")
+    return jsonify({"data": ser_rec(rec)}), 201
+
+
+@bank_cash_bp.post("/api/v1/bank-reconciliations/<rid>/resolve")
+@login_required  # type: ignore[untyped-decorator]
+def resolve_reconciliation(rid: str) -> tuple[Any, int]:
+    """SOD: second actor; only when |difference| ≤ 0.01."""
+    role = getattr(current_user, "role", "")
+    if role not in PRIMARY_ROLES:
+        abort(403)
+    if _recon_service is None:
+        abort(500, description="ReconciliationService not initialized")
+    body = request.get_json(silent=True) or {}
+    try:
+        out = _recon_service.resolve_reconciliation(
+            UUID(rid),
+            UUID(str(current_user.id)),
+            body.get("reason") or "verified",
+        )
+    except _Sod as exc:
+        return jsonify({"error": str(exc), "code": "SOD_VIOLATION"}), 403
+    except _NotBalanced as exc:
+        return jsonify({"error": str(exc), "code": "NOT_BALANCED"}), 409
+    except _AlreadyResolved as exc:
+        return jsonify({"error": str(exc), "code": "ALREADY_RESOLVED"}), 409
+    except _NotFound:
+        abort(404)
+    return jsonify({"data": ser_rec(out)}), 200

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import date
 from decimal import Decimal
 from typing import Any
 from uuid import UUID
@@ -13,6 +14,7 @@ from src.bricks.bank_cash.domain import (
     BankAccountStatus,
     CashAccount,
     CashAccountStatus,
+    Reconciliation,
     chain_checksum,
 )
 
@@ -52,7 +54,7 @@ def _require(actor: UUID | None, reason: str | None) -> tuple[UUID, str]:
 
 
 def _stamp(
-    entity: BankAccount | CashAccount,
+    entity: BankAccount | CashAccount | Reconciliation,
     action: str,
     actor: UUID,
     reason: str,
@@ -284,3 +286,85 @@ class CashAccountService:
             raise NotFoundError("Không tìm thấy quỹ tiền mặt")
         if acc.status == CashAccountStatus.CLOSED:
             raise AccountClosedError("Quỹ đã đóng")
+
+
+# ═══ Bank reconciliation (spec §5.3) ══════════════════════════════════════
+
+
+class SodViolationError(Exception):
+    pass
+
+
+class NotBalancedError(Exception):
+    pass
+
+
+class AlreadyResolvedError(Exception):
+    pass
+
+
+class ReconciliationService:
+    """Prepare → independent resolve; tolerance 0.01."""
+
+    def __init__(self, repo: Any, *, internal_provider: Any) -> None:
+        self._repo = repo
+        # internal_provider(company_id, bank_account_id, as_of) -> Decimal
+        self._internal = internal_provider
+
+    def create_reconciliation(
+        self,
+        *,
+        company_id: UUID,
+        bank_account_id: UUID,
+        reconciliation_date: date,
+        statement_balance: Decimal,
+        actor: UUID,
+        reason: str,
+    ) -> Reconciliation:
+        actor_x, reason_x = _require(actor, reason)
+        internal = Decimal(str(self._internal(company_id, bank_account_id, reconciliation_date)))
+        rec = Reconciliation(
+            company_id=company_id,
+            bank_account_id=bank_account_id,
+            reconciliation_date=reconciliation_date,
+            statement_balance=Decimal(str(statement_balance)),
+            internal_balance=internal,
+            created_by=actor_x,
+        )
+        rec.checksum = _stamp(rec, "CREATE", actor_x, reason_x)
+        created: Reconciliation = self._repo.create(rec)
+        return created
+
+    def get(self, rid: UUID) -> Reconciliation | None:
+        found: Reconciliation | None = self._repo.get_by_id(rid)
+        return found
+
+    def list_by_company(self, cid: UUID, resolved: bool | None = None) -> list[Reconciliation]:
+        out: list[Reconciliation] = self._repo.get_by_company(cid)
+        if resolved is True:
+            out = [r for r in out if r.is_resolved]
+        if resolved is False:
+            out = [r for r in out if not r.is_resolved]
+        return out
+
+    def list_unresolved(self, cid: UUID) -> list[Reconciliation]:
+        return self.list_by_company(cid, resolved=False)
+
+    def resolve_reconciliation(self, rid: UUID, resolver: UUID, reason: str) -> Reconciliation:
+        resolver_x, reason_x = _require(resolver, reason)
+        rec = self._repo.get_by_id(rid)
+        if rec is None:
+            raise NotFoundError("Không tìm thấy biên lai đối chiếu")
+        if resolver_x == rec.created_by:
+            raise SodViolationError("Người lập không được tự phê duyệt đối chiếu")
+        if abs(rec.difference) > Reconciliation.TOLERANCE:
+            raise NotBalancedError(f"Chênh lệch {rec.difference} vượt dung sai 0.01")
+        try:
+            rec.mark_resolved(resolver_x, date.today())  # noqa: DTZ011 — business date anchor
+        except ValueError as exc:
+            if str(exc) == "ALREADY_RESOLVED":
+                raise AlreadyResolvedError("Đã đối chiếu xong") from exc
+            raise
+        rec.checksum = _stamp(rec, "RESOLVE", resolver_x, reason_x)
+        saved: Reconciliation = self._repo.update(rec)
+        return saved
