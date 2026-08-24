@@ -191,6 +191,53 @@ class CashAccountService:
         found: CashAccount | None = self._repo.get_by_id(aid)
         return found
 
+    def get_by_code(self, company_id: UUID, code: str) -> CashAccount | None:
+        rows: list[CashAccount] = self._repo.get_by_company(company_id)
+        for acc in rows:
+            if acc.code == code:
+                return acc
+        return None
+
+    def apply_journal(
+        self,
+        company_id: UUID,
+        lines: list[dict[str, str]],
+        *,
+        actor: UUID,
+        reason: str,
+        chief_approved: bool = False,
+    ) -> list[CashAccount]:
+        """Apply debit-credit deltas to matching cash accounts.
+
+        All-or-nothing pre-check: any line that would overdraw without
+        chief approval raises before a single balance is mutated.
+        """
+        targets: dict[UUID, CashAccount] = {}
+        deltas: dict[UUID, Decimal] = {}
+        for ln in lines:
+            cash = self.get_by_code(company_id, ln["account_code"])
+            if cash is None:
+                continue
+            delta = Decimal(str(ln["debit"])) - Decimal(str(ln["credit"]))
+            if delta == 0:
+                continue
+            projected = cash.current_balance + delta
+            if projected < 0 and not chief_approved:
+                raise NegativeBalanceError(f"Quỹ {cash.code} không đủ (dự kiến {projected})")
+            deltas[cash.id] = deltas.get(cash.id, Decimal(0)) + delta
+            targets[cash.id] = cash
+        updated: list[CashAccount] = []
+        for cid_, delta in deltas.items():
+            cash = targets[cid_]
+            cash.apply_delta(delta)
+            cash.checksum = chain_checksum(
+                cash.checksum or GENESIS_CHECKSUM, cash.id, actor, reason
+            )
+            saved: CashAccount | None = self._repo.update(cash)
+            assert saved is not None
+            updated.append(saved)
+        return updated
+
     def list_by_company(self, cid: UUID, status: str | None = None) -> list[CashAccount]:
         out: list[CashAccount] = self._repo.get_by_company(cid)
         if status:

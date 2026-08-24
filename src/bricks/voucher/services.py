@@ -70,12 +70,14 @@ class VoucherService:
         audit: Any,
         repo: Any | None = None,
         regime_of: Any | None = None,
+        on_posted: Any | None = None,
     ) -> None:
         self._fy = fy
         self._coa = coa
         self._numbering = numbering
         self._audit = audit
         self._regime_of = regime_of
+        self._on_posted = on_posted
         self._repo = repo if repo is not None else _MemoryRepo()
 
     def create_voucher(
@@ -127,12 +129,23 @@ class VoucherService:
         voucher.checksum = voucher.compute_checksum(GENESIS_CHECKSUM, actor, str(reason))
         return self._repo.save(voucher)
 
-    def post_voucher(self, vid: UUID, *, actor: UUID, reason: str) -> Voucher:
+    def post_voucher(
+        self,
+        vid: UUID,
+        *,
+        actor: UUID,
+        reason: str,
+        chief_approved: bool = False,
+    ) -> Voucher:
         v = self._repo.get_by_id(vid)
         if v is None:
             raise VoucherNotFoundError("Không tìm thấy chứng từ")
         if v.status == VoucherStatus.POSTED:
             raise AlreadyPostedError("Chứng từ đã được ghi sổ")
+        if self._on_posted is not None:
+            # Balance side-effects run BEFORE the status flip so a failed
+            # adjustment (e.g. overdraw) leaves the voucher in DRAFT.
+            self._on_posted(v, actor, chief_approved)
         object.__setattr__(v, "_prev", v.status)
         v.status = VoucherStatus.POSTED
         v.checksum = v.compute_checksum(v.checksum, actor, reason)

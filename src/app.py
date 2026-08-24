@@ -280,6 +280,22 @@ def create_app(config: dict | None = None) -> Flask:
             seq = self._dns.increment_sequence(target.id, sys_actor, "voucher")
             return f"{target.prefix}{seq:06d}"
 
+    cash_repo_bc = SQLAlchemyCashAccountRepository(session_factory())
+    cash_svc_bc = CashAccountService(cash_repo_bc)
+
+    def _apply_cash_balances(voucher, actor, chief_approved: bool) -> None:
+        """Mirror journal lines into cash-account balances (pre-check)."""
+        cash_svc_bc.apply_journal(
+            voucher.company_id,
+            [
+                {"account_code": l.account_code, "debit": str(l.debit), "credit": str(l.credit)}
+                for l in voucher.lines
+            ],
+            actor=actor,
+            reason=f"voucher:{voucher.number}",
+            chief_approved=chief_approved,
+        )
+
     voucher_svc = VoucherService(
         fy=app.fy_service,
         coa=app.coa_service,
@@ -287,6 +303,7 @@ def create_app(config: dict | None = None) -> Flask:
         audit=audit_svc,
         repo=SQLAlchemyVoucherRepository(session_factory()),
         regime_of=_RegimeOf(company_svc),
+        on_posted=_apply_cash_balances,
     )
     init_voucher_service(voucher_svc)
 

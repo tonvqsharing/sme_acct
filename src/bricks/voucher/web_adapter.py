@@ -9,6 +9,9 @@ from uuid import UUID
 from flask import Blueprint, abort, jsonify, request
 from flask_login import current_user, login_required
 
+from src.bricks.bank_cash.services import (
+    NegativeBalanceError as CashNegativeBalanceError,
+)
 from src.bricks.coa.services import (
     AccountNotFoundError,
     AggregateAccountError,
@@ -109,12 +112,16 @@ def post_voucher(vid: str) -> tuple[Any, int]:
         uuid_vid = UUID(vid)
     except ValueError:
         abort(422, description="Invalid UUID")
+    role = getattr(current_user, "role", "")
     try:
         posted = _svc().post_voucher(
             uuid_vid,
             actor=UUID(str(current_user.id)),
             reason=body.get("reason") or "post voucher",
+            chief_approved=(role == "CHIEF_ACCOUNTANT"),
         )
+    except CashNegativeBalanceError as exc:
+        return jsonify({"error": str(exc), "code": "NEGATIVE_BALANCE"}), 409
     except AlreadyPostedError as exc:
         return jsonify({"error": str(exc), "code": "ALREADY_POSTED"}), 409
     except VoucherNotFoundError:
