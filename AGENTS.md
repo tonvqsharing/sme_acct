@@ -7,7 +7,7 @@ _Flask + SQLAlchemy app for Vietnamese SME accounting. Architecture: Modular Hex
 Package manager is `uv`. Prefix everything with `uv run` — no venv activation needed.
 
 ```bash
-uv run pytest -q                                  # full suite (currently 356 passing)
+uv run pytest -q                                  # full suite (currently 380 passing)
 uv run pytest tests/unit/company/ -k "<name>" -v  # single test / focused run
 uv run ruff check src tests                       # lint
 uv run black --check src tests                    # format check
@@ -100,7 +100,8 @@ Vietnamese compliance rules baked into specs: MST tax-ID format (`^[1-9]\d{2}(-\
 | Fiscal Year & Periods | ✅ core done — years/monthly periods/posting gate (10 tests); web layer pending | `docs/fiscal-year-period/` |
 | Chart of Accounts | ✅ core done — codes/hierarchy/posting gate + SQLite repo (21 tests); web API pending | `docs/coa/` |
 | Invoice + Voucher + Ledger core loop | ✅ invoice/voucher bricks done; ledger reports done (325 total) | — |
-| System Settings, Cost Centers, Currencies, Tax Engine, Bank/Cash, Multi-company | pending | `docs/<module>/` |
+| Bank/Cash Accounts | ✅ core done — bank+cash masters, balances, SOD-lite guards (24 tests); reconciliation pending | `docs/bank-cash/` |
+| System Settings, Cost Centers, Currencies, Tax Engine, Multi-company | pending | `docs/<module>/` |
 
 ## Commits
 

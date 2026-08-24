@@ -1,0 +1,36 @@
+"""Ports for bank_cash brick."""
+
+from __future__ import annotations
+
+from abc import ABC, abstractmethod
+from uuid import UUID
+
+from src.bricks.bank_cash.domain import BankAccount, CashAccount
+
+
+class BankAccountRepositoryPort(ABC):
+    @abstractmethod
+    def create(self, acc: BankAccount) -> BankAccount: ...
+    @abstractmethod
+    def get_by_id(self, aid: UUID) -> BankAccount | None: ...
+    @abstractmethod
+    def get_by_company(self, cid: UUID) -> list[BankAccount]: ...
+    @abstractmethod
+    def update(self, acc: BankAccount) -> BankAccount: ...
+    @abstractmethod
+    def find_primary(self, cid: UUID) -> BankAccount | None: ...
+    @abstractmethod
+    def validate_account_number_unique(self, cid: UUID, number: str) -> bool: ...
+
+
+class CashAccountRepositoryPort(ABC):
+    @abstractmethod
+    def create(self, acc: CashAccount) -> CashAccount: ...
+    @abstractmethod
+    def get_by_id(self, aid: UUID) -> CashAccount | None: ...
+    @abstractmethod
+    def get_by_company(self, cid: UUID) -> list[CashAccount]: ...
+    @abstractmethod
+    def update(self, acc: CashAccount) -> CashAccount: ...
+    @abstractmethod
+    def validate_code_unique(self, cid: UUID, code: str) -> bool: ...

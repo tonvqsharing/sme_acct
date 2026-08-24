@@ -24,6 +24,15 @@ from src.bricks.audit_log.web_adapter import (
     audit_log_bp,
     init_audit_service,
 )
+from src.bricks.bank_cash.services import BankAccountService, CashAccountService
+from src.bricks.bank_cash.storage import (
+    Base as BankBase,
+)
+from src.bricks.bank_cash.storage import (
+    SQLAlchemyBankAccountRepository,
+    SQLAlchemyCashAccountRepository,
+)
+from src.bricks.bank_cash.web_adapter import bank_cash_bp, init_bank_cash_services
 from src.bricks.coa.services import AccountService
 from src.bricks.coa.storage import Base as CoaBase
 from src.bricks.coa.storage import SQLAlchemyAccountRepository
@@ -102,6 +111,7 @@ def create_app(config: dict | None = None) -> Flask:
     CoaBase.metadata.create_all(engine)
     FyBase.metadata.create_all(engine)
     InvBase.metadata.create_all(engine)
+    BankBase.metadata.create_all(engine)
     VchBase.metadata.create_all(engine)
     session_factory = sessionmaker(bind=engine)
     app.db_session = session_factory  # type: ignore[attr-defined]
@@ -163,6 +173,7 @@ def create_app(config: dict | None = None) -> Flask:
     app.register_blueprint(invoice_bp)
     app.register_blueprint(voucher_bp)
     app.register_blueprint(ledger_bp)
+    app.register_blueprint(bank_cash_bp)
     app.register_blueprint(coa_bp)
     app.register_blueprint(fiscal_year_bp)
     app.register_blueprint(audit_log_bp)
@@ -284,6 +295,12 @@ def create_app(config: dict | None = None) -> Flask:
     ledger_svc = LedgerService(source=SQLAlchemyLedgerSource(session_factory()))
     init_ledger_service(ledger_svc)
     init_coa_service(app.coa_service)
+
+    bc_session = session_factory()
+    init_bank_cash_services(
+        BankAccountService(SQLAlchemyBankAccountRepository(bc_session)),
+        CashAccountService(SQLAlchemyCashAccountRepository(bc_session)),
+    )
     init_fy_service(app.fy_service)
     init_audit_service(audit_svc)
 
