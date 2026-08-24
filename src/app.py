@@ -20,11 +20,27 @@ from src.bricks.audit_log.storage import (
 from src.bricks.audit_log.storage import (
     SQLAlchemyAuditLogRepository,
 )
+from src.bricks.coa.services import AccountService
+from src.bricks.coa.storage import Base as CoaBase
+from src.bricks.coa.storage import SQLAlchemyAccountRepository
 from src.bricks.company.services import CompanyService, TenantService
 from src.bricks.company.storage import Base as CompanyBase
 from src.bricks.company.storage import SQLAlchemyCompanyRepository
 from src.bricks.company.web_adapter import init_company_services, web_adapter_bp
+from src.bricks.fiscal_year_period.services import FiscalYearService
+from src.bricks.fiscal_year_period.storage import (
+    Base as FyBase,
+)
+from src.bricks.fiscal_year_period.storage import (
+    SQLAlchemyFiscalYearRepository,
+    SQLAlchemyPeriodRepository,
+)
+from src.bricks.invoice.services import InvoiceService
+from src.bricks.invoice.storage import Base as InvBase
+from src.bricks.invoice.storage import SQLAlchemyInvoiceRepository
+from src.bricks.invoice.web_adapter import init_invoice_service, invoice_bp
 from src.bricks.payment_terms.services import (
+    ApprovalService,
     DocumentNumberingSeriesService,
     PaymentTermService,
 )
@@ -32,6 +48,7 @@ from src.bricks.payment_terms.storage import (
     Base as PaymentTermsBase,
 )
 from src.bricks.payment_terms.storage import (
+    SQLAlchemyApprovalRequestRepository,
     SQLAlchemyDocumentNumberingSeriesRepository,
     SQLAlchemyPaymentTermRepository,
 )
@@ -66,6 +83,9 @@ def create_app(config: dict | None = None) -> Flask:
     CompanyBase.metadata.create_all(engine)
     PaymentTermsBase.metadata.create_all(engine)
     AuditBase.metadata.create_all(engine)
+    CoaBase.metadata.create_all(engine)
+    FyBase.metadata.create_all(engine)
+    InvBase.metadata.create_all(engine)
     session_factory = sessionmaker(bind=engine)
     app.db_session = session_factory  # type: ignore[attr-defined]
 
@@ -94,13 +114,8 @@ def create_app(config: dict | None = None) -> Flask:
         PaymentTermService(term_repo),
         DocumentNumberingSeriesService(series_repo),
     )
-    from src.bricks.payment_terms.storage import (
-        SQLAlchemyApprovalRequestRepository,
-    )
 
     audit_svc = AuditLogService(SQLAlchemyAuditLogRepository(session_factory()))
-    from src.bricks.payment_terms.services import ApprovalService
-
     approval_svc = ApprovalService(
         SQLAlchemyApprovalRequestRepository(session_factory()),
         term_service=PaymentTermService(term_repo),
@@ -112,10 +127,62 @@ def create_app(config: dict | None = None) -> Flask:
     app.register_blueprint(web_adapter_bp)
     app.register_blueprint(payment_terms_bp)
     app.register_blueprint(document_numbering_bp)
+    app.register_blueprint(invoice_bp)
 
     from src.bricks.payment_terms.web_adapter import init_approval_service
 
     init_approval_service(approval_svc)
+
+    # ── Wire COA + Fiscal Year bricks ────────────────────────────────────
+    coa_session = session_factory()
+    fy_session = session_factory()
+    app.coa_service = AccountService(SQLAlchemyAccountRepository(coa_session))  # type: ignore[attr-defined]
+    app.fy_service = FiscalYearService(  # type: ignore[attr-defined]
+        SQLAlchemyFiscalYearRepository(fy_session),
+        SQLAlchemyPeriodRepository(fy_session),
+    )
+
+    # ── Wire Invoice brick ───────────────────────────────────────────────
+    class _NumberingAdapter:
+        """Issues next number from company's first active HD* series."""
+
+        def __init__(self, dns):
+            self._dns = dns
+
+        def issue(self, company_id):
+            series = self._dns.list_by_company(company_id, active=True)
+            target = next((x for x in series if x.prefix.startswith("HD")), None)
+            if target is None:
+                raise RuntimeError("No active HD/ numbering series")
+            from uuid import NAMESPACE_URL, uuid5
+
+            sys_actor = uuid5(NAMESPACE_URL, "system:numbering")
+            seq = self._dns.increment_sequence(target.id, sys_actor, "invoice")
+            return f"{target.prefix}{seq:06d}"
+
+    class _TermsAdapter:
+        def __init__(self, svc):
+            self._svc = svc
+
+        def get_default(self, company_id):
+            return self._svc.get_default(company_id)
+
+        def get_payment_term(self, tid):
+            return self._svc.get_payment_term(tid)
+
+    inv_session = session_factory()
+    pt_session2 = session_factory()
+    invoice_svc = InvoiceService(
+        fy=app.fy_service,
+        coa=app.coa_service,
+        numbering=_NumberingAdapter(
+            DocumentNumberingSeriesService(SQLAlchemyDocumentNumberingSeriesRepository(pt_session2))
+        ),
+        terms=_TermsAdapter(PaymentTermService(SQLAlchemyPaymentTermRepository(pt_session2))),
+        audit=audit_svc,
+        repo=SQLAlchemyInvoiceRepository(inv_session),
+    )
+    init_invoice_service(invoice_svc)
 
     # ── Health check ────────────────────────────────────────────────────
     @app.route("/health")
