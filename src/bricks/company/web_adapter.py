@@ -6,10 +6,10 @@ Uses services.py for business logic, contract.py for persistence.
 """
 
 from __future__ import annotations
-from typing import Any, Dict
 
 import logging
 from decimal import Decimal, InvalidOperation
+from typing import Any
 from uuid import UUID
 
 from flask import Blueprint, abort, jsonify, request
@@ -17,10 +17,10 @@ from flask_login import current_user, login_required
 
 from src.bricks.company.domain import (
     AccountingRegime,
+    Company,
     CompanyType,
     DuplicateMSTError,
     TaxId,
-    Company,
 )
 from src.bricks.company.services import CompanyService, TenantService
 
@@ -92,9 +92,11 @@ def _parse_uuid(value: str) -> UUID:
 
 
 # type: ignore[untyped-decorator]
-@web_adapter_bp.post("/api/v1/companies")
+# type: ignore[untyped-decorator]
+@web_adapter_bp.post("/api/v1/companies")  # type: ignore[untyped-decorator]
+# type: ignore[untyped-decorator]
 @login_required
-def create_company() -> tuple[dict[str, Any], int]:
+def create_company() -> tuple[Any, int]:
     """Create new company. ADMIN role required."""
     if current_user.role != "ADMIN":
         abort(403, description="RBAC denied: ADMIN role required")
@@ -155,9 +157,11 @@ def create_company() -> tuple[dict[str, Any], int]:
 
 
 # type: ignore[untyped-decorator]
-@web_adapter_bp.get("/api/v1/companies")
+# type: ignore[untyped-decorator]
+@web_adapter_bp.get("/api/v1/companies")  # type: ignore[untyped-decorator]
+# type: ignore[untyped-decorator]
 @login_required
-def list_companies() -> tuple[dict[str, Any], int]:
+def list_companies() -> tuple[Any, int]:
     """List active companies."""
     svc = _get_service()
     assert svc is not None
@@ -166,9 +170,11 @@ def list_companies() -> tuple[dict[str, Any], int]:
 
 
 # type: ignore[untyped-decorator]
-@web_adapter_bp.get("/api/v1/companies/<company_id>")
+# type: ignore[untyped-decorator]
+@web_adapter_bp.get("/api/v1/companies/<company_id>")  # type: ignore[untyped-decorator]
+# type: ignore[untyped-decorator]
 @login_required
-def get_company(company_id: str) -> tuple[dict[str, Any], int]:
+def get_company(company_id: str) -> tuple[Any, int]:
     """Get company detail by ID."""
     cid = _parse_uuid(company_id)
     svc = _get_service()
@@ -181,16 +187,18 @@ def get_company(company_id: str) -> tuple[dict[str, Any], int]:
 
 
 # type: ignore[untyped-decorator]
-@web_adapter_bp.patch("/api/v1/companies/<company_id>")
+# type: ignore[untyped-decorator]
+@web_adapter_bp.patch("/api/v1/companies/<company_id>")  # type: ignore[untyped-decorator]
+# type: ignore[untyped-decorator]
 @login_required
-def update_company(company_id: str) -> tuple[dict[str, Any], int]:
+def update_company(company_id: str) -> tuple[Any, int]:
     """Update company. ADMIN or ACCOUNTANT role required."""
     if current_user.role not in ("ADMIN", "ACCOUNTANT"):
         abort(403, description="RBAC denied: ADMIN or ACCOUNTANT role required")
 
     cid = _parse_uuid(company_id)
-    assert svc is not None
     svc = _get_service()
+    assert svc is not None
 # type: ignore[union-attr]
     company = svc.get_by_id(cid)
     if company is None:
@@ -222,16 +230,19 @@ def update_company(company_id: str) -> tuple[dict[str, Any], int]:
 
 
 # type: ignore[untyped-decorator]
-@web_adapter_bp.post("/api/v1/companies/<company_id>/suspend")
+# type: ignore[untyped-decorator]
+# type: ignore[untyped-decorator]
+@web_adapter_bp.post("/api/v1/companies/<company_id>/suspend")  # type: ignore[untyped-decorator]
+# type: ignore[untyped-decorator]
 @login_required
-def suspend_company(company_id: str) -> tuple[dict[str, Any], int]:
+def suspend_company(company_id: str) -> tuple[Any, int]:
     """Suspend company. CHIEF_ACCOUNTANT role required."""
     if current_user.role != "CHIEF_ACCOUNTANT":
         abort(403, description="RBAC denied: CHIEF_ACCOUNTANT role required")
 
-    assert svc is not None
     cid = _parse_uuid(company_id)
     svc = _get_service()
+    assert svc is not None
 # type: ignore[union-attr]
     company = svc.get_by_id(cid)
     if company is None:
