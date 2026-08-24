@@ -1,83 +1,15 @@
-"""API contract tests for payment_terms brick via real create_app().
-
-Covers role matrices (spec §6), error-code contract (spec §12), and
-happy paths HP-001..HP-004 through the full Flask stack.
-"""
+"""API contract tests for payment_terms brick via real create_app()."""
 
 from __future__ import annotations
 
 from uuid import uuid4
 
-import pytest
-from flask_login import UserMixin
-
-from src.app import create_app
-
-_store: dict = {}
-
-UUID_ADMIN = "00000000-0000-0000-0000-000000000001"
-UUID_ACCOUNTANT = "00000000-0000-0000-0000-000000000002"
-UUID_CHIEF = "00000000-0000-0000-0000-000000000003"
-UUID_AUDITOR = "00000000-0000-0000-0000-000000000004"
-
-
-class FakeUser(UserMixin):
-    def __init__(self, user_id: str, role: str):
-        self.id = user_id
-        self.role = role
-
-
-@pytest.fixture(autouse=True)
-def _clear_store():
-    _store.clear()
-    yield
-    _store.clear()
-
-
-@pytest.fixture()
-def app():
-    application = create_app(config={"TESTING": True, "SECRET_KEY": "test-secret"})
-    login_manager = application.login_manager
-
-    @login_manager.user_loader
-    def load_user(user_id: str):
-        return _store.get(user_id)
-
-    @login_manager.unauthorized_handler
-    def unauthorized():
-        return "", 401
-
-    return application
-
-
-def _client(app, user_id: str, role: str):
-    user = FakeUser(user_id, role)
-    _store[user.id] = user
-    c = app.test_client()
-    with c.session_transaction() as sess:
-        sess["_user_id"] = user.id
-    return c
-
-
-@pytest.fixture()
-def admin_client(app):
-    return _client(app, UUID_ADMIN, "ADMIN")
-
-
-@pytest.fixture()
-def accountant_client(app):
-    return _client(app, UUID_ACCOUNTANT, "ACCOUNTANT")
-
-
-@pytest.fixture()
-def chief_client(app):
-    return _client(app, UUID_CHIEF, "CHIEF_ACCOUNTANT")
-
-
-@pytest.fixture()
-def auditor_client(app):
-    return _client(app, UUID_AUDITOR, "AUDITOR")
-
+from tests.integration.conftest import (
+    UUID_ACCOUNTANT,
+    UUID_ADMIN,
+    UUID_AUDITOR,
+    UUID_CHIEF,
+)
 
 COMPANY = str(uuid4())
 TERM_BODY = {
@@ -181,20 +113,40 @@ class TestPaymentTermContract:
         assert second_resp.status_code == 409
         assert second_resp.get_json()["code"] == "DEFAULT_ALREADY_EXISTS"
 
-    def test_full_flow_HP001_to_default(self, chief_client):
-        """HP-001 + set-default by CHIEF_ACCOUNTANT (allowed role)."""
+    def test_full_flow_HP002_sod(self, chief_client, accountant_client):
+        """HP-002: chief requests, accountant approves, default applied."""
         created = chief_client.post(
             "/api/v1/payment-terms", json={**TERM_BODY, "actor": UUID_CHIEF}
         )
         assert created.status_code == 201
         tid = created.get_json()["data"]["id"]
 
-        resp = chief_client.post(
-            f"/api/v1/payment-terms/{tid}/set-default",
+        req_resp = chief_client.post(
+            f"/api/v1/approval-requests/set-default/{tid}",
             json={"actor": UUID_CHIEF, "reason": "company standard"},
         )
+        assert req_resp.status_code == 202
+        req_id = req_resp.get_json()["data"]["id"]
+        assert req_resp.get_json()["data"]["status"] == "PENDING"
+
+        # SOD: chief cannot self-approve
+        self_resp = chief_client.post(
+            f"/api/v1/approval-requests/{req_id}/approve",
+            json={"actor": UUID_CHIEF, "reason": "self"},
+        )
+        assert self_resp.status_code == 403
+        assert self_resp.get_json()["code"] == "SOD_VIOLATION"
+
+        resp = accountant_client.post(
+            f"/api/v1/approval-requests/{req_id}/approve",
+            json={"actor": UUID_ACCOUNTANT, "reason": "reviewed ok"},
+        )
         assert resp.status_code == 200
-        assert resp.get_json()["data"]["is_default"] is True
+        assert resp.get_json()["data"]["status"] == "APPROVED"
+        assert resp.get_json()["data"]["applied"]["is_default"] is True
+
+        detail = chief_client.get(f"/api/v1/payment-terms/{tid}")
+        assert detail.get_json()["data"]["is_default"] is True
 
 
 # ═══ Document Numbering API ═══════════════════════════════════════════════

@@ -351,3 +351,115 @@ def increment_sequence(series_id: str) -> tuple[Any, int]:
         ),
         200,
     )
+
+
+# ═══ SOD approval routes ══════════════════════════════════════════════════
+
+_approval_service: Any = None
+
+
+def init_approval_service(service: Any) -> None:
+    global _approval_service
+    _approval_service = service
+
+
+def _approvals() -> Any:
+    svc = _approval_service
+    if svc is None:
+        abort(500, description="ApprovalService not initialized")
+    return svc
+
+
+def _serialize_request(req: Any) -> dict[str, Any]:
+    return {
+        "id": str(req.id),
+        "company_id": str(req.company_id),
+        "request_type": req.request_type.value,
+        "target_id": str(req.target_id),
+        "requested_by": str(req.requested_by),
+        "reason": req.reason,
+        "status": req.status.value,
+        "decided_by": str(req.decided_by) if req.decided_by else None,
+        "checksum": req.checksum,
+    }
+
+
+@payment_terms_bp.post("/api/v1/approval-requests/set-default/<term_id>")
+@login_required  # type: ignore[untyped-decorator]
+def request_set_default(term_id: str) -> tuple[Any, int]:
+    """§11.1 step 1 — creates PENDING request, does NOT flip default."""
+    _require_roles(DEFAULT_ROLES)
+    body = _body()
+    req = _approvals().request_set_default(
+        _parse_uuid(term_id),
+        actor=_actor_from(body),
+        reason=body.get("reason"),
+    )
+    return jsonify({"data": _serialize_request(req)}), 202
+
+
+@payment_terms_bp.post("/api/v1/approval-requests/activate-series/<series_id>")
+@login_required  # type: ignore[untyped-decorator]
+def request_activate_series(series_id: str) -> tuple[Any, int]:
+    _require_roles(DEFAULT_ROLES)
+    body = _body()
+    req = _approvals().request_activate_series(
+        _parse_uuid(series_id),
+        actor=_actor_from(body),
+        reason=body.get("reason"),
+    )
+    if req is None:
+        return jsonify({"data": {"status": "already_active"}}), 200
+    return jsonify({"data": _serialize_request(req)}), 202
+
+
+@payment_terms_bp.get("/api/v1/approval-requests")
+@login_required  # type: ignore[untyped-decorator]
+def list_approval_requests() -> tuple[Any, int]:
+    _require_roles(READ_ROLES)
+    status = request.args.get("status")
+    rows = _approvals().list_requests(status=status)
+    return jsonify({"data": [_serialize_request(r) for r in rows]}), 200
+
+
+@payment_terms_bp.post("/api/v1/approval-requests/<request_id>/approve")
+@login_required  # type: ignore[untyped-decorator]
+def approve_request(request_id: str) -> tuple[Any, int]:
+    """§11.1/§11.2 step 2 — second actor approves; effect applied."""
+    _require_roles(WRITE_ROLES)
+    body = _body()
+    saved = _approvals().decide(
+        _parse_uuid(request_id),
+        approver=_actor_from(body),
+        reason=body.get("reason"),
+        approve=True,
+    )
+    resp = {"data": _serialize_request(saved)}
+    if saved.status.value == "APPROVED" and saved.request_type.value == "SET_DEFAULT":
+        term = _term_service().get_payment_term(saved.target_id)
+        assert term is not None
+        resp["data"]["applied"] = serialize_payment_term(term)
+    return jsonify(resp), 200
+
+
+@payment_terms_bp.post("/api/v1/approval-requests/<request_id>/reject")
+@login_required  # type: ignore[untyped-decorator]
+def reject_request(request_id: str) -> tuple[Any, int]:
+    _require_roles(WRITE_ROLES)
+    body = _body()
+    saved = _approvals().decide(
+        _parse_uuid(request_id),
+        approver=_actor_from(body),
+        reason=body.get("reason"),
+        approve=False,
+    )
+    return (
+        jsonify(
+            {
+                "error": "Rejected, default unchanged",
+                "code": "REQUEST_REJECTED",
+                "data": _serialize_request(saved),
+            }
+        ),
+        409,
+    )

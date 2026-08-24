@@ -23,9 +23,12 @@ from src.bricks.payment_terms.contract import (
     PaymentTermRepositoryPort,
 )
 from src.bricks.payment_terms.domain import (
+    ApprovalRequest,
     DocumentNumberingSeries,
     PaymentTerm,
     PaymentTermStatus,
+    RequestStatus,
+    RequestType,
     SeriesStatus,
 )
 
@@ -299,3 +302,87 @@ class SQLAlchemyDocumentNumberingSeriesRepository(DocumentNumberingSeriesReposit
             .count()
         )
         return count >= 15  # R-008
+
+
+class ApprovalRequestModel(Base):
+    __tablename__ = "pt_approval_requests"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    company_id: Mapped[str] = mapped_column(String(36), index=True)
+    request_type: Mapped[str] = mapped_column(String(30))
+    target_id: Mapped[str] = mapped_column(String(36), index=True)
+    requested_by: Mapped[str] = mapped_column(String(36))
+    reason: Mapped[str] = mapped_column(String(500))
+    status: Mapped[str] = mapped_column(String(20), index=True, default="PENDING")
+    decided_by: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    decided_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    created_at: Mapped[date] = mapped_column(Date)
+
+
+class SQLAlchemyApprovalRequestRepository:
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    @staticmethod
+    def _to_domain(m: ApprovalRequestModel) -> ApprovalRequest:
+        return ApprovalRequest(
+            id=UUID(m.id),
+            company_id=UUID(m.company_id),
+            request_type=RequestType(m.request_type),
+            target_id=UUID(m.target_id),
+            requested_by=UUID(m.requested_by),
+            reason=m.reason,
+            status=RequestStatus(m.status),
+            decided_by=UUID(m.decided_by) if m.decided_by else None,
+            decided_reason=m.decided_reason,
+            created_at=m.created_at,
+        )
+
+    def create(self, req: ApprovalRequest) -> ApprovalRequest:
+        self._session.add(
+            ApprovalRequestModel(
+                id=str(req.id),
+                company_id=str(req.company_id),
+                request_type=req.request_type.value,
+                target_id=str(req.target_id),
+                requested_by=str(req.requested_by),
+                reason=req.reason,
+                status=req.status.value,
+                created_at=req.created_at,
+            )
+        )
+        self._session.commit()
+        return req
+
+    def get_by_id(self, request_id: UUID) -> ApprovalRequest | None:
+        m = self._session.get(ApprovalRequestModel, str(request_id))
+        return self._to_domain(m) if m else None
+
+    def find_pending(self, request_type: RequestType, target_id: UUID) -> ApprovalRequest | None:
+        row = (
+            self._session.query(ApprovalRequestModel)
+            .filter(
+                ApprovalRequestModel.request_type == request_type.value,
+                ApprovalRequestModel.target_id == str(target_id),
+                ApprovalRequestModel.status == "PENDING",
+            )
+            .first()
+        )
+        return self._to_domain(row) if row else None
+
+    def list_by_status(self, status: str | None = None) -> list[ApprovalRequest]:
+        q = self._session.query(ApprovalRequestModel)
+        if status:
+            q = q.filter(ApprovalRequestModel.status == status.upper())
+        rows = q.order_by(ApprovalRequestModel.created_at.asc()).all()
+        return [self._to_domain(r) for r in rows]
+
+    def update(self, req: ApprovalRequest) -> ApprovalRequest:
+        m = self._session.get(ApprovalRequestModel, str(req.id))
+        if m is None:
+            raise ValueError(f"ApprovalRequest {req.id} not found")
+        m.status = req.status.value
+        m.decided_by = str(req.decided_by) if req.decided_by else None
+        m.decided_reason = req.decided_reason
+        self._session.commit()
+        return req

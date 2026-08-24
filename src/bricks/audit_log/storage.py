@@ -8,6 +8,7 @@ from typing import TypedDict
 class JSONDict(TypedDict, total=False):
     pass
 
+
 from datetime import datetime
 from uuid import UUID
 

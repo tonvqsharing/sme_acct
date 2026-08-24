@@ -8,6 +8,7 @@ from typing import TypedDict
 class JSONDict(TypedDict, total=False):
     pass
 
+
 import hashlib
 import json
 from dataclasses import dataclass, field

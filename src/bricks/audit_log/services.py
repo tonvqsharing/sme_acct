@@ -8,6 +8,7 @@ from typing import TypedDict
 class JSONDict(TypedDict, total=False):
     pass
 
+
 import re
 from uuid import UUID
 

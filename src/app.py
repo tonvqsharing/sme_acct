@@ -13,6 +13,13 @@ from flask_login import LoginManager
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
+from src.bricks.audit_log.services import AuditLogService
+from src.bricks.audit_log.storage import (
+    Base as AuditBase,
+)
+from src.bricks.audit_log.storage import (
+    SQLAlchemyAuditLogRepository,
+)
 from src.bricks.company.services import CompanyService, TenantService
 from src.bricks.company.storage import Base as CompanyBase
 from src.bricks.company.storage import SQLAlchemyCompanyRepository
@@ -58,6 +65,7 @@ def create_app(config: dict | None = None) -> Flask:
     engine = create_engine(app.config["SQLALCHEMY_DATABASE_URI"])
     CompanyBase.metadata.create_all(engine)
     PaymentTermsBase.metadata.create_all(engine)
+    AuditBase.metadata.create_all(engine)
     session_factory = sessionmaker(bind=engine)
     app.db_session = session_factory  # type: ignore[attr-defined]
 
@@ -86,11 +94,28 @@ def create_app(config: dict | None = None) -> Flask:
         PaymentTermService(term_repo),
         DocumentNumberingSeriesService(series_repo),
     )
+    from src.bricks.payment_terms.storage import (
+        SQLAlchemyApprovalRequestRepository,
+    )
+
+    audit_svc = AuditLogService(SQLAlchemyAuditLogRepository(session_factory()))
+    from src.bricks.payment_terms.services import ApprovalService
+
+    approval_svc = ApprovalService(
+        SQLAlchemyApprovalRequestRepository(session_factory()),
+        term_service=PaymentTermService(term_repo),
+        series_service=DocumentNumberingSeriesService(series_repo),
+        audit=audit_svc,
+    )
 
     # ── Register blueprints ─────────────────────────────────────────────
     app.register_blueprint(web_adapter_bp)
     app.register_blueprint(payment_terms_bp)
     app.register_blueprint(document_numbering_bp)
+
+    from src.bricks.payment_terms.web_adapter import init_approval_service
+
+    init_approval_service(approval_svc)
 
     # ── Health check ────────────────────────────────────────────────────
     @app.route("/health")

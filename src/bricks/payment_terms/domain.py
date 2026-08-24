@@ -223,3 +223,64 @@ class PaymentTermNotFoundError(PaymentTermsDomainError):
 
 class SeriesNotFoundError(PaymentTermNotFoundError):
     """Series variant of NOT_FOUND."""
+
+
+# ─── SOD approval requests (spec §11.1 / §11.2) ───────────────────────────
+
+
+class RequestType(Enum):
+    SET_DEFAULT = "SET_DEFAULT"
+    ACTIVATE_SERIES = "ACTIVATE_SERIES"
+
+
+class RequestStatus(Enum):
+    PENDING = "PENDING"
+    APPROVED = "APPROVED"
+    REJECTED = "REJECTED"
+
+
+class SodViolationError(PaymentTermsDomainError):
+    """R-011: same actor may not request and decide."""
+
+    code = "SOD_VIOLATION"
+    http_status = 403
+
+
+class PendingRequestExistsError(PaymentTermsDomainError):
+    """Only one open request per (type, target)."""
+
+    code = "PENDING_REQUEST_EXISTS"
+    http_status = 409
+
+
+@dataclass
+class ApprovalRequest:
+    """Two-actor approval for privileged payment-term operations."""
+
+    id: UUID
+    company_id: UUID
+    request_type: RequestType
+    target_id: UUID
+    requested_by: UUID
+    reason: str
+    status: RequestStatus = RequestStatus.PENDING
+    decided_by: UUID | None = None
+    decided_reason: str | None = None
+    created_at: date = field(default_factory=date.today)
+    checksum: str = ""
+
+    def __post_init__(self) -> None:
+        if not self.reason or not self.reason.strip():
+            raise ValueError("reason is required")
+
+    def decide(self, approver: UUID, approve: bool, reason: str) -> ApprovalRequest:
+        if self.status != RequestStatus.PENDING:
+            raise ValueError("REQUEST_ALREADY_DECIDED")
+        if approver == self.requested_by:
+            raise ValueError("SOD_SAME_ACTOR")
+        object.__setattr__(
+            self, "status", RequestStatus.APPROVED if approve else RequestStatus.REJECTED
+        )
+        object.__setattr__(self, "decided_by", approver)
+        object.__setattr__(self, "decided_reason", reason)
+        return self
