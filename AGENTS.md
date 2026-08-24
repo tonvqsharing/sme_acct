@@ -1,78 +1,91 @@
 # AGENTS — Vietnamese SME Accounting App
-_Session-startup guide. Architecture: Lego brick (Modular Hexagonal). RBAC: Flask built-in. DB: SQLite3 default._
 
-## PART 1: REPO CONTEXT, TOOLCHAIN & COMMANDS
+_Flask + SQLAlchemy app for Vietnamese SME accounting. Architecture: Modular Hexagonal ("Lego bricks"). DB: SQLite3. RBAC: Flask-Login built-in._
 
-### 1.1. Current Repo State & Health
-- **Tech:** Flask app scaffold being rebuilt as Modular Hexagonal (Lego bricks). Commit `1200199 "reset"` deleted `app.py`, `scripts/manage.py`, `src/application/`, `src/domain/`, `src/infrastructure/`, all migration files. Working tree also has unstaged deletions: `pyproject.toml`, `casbin_model.conf`, `rbac_policy.csv`.
-- **Package Manager:** `.venv` managed by `uv`. Always activate: `source .venv/bin/activate`.
-- **Python:** `>= 3.11` (venv runs `3.13`).
-- **Testing:** `pytest` configured (`testpaths=tests`, `pythonpath=src`). Status unknown after reset — re-run to confirm.
-- **Frontend:** `templates/base.html` uses local Bulma + HTMX (offline-capable, no CDN).
-- **Database & Migration:** Default `SQLite3` via SQLAlchemy. `SQLALCHEMY_DATABASE_URI` env overrides if needed. Migration files were deleted — new migrations needed from specs.
-- **Security & RBAC:** Flask built-in via `@login_required` + role checks using `current_user.is_authenticated` and `current_user.role`. **Casbin model/policy CSV deleted — do not import `pycasbin` or `casbin`.** `AUDITOR` role read-only.
+## Commands
 
-### 1.2. Essential Development Commands
-- **Activate venv:** `source .venv/bin/activate`
-- **Run dev server:** `flask run` (ensure `FLASK_APP`/`PYTHONPATH=src` set)
-- **Run tests:** `uv run pytest` or `pytest` from activated venv
-- **Single test:** `pytest tests/unit/<module>/ -k "<name>" -v`
-- **CI quality order:** `ruff check` ➔ `black --check` ➔ `mypy` ➔ `pytest`
+Package manager is `uv`. Prefix everything with `uv run` — no venv activation needed.
 
-### 1.3. What Was Deleted (reset + unstaged)
-- `app.py`, `scripts/manage.py`
-- `src/application/`, `src/domain/`, `src/infrastructure/`
-- All migration files + `migrations/env.py`
-- `pyproject.toml`, `casbin_model.conf`, `rbac_policy.csv`
-- *Result:* Working tree is dirty — 6 unstaged deletions. Decide to commit or restore before proceeding.
-
-## PART 2: ARCHITECTURE & PHILOSOPHY
-_System re-architected as Modular Hexagonal (Lego bricks). Old Clean Architecture deleted. Docs/ contains module specs as source of truth._
-
-- **Old architecture:** Monolithic with Casbin RBAC, multi-DB support. Code deleted in reset.
-- **New architecture:** Lego brick model — each brick is a self-contained module with pure Python domain, port interfaces, SQLAlchemy storage adapters, and Flask blueprint adapters.
-- **Docs as truth:** `docs/` directory holds BRD/Specs/Use Cases/User Journeys for modules: company, system-settings, cost-centers-dimensions, currencies-exchange, fiscal-year-period, payment-terms, tax-engine, multi-company, etc. Read these before implementing.
-- **Brick boundaries (enforced):** No cross-brick SQLAlchemy joins. Communicate via `contract.py` primitives only (`account_code`, `account_id` as `str`/`int`). Domain layer pure Python — no Flask/SQLAlchemy imports.
-- **RBAC:** Flask-Login built-in only. `@login_required` on routes. Role checks via `current_user.role` (e.g. `if current_user.role != 'AUDITOR'`). No Casbin.
-
-## PART 3: SESSION START — MANDATORY READS (DO THIS FIRST)
-_Every agent session MUST read these docs before writing any code. Non-negotiable._
-
-**Step 1: Read coding & testing rules (before ANY code changes):**
-```
-1. Read docs/CODING_CONVENTION.md    — naming, formatting, imports, error handling, review checklist
-2. Read docs/TESTING_STRATEGY.md     — test pyramid, what/where to test, factory pattern, CI rules
-```
-
-**Step 2: Run quality gates before committing (EVERY TIME):**
 ```bash
-ruff check src tests          # MUST pass — 0 errors
-black --check src tests       # MUST pass — no reformat needed
-pytest tests/ -v              # MUST pass — all green
+uv run pytest -q                                  # full suite (currently 113 passing)
+uv run pytest tests/unit/company/ -k "<name>" -v  # single test / focused run
+uv run ruff check src tests                       # lint
+uv run black --check src tests                    # format check
+uv run mypy --ignore-missing-imports src/bricks/  # typecheck
+uv run python -c "from src.app import create_app; create_app().run(port=5000)"  # dev server
 ```
 
-**Step 3: Follow these guardrails (violations = PR reject):**
-- **Data isolation:** No `join` across brick tables — pass `account_code` / `account_id` as primitives via `contract.py`.
-- **Vietnamese accounting codes:** Match regex `^[1-9]\d{2}$` or `^[1-9]\d{3}$`.
-- **Contract pattern:** File `contract.py` is the public interface — only receive/return primitive types (`str`, `int`, `float`, `dict`, `Decimal`).
-- **RBAC:** Flask built-in only. `@login_required` + `current_user.role` checks. No Casbin imports.
-- **Testing:** Each brick needs its own test suite. Mock `contract.py` of target brick when testing cross-brick calls. No `sleep` in tests.
-- **Database:** Default SQLite3. If changing DB, update `SQLALCHEMY_DATABASE_URI` and rewrite migrations.
-- **No `print()` in production code.** Use `logging` module.
-- **No bare `except:`.** Catch specific exceptions, log, re-raise.
-- **Domain layer:** ZERO Flask/SQLAlchemy imports (enforced by architecture).
-- **Commit messages:** MUST follow Conventional Commits: `type(scope): description`.
+**Quality gate order before EVERY commit:** ruff ➔ black ➔ mypy ➔ pytest. All four must pass. CI (`.github/workflows/ci.yml`) runs the same gates on Python 3.11 + 3.12.
 
-## PART 4: COMPLETED MODULES STATUS (POST-RESET)
-_What code remains vs what was deleted. Docs/specs remain for all modules._
+## Toolchain Gotchas (hard-won — don't rediscover)
 
-- **Company module:** Code deleted. Specs in `docs/company-module/`. 50 unit tests were passing before reset.
-- **System Settings:** Code deleted. Specs in `docs/system-settings/`.
-- **Cost Centers & Dimensions:** Code deleted. Specs in `docs/cost-centers-dimensions/`.
-- **Payment Terms & Document Numbering:** Specs completed `2026-08-20` in `docs/payment-terms/`. Code status: PENDING.
-- **Currencies & Exchange Rates:** Code deleted. Specs in `docs/currencies-exchange/`. 80 green currency tests were passing before reset.
-- **Audit Log:** Code deleted. Specs in `docs/audit-log/`.
-- **Fiscal Years & Accounting Periods:** Old plan in `tasks/plan.md` and `tasks/todo.md` — may be superseded by new architecture.
-- **All other modules** (tax-engine, bank-cash, multi-company, etc.): code deleted, specs intact in `docs/`.
+- **`mypy` fails without `--ignore-missing-imports`** — `pyproject.toml` sets `strict = true`, and `flask_login` ships no stubs (`import-untyped`). The flag is mandatory; CI includes it.
+- **Untyped-decorator ignores go on the `@login_required` line**, NOT the `def` line. Mypy attributes the `[untyped-decorator]` error to the decorator line; an ignore on `def` reports as `unused-ignore` while the real error survives.
+- **Route return annotation is `tuple[Any, int]`**, not `tuple[dict, int]` — `jsonify()` returns a Flask `Response`, so `tuple[dict, int]` triggers `[return-value]` errors.
+- **Line length is 100** (ruff + black both configured in `pyproject.toml`), not the 88 default.
+- **Never use `uv sync --no-dev` locally or in CI** — it strips ruff/black/mypy/pytest (they are dev deps).
 
-**Action:** Read `docs/<module>/` specs to define new lego brick architecture. Rebuild modules from specs, not from old code.
+## Architecture: Lego Bricks
+
+Each module = one self-contained brick under `src/bricks/<name>/`:
+
+```
+src/bricks/<name>/
+├── contract.py     # PUBLIC interface — ABC ports, primitives only in/out
+├── domain.py       # Pure Python entities/value objects. ZERO Flask/SQLAlchemy imports
+├── services.py     # Business logic, orchestrates repo via port
+├── storage.py      # SQLAlchemy models + repository adapter implementing port
+└── web_adapter.py  # Flask blueprint + routes. ONLY file allowed to import Flask
+```
+
+`src/app.py` = application factory (`create_app`) wiring bricks together.
+
+**Brick boundaries (violations = PR reject):**
+- No cross-brick SQLAlchemy joins. Cross-brick calls go through the target's `contract.py`, passing primitives (`str`, `int`, `Decimal`, `UUID`, `dict`) only.
+- Domain layer purity is architectural law: no Flask/SQLAlchemy imports in `domain.py`.
+- When testing cross-brick calls, mock the target brick's `contract.py`.
+
+**Known spec-vs-repo conflicts** — specs predate the brick structure:
+1. Specs reference Casbin ("CASRBAC"). **Never import casbin/pycasbin** — translate role matrices to Flask built-in checks.
+2. Some specs give paths like `src/presentation/api/*_bp.py`. Follow the brick layout above instead.
+
+## RBAC (Flask built-in only)
+
+`@login_required` on every route + explicit role checks on `current_user.role`:
+
+| Action | Allowed roles |
+|---|---|
+| Create company | ADMIN |
+| Update company | ADMIN, ACCOUNTANT |
+| Suspend company | CHIEF_ACCOUNTANT |
+| Read anything | any authenticated user (incl. AUDITOR) |
+| AUDITOR writes | forbidden — read-only role |
+
+## Testing
+
+- Unit tests: `tests/unit/<brick>/` — may hand-build a minimal Flask app with fixtures (see `tests/unit/test_company_web_adapter.py`: `FakeUser(UserMixin)` + `_store` dict + `session_transaction` login).
+- Integration tests: `tests/integration/` — MUST go through real `create_app()`.
+- **Auth seam for tests:** `create_app()`'s `user_loader` returns `None` (user brick not built yet). Integration tests override it post-hoc: `app.login_manager` → register test `user_loader` + `unauthorized_handler` returning 401. See `tests/integration/test_company_api.py` fixture block — copy that pattern.
+- Each brick gets its own suite. No `sleep()` in tests.
+
+## Docs Are Truth — Read Before Implementing
+
+Mandatory reads before ANY code change:
+1. `docs/CODING_CONVENTION.md`
+2. `docs/TESTING_STRATEGY.md`
+
+Then read the target module's specs under `docs/<module>/` (BRD → specs → use cases). Rebuild from specs, never from git archaeology.
+
+Vietnamese compliance rules baked into specs: MST tax-ID format (`^[1-9]\d{2}(-\d{3})?$`-family — see `TaxId` in company domain), accounting codes match `^[1-9]\d{2}$` or `^[1-9]\d{3}$`, TT200/TT133/TT99 regimes, 10-year retention (Luật Kế toán 2015 Art. 11).
+
+## Module Status
+
+| Module | Code | Specs |
+|---|---|---|
+| Company | ✅ done — unit + integration suites green | `docs/company-module/` |
+| Payment Terms & Doc Numbering | pending | `docs/payment-terms/` (6 docs, complete) |
+| System Settings, Cost Centers, Currencies, Audit Log, Fiscal Year, Tax Engine, Bank/Cash, Multi-company, COA | pending | `docs/<module>/` |
+
+## Commits
+
+Conventional Commits required: `type(scope): description` — types: feat/fix/refactor/perf/docs/test/chore/build/ci/style/revert. Scope = brick name when applicable (`fix(company): ...`).
