@@ -30,7 +30,7 @@ class CircularParentError(Exception):
 
 
 def _require(actor: object, reason: object) -> tuple[object, object]:
-    if not actor or not reason or not reason.strip():
+    if not actor or not reason or not str(reason).strip():
         raise ValueError("actor and reason are required")
     return actor, reason
 
