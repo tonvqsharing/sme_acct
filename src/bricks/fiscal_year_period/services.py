@@ -27,9 +27,7 @@ class PeriodNotFoundError(Exception):
     pass
 
 
-def _require(
-    actor: UUID | None, reason: str | None
-) -> tuple[UUID, str]:
+def _require(actor: UUID | None, reason: str | None) -> tuple[UUID, str]:
     if not actor or not reason or not reason.strip():
         raise ValueError("actor and reason are required")
     return actor, reason
@@ -68,9 +66,7 @@ class FiscalYearService:
         periods = self._periods.create_many(monthly_periods(saved_fy, actor))
         return saved_fy, periods
 
-    def close_period(
-        self, period_id: UUID, *, actor: UUID | None, reason: str | None
-    ) -> None:
+    def close_period(self, period_id: UUID, *, actor: UUID | None, reason: str | None) -> None:
         _require(actor, reason)
         period = self._periods.get_by_id(period_id)
         if period is None:
@@ -80,9 +76,7 @@ class FiscalYearService:
         period.lock_reason = reason
         self._periods.update(period)
 
-    def reopen_period(
-        self, period_id: UUID, *, actor: UUID | None, reason: str | None
-    ) -> None:
+    def reopen_period(self, period_id: UUID, *, actor: UUID | None, reason: str | None) -> None:
         _require(actor, reason)
         period = self._periods.get_by_id(period_id)
         if period is None:
@@ -99,9 +93,7 @@ class FiscalYearService:
             return period
         return None
 
-    def close_year(
-        self, fiscal_year_id: UUID, *, actor: UUID | None, reason: str | None
-    ) -> None:
+    def close_year(self, fiscal_year_id: UUID, *, actor: UUID | None, reason: str | None) -> None:
         _require(actor, reason)
         fy = self._fy.get_by_id(fiscal_year_id)
         if fy is None:
