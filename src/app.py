@@ -39,6 +39,9 @@ from src.bricks.invoice.services import InvoiceService
 from src.bricks.invoice.storage import Base as InvBase
 from src.bricks.invoice.storage import SQLAlchemyInvoiceRepository
 from src.bricks.invoice.web_adapter import init_invoice_service, invoice_bp
+from src.bricks.ledger.services import LedgerService
+from src.bricks.ledger.storage import SQLAlchemyLedgerSource
+from src.bricks.ledger.web_adapter import init_ledger_service, ledger_bp
 from src.bricks.payment_terms.services import (
     ApprovalService,
     DocumentNumberingSeriesService,
@@ -134,6 +137,7 @@ def create_app(config: dict | None = None) -> Flask:
     app.register_blueprint(document_numbering_bp)
     app.register_blueprint(invoice_bp)
     app.register_blueprint(voucher_bp)
+    app.register_blueprint(ledger_bp)
 
     from src.bricks.payment_terms.web_adapter import init_approval_service
 
@@ -214,6 +218,9 @@ def create_app(config: dict | None = None) -> Flask:
         repo=SQLAlchemyVoucherRepository(session_factory()),
     )
     init_voucher_service(voucher_svc)
+
+    ledger_svc = LedgerService(source=SQLAlchemyLedgerSource(session_factory()))
+    init_ledger_service(ledger_svc)
 
     # ── Health check ────────────────────────────────────────────────────
     @app.route("/health")
