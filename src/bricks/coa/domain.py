@@ -1,4 +1,4 @@
-"""Chart of Accounts domain — Vietnamese TT200/TT133 codes. Pure Python."""
+"""Chart of Accounts domain — Vietnamese TT133 / Circular 99-2025 codes. Pure Python."""
 
 from __future__ import annotations
 

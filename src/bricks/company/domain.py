@@ -80,7 +80,6 @@ class CompanyStatus(Enum):
 class AccountingRegime(Enum):
     """Chế độ kế toán per Circular 99/2025/TT-BTC."""
 
-    TT200 = "tt200"  # Thông tư 200/2014/TT-BTC (legacy enterprise)
     TT99 = "tt99"  # Thông tư 99/2025/TT-BTC (current enterprise)
     TT58_MICRO = "tt58_micro"  # Thông tư 58/2026/TT-BTC (super-micro)
     TT133 = "tt133"  # Thông tư 133/2016/TT-BTC (SME alternative)

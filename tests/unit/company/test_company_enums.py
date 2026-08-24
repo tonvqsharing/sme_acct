@@ -60,9 +60,6 @@ class TestCompanyStatus:
 class TestAccountingRegime:
     """AccountingRegime enum tests per Circular 99/2025/TT-BTC."""
 
-    def test_tt200_value(self):
-        assert AccountingRegime.TT200.value == "tt200"
-
     def test_tt99_value(self):
         assert AccountingRegime.TT99.value == "tt99"
 
@@ -73,7 +70,11 @@ class TestAccountingRegime:
         assert AccountingRegime.TT133.value == "tt133"
 
     def test_all_regimes_exist(self):
-        assert len(AccountingRegime) == 4
+        assert len(AccountingRegime) == 3
+
+    def test_tt200_removed_as_outdated(self):
+        """TT200 (200/2014) superseded by Circular 99/2025 — not selectable."""
+        assert "TT200" not in AccountingRegime.__members__
 
 
 class TestTaxId:
