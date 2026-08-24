@@ -78,6 +78,14 @@ from src.bricks.payment_terms.web_adapter import (
     init_payment_terms_services,
     payment_terms_bp,
 )
+from src.bricks.purchases.services import PurchaseService
+from src.bricks.purchases.storage import (
+    Base as PurchBase,
+)
+from src.bricks.purchases.storage import (
+    SQLAlchemySupplierInvoiceRepository,
+)
+from src.bricks.purchases.web_adapter import init_purchases_service, purchases_bp
 from src.bricks.voucher.services import VoucherService
 from src.bricks.voucher.storage import Base as VchBase
 from src.bricks.voucher.storage import SQLAlchemyVoucherRepository
@@ -112,6 +120,7 @@ def create_app(config: dict | None = None) -> Flask:
     FyBase.metadata.create_all(engine)
     InvBase.metadata.create_all(engine)
     BankBase.metadata.create_all(engine)
+    PurchBase.metadata.create_all(engine)
     VchBase.metadata.create_all(engine)
     session_factory = sessionmaker(bind=engine)
     app.db_session = session_factory  # type: ignore[attr-defined]
@@ -174,6 +183,7 @@ def create_app(config: dict | None = None) -> Flask:
     app.register_blueprint(voucher_bp)
     app.register_blueprint(ledger_bp)
     app.register_blueprint(bank_cash_bp)
+    app.register_blueprint(purchases_bp)
     app.register_blueprint(coa_bp)
     app.register_blueprint(fiscal_year_bp)
     app.register_blueprint(audit_log_bp)
@@ -312,6 +322,32 @@ def create_app(config: dict | None = None) -> Flask:
     ledger_svc = LedgerService(source=SQLAlchemyLedgerSource(session_factory()))
     init_ledger_service(ledger_svc)
     init_coa_service(app.coa_service)
+
+    purchases_session = session_factory()
+
+    class _CoaGate:
+        def __init__(self, coa_svc):
+            self._coa = coa_svc
+
+        def validate_posting_account(self, company_id, code, regime="tt133"):
+            self._coa.validate_posting_account(company_id, code, regime)
+
+    class _FyGate:
+        def __init__(self, fy_svc):
+            self._fy = fy_svc
+
+        def find_open_period(self, company_id, d):
+            return self._fy.find_open_period(company_id, d)
+
+    init_purchases_service(
+        PurchaseService(
+            repo=SQLAlchemySupplierInvoiceRepository(purchases_session),
+            fy=_FyGate(app.fy_service),
+            coa=_CoaGate(app.coa_service),
+            regime_of=regime_provider,
+            audit=None,
+        )
+    )
 
     bc_session = session_factory()
     from decimal import Decimal
