@@ -88,7 +88,7 @@ Then read the target module's specs under `docs/<module>/` (BRD → specs → us
 - Any string hashed into a checksum must be persisted verbatim: SQLite datetime round-trip loses microseconds vs `.isoformat()`, so audit rows carry a `ts_iso` string column.
 - Auto-numbering increments require a real UUID actor — use a `uuid5(NAMESPACE_URL, "system:numbering")` system identity, `None` trips EX-001.
 
-Vietnamese compliance rules baked into specs: MST tax-ID format (`^[1-9]\d{2}(-\d{3})?$`-family — see `TaxId` in company domain), accounting codes match `^[1-9]\d{2}$` or `^[1-9]\d{3}$`, TT133 + Circular 99/2025 regimes (TT200 removed as superseded), 10-year retention (Luật Kế toán 2015 Art. 11).
+Vietnamese compliance rules baked into specs: MST tax-ID format (`^[1-9]\d{2}(-\d{3})?$`-family — see `TaxId` in company domain), accounting codes match `^[1-9]\d{2}$` or `^[1-9]\d{3}$`, regimes per mof.gov.vn/vbpl.vn as of 2026-08: TT99/2025 (eff 01/01/2026, replaced TT200), TT58/2026 (eff 01/07/2026, replaced TT132/2018), TT133/2016 still in force, 10-year retention (Luật Kế toán 2015 Art. 11).
 
 ## Module Status
 

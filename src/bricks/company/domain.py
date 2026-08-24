@@ -78,11 +78,20 @@ class CompanyStatus(Enum):
 
 
 class AccountingRegime(Enum):
-    """Chế độ kế toán per Circular 99/2025/TT-BTC."""
+    """Chế độ kế toán — verified against mof.gov.vn / vbpl.vn, Aug 2026.
+
+    - TT99/2025: hiệu lực 01/01/2026, thay thế TT200/2014 (+75/2015,
+      53/2016, 195/2012) per Điều 31(1); SMEs may adopt voluntarily
+      per Điều 31(3).
+    - TT58/2026: hiệu lực 01/07/2026, thay thế TT132/2018 (siêu nhỏ)
+      per Điều 12; does NOT touch TT133.
+    - TT133/2016: still in force for DN nhỏ và vừa; revision only on
+      roadmap (QĐ 3389/QĐ-BTC, 2026–27) — not yet issued.
+    """
 
     TT99 = "tt99"  # Thông tư 99/2025/TT-BTC (current enterprise)
-    TT58_MICRO = "tt58_micro"  # Thông tư 58/2026/TT-BTC (super-micro)
-    TT133 = "tt133"  # Thông tư 133/2016/TT-BTC (SME alternative)
+    TT58_MICRO = "tt58_micro"  # Thông tư 58/2026/TT-BTC (siêu nhỏ)
+    TT133 = "tt133"  # Thông tư 133/2016/TT-BTC (DN nhỏ và vừa — in force)
 
 
 # ─── Exceptions ──────────────────────────────────────────────────────────

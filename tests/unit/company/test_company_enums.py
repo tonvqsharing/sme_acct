@@ -76,6 +76,18 @@ class TestAccountingRegime:
         """TT200 (200/2014) superseded by Circular 99/2025 — not selectable."""
         assert "TT200" not in AccountingRegime.__members__
 
+    def test_tt132_2018_removed_as_outdated(self):
+        """Siêu-nhỏ regime replaced by TT58/2026 eff 01/07/2026."""
+        assert "TT132" not in AccountingRegime.__members__
+
+    def test_regime_set_matches_law_as_of_2026_08(self):
+        """Pin the full set — any addition/removal must cite a legal source."""
+        assert {r.name for r in AccountingRegime} == {
+            "TT99",
+            "TT58_MICRO",
+            "TT133",
+        }
+
 
 class TestTaxId:
     """TaxId value object tests per Mã số thuế format."""
