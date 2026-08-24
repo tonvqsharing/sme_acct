@@ -57,6 +57,10 @@ from src.bricks.payment_terms.web_adapter import (
     init_payment_terms_services,
     payment_terms_bp,
 )
+from src.bricks.voucher.services import VoucherService
+from src.bricks.voucher.storage import Base as VchBase
+from src.bricks.voucher.storage import SQLAlchemyVoucherRepository
+from src.bricks.voucher.web_adapter import init_voucher_service, voucher_bp
 
 
 def create_app(config: dict | None = None) -> Flask:
@@ -86,6 +90,7 @@ def create_app(config: dict | None = None) -> Flask:
     CoaBase.metadata.create_all(engine)
     FyBase.metadata.create_all(engine)
     InvBase.metadata.create_all(engine)
+    VchBase.metadata.create_all(engine)
     session_factory = sessionmaker(bind=engine)
     app.db_session = session_factory  # type: ignore[attr-defined]
 
@@ -128,6 +133,7 @@ def create_app(config: dict | None = None) -> Flask:
     app.register_blueprint(payment_terms_bp)
     app.register_blueprint(document_numbering_bp)
     app.register_blueprint(invoice_bp)
+    app.register_blueprint(voucher_bp)
 
     from src.bricks.payment_terms.web_adapter import init_approval_service
 
@@ -172,17 +178,42 @@ def create_app(config: dict | None = None) -> Flask:
 
     inv_session = session_factory()
     pt_session2 = session_factory()
+    dns_repo = SQLAlchemyDocumentNumberingSeriesRepository(pt_session2)
+    dns_service = DocumentNumberingSeriesService(dns_repo)
+    pt_repo2 = SQLAlchemyPaymentTermRepository(pt_session2)
     invoice_svc = InvoiceService(
         fy=app.fy_service,
         coa=app.coa_service,
-        numbering=_NumberingAdapter(
-            DocumentNumberingSeriesService(SQLAlchemyDocumentNumberingSeriesRepository(pt_session2))
-        ),
-        terms=_TermsAdapter(PaymentTermService(SQLAlchemyPaymentTermRepository(pt_session2))),
+        numbering=_NumberingAdapter(dns_service),
+        terms=_TermsAdapter(PaymentTermService(pt_repo2)),
         audit=audit_svc,
         repo=SQLAlchemyInvoiceRepository(inv_session),
     )
     init_invoice_service(invoice_svc)
+
+    class _VNumbering:
+        def __init__(self, dns):
+            self._dns = dns
+
+        def issue(self, company_id):
+            from uuid import NAMESPACE_URL, uuid5
+
+            sys_actor = uuid5(NAMESPACE_URL, "system:numbering")
+            series = self._dns.list_by_company(company_id, active=True)
+            target = next((x for x in series if x.prefix.startswith("PT")), None)
+            if target is None:
+                raise RuntimeError("No active PT/ numbering series")
+            seq = self._dns.increment_sequence(target.id, sys_actor, "voucher")
+            return f"{target.prefix}{seq:06d}"
+
+    voucher_svc = VoucherService(
+        fy=app.fy_service,
+        coa=app.coa_service,
+        numbering=_VNumbering(dns_service),
+        audit=audit_svc,
+        repo=SQLAlchemyVoucherRepository(session_factory()),
+    )
+    init_voucher_service(voucher_svc)
 
     # ── Health check ────────────────────────────────────────────────────
     @app.route("/health")
