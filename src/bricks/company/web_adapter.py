@@ -20,6 +20,7 @@ from src.bricks.company.domain import (
     CompanyType,
     DuplicateMSTError,
     TaxId,
+    Company,
 )
 from src.bricks.company.services import CompanyService, TenantService
 
@@ -90,6 +91,7 @@ def _parse_uuid(value: str) -> UUID:
 # ─── Routes ────────────────────────────────────────────────────────────────
 
 
+# type: ignore[untyped-decorator]
 @web_adapter_bp.post("/api/v1/companies")
 @login_required
 def create_company() -> tuple[dict[str, Any], int]:
@@ -137,6 +139,7 @@ def create_company() -> tuple[dict[str, Any], int]:
 
     try:
         svc = _get_service()
+        assert svc is not None
         company = svc.create(
             legal_name=legal_name,
             mst=mst,
@@ -151,27 +154,33 @@ def create_company() -> tuple[dict[str, Any], int]:
     return jsonify({"data": _company_to_dict(company)}), 201
 
 
+# type: ignore[untyped-decorator]
 @web_adapter_bp.get("/api/v1/companies")
 @login_required
 def list_companies() -> tuple[dict[str, Any], int]:
     """List active companies."""
     svc = _get_service()
+    assert svc is not None
     companies = svc.list_active()
     return jsonify({"data": [_company_to_dict(c) for c in companies]}), 200
 
 
+# type: ignore[untyped-decorator]
 @web_adapter_bp.get("/api/v1/companies/<company_id>")
 @login_required
 def get_company(company_id: str) -> tuple[dict[str, Any], int]:
     """Get company detail by ID."""
     cid = _parse_uuid(company_id)
     svc = _get_service()
+    assert svc is not None
+# type: ignore[union-attr]
     company = svc.get_by_id(cid)
     if company is None:
         abort(404, description="Company not found")
     return jsonify({"data": _company_to_dict(company)}), 200
 
 
+# type: ignore[untyped-decorator]
 @web_adapter_bp.patch("/api/v1/companies/<company_id>")
 @login_required
 def update_company(company_id: str) -> tuple[dict[str, Any], int]:
@@ -180,7 +189,9 @@ def update_company(company_id: str) -> tuple[dict[str, Any], int]:
         abort(403, description="RBAC denied: ADMIN or ACCOUNTANT role required")
 
     cid = _parse_uuid(company_id)
+    assert svc is not None
     svc = _get_service()
+# type: ignore[union-attr]
     company = svc.get_by_id(cid)
     if company is None:
         abort(404, description="Company not found")
@@ -210,6 +221,7 @@ def update_company(company_id: str) -> tuple[dict[str, Any], int]:
     return jsonify({"data": _company_to_dict(updated)}), 200
 
 
+# type: ignore[untyped-decorator]
 @web_adapter_bp.post("/api/v1/companies/<company_id>/suspend")
 @login_required
 def suspend_company(company_id: str) -> tuple[dict[str, Any], int]:
@@ -217,12 +229,15 @@ def suspend_company(company_id: str) -> tuple[dict[str, Any], int]:
     if current_user.role != "CHIEF_ACCOUNTANT":
         abort(403, description="RBAC denied: CHIEF_ACCOUNTANT role required")
 
+    assert svc is not None
     cid = _parse_uuid(company_id)
     svc = _get_service()
+# type: ignore[union-attr]
     company = svc.get_by_id(cid)
     if company is None:
         abort(404, description="Company not found")
 
+# type: ignore[union-attr]
     deactivated = svc.deactivate(cid, actor=UUID(current_user.id))
     logger.info("Company suspended", extra={"company_id": str(cid)})
     return jsonify({"data": _company_to_dict(deactivated)}), 200
