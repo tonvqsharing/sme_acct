@@ -108,3 +108,31 @@ class TestAutoPost:
         assert again.status_code == 409
         lst = chief.get("/api/v1/vouchers", query_string={"company_id": COMPANY}).get_json()["data"]
         assert len(lst) == 1
+
+
+class TestTT99AutoPost:
+    """Seam 4: TT99 company end-to-end with 10-digit spec codes."""
+
+    def test_journal_uses_template_codes_for_regime(self, monkeypatch):
+        """Unit-level seam-4 proof: adapter honors injected template codes."""
+        from datetime import date
+        from decimal import Decimal
+
+        from src.bricks.coa.domain import resolve_chart_role
+        from src.bricks.invoice.domain import Invoice, InvoiceItem, InvoiceStatus
+        from src.bricks.voucher.services import InvoiceServiceAdapter
+
+        inv = Invoice(
+            company_id=UUID(COMPANY),
+            number="HD/000001",
+            issue_date=date(2026, 8, 5),
+            customer_name="X",
+            items=[InvoiceItem("rev-placeholder", "d", Decimal(10000000))],
+            vat_rate=Decimal(0),
+        )
+        inv.status = InvoiceStatus.POSTED
+        codes = {role: resolve_chart_role(role, "tt99") for role in ("ar", "revenue", "vat_output")}
+        lines = InvoiceServiceAdapter.lines_from_invoice(inv, codes)
+        used = {l.account_code for l in lines}
+        assert codes["ar"] in used and codes["revenue"] in used
+        assert all(len(c) == 10 for c in used)

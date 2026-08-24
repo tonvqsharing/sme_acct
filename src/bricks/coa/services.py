@@ -7,6 +7,7 @@ from uuid import UUID
 
 from src.bricks.coa.domain import (
     CODE_RE,
+    REGIME_CODE_RES,
     Account,
     AccountStatus,
     NormalBalance,
@@ -46,20 +47,25 @@ class AccountService:
         name: str,
         normal_balance: str = "debit",
         parent_code: str | None = None,
-        actor: object = None,
-        reason: object = None,
+        actor: str | None = None,
+        reason: str | None = None,
+        regime: str = "tt133",
     ) -> Account:
         _require(actor, reason)
-        if not CODE_RE.match(code):
+        code_re = REGIME_CODE_RES.get(regime, CODE_RE)
+        if not code_re.match(code):
             raise ValueError(f"Invalid account code: {code}")
         if not self._repo.validate_code_unique(company_id, code):
             raise DuplicateAccountError(f"Code {code} already exists")
         nb = NormalBalance(normal_balance)
+        bare = code.split("-")[0]
         if parent_code:
             parent = self._repo.get_by_code(company_id, parent_code)
             if parent is None:
                 raise ParentNotFoundError(parent_code)
-            if len(code) == 4 and len(parent_code) != 3:
+            # Domain rule (both regimes): only AGGREGATE accounts may
+            # parent a detail account; detail-under-detail is rejected.
+            if parent.is_detail or not bare.startswith(parent_code.split("-")[0][:3]):
                 raise ParentNotAggregateError(parent_code)
         account = Account(
             company_id=company_id,
@@ -67,6 +73,7 @@ class AccountService:
             name=name.strip(),
             normal_balance=nb,
             parent_code=parent_code,
+            regime=regime,
         )
         created: Account = self._repo.create(account)
         return created
@@ -107,8 +114,8 @@ class AccountService:
         updated: Account = self._repo.update(account)
         return updated
 
-    def validate_posting_account(self, company_id: UUID, code: str) -> None:
-        """Only ACTIVE detail (4-digit) accounts accept journal lines."""
+    def validate_posting_account(self, company_id: UUID, code: str, regime: str = "tt133") -> None:
+        """Only ACTIVE posting-level accounts accept journal lines."""
         account = self._repo.get_by_code(company_id, code)
         if account is None:
             from src.bricks.coa.services import AccountNotFoundError

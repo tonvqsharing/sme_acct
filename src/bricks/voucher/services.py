@@ -40,16 +40,23 @@ class InvoiceServiceAdapter:
     VAT_ACCOUNT = "3331"
 
     @staticmethod
-    def lines_from_invoice(inv: Any) -> list[JournalLine]:
+    def lines_from_invoice(inv: Any, codes: dict[str, str] | None = None) -> list[JournalLine]:
+        """Build journal lines; codes maps semantic roles → account codes.
+
+        Defaults to the TT133/SME catalog when no mapping is supplied.
+        """
+        from src.bricks.coa.domain import resolve_chart_role
+
+        c = codes or {r: resolve_chart_role(r) for r in ("ar", "revenue", "vat_output")}
         revenue = sum((i.amount for i in inv.items), Decimal(0))
         vat = (revenue * inv.vat_rate).quantize(Decimal(1))
         total = revenue + vat
         lines = [
-            JournalLine(account_code="1311", debit=total),
-            JournalLine(account_code="5111", credit=revenue),
+            JournalLine(account_code=c["ar"], debit=total),
+            JournalLine(account_code=c["revenue"], credit=revenue),
         ]
         if vat > 0:
-            lines.append(JournalLine(account_code=InvoiceServiceAdapter.VAT_ACCOUNT, credit=vat))
+            lines.append(JournalLine(account_code=c["vat_output"], credit=vat))
         return lines
 
 

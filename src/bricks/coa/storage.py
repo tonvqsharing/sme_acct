@@ -20,9 +20,9 @@ class AccountModel(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     company_id: Mapped[str] = mapped_column(String(36), index=True)
-    code: Mapped[str] = mapped_column(String(4), index=True)
+    code: Mapped[str] = mapped_column(String(16), index=True)
     name: Mapped[str] = mapped_column(String(200))
-    parent_code: Mapped[str | None] = mapped_column(String(4), nullable=True)
+    parent_code: Mapped[str | None] = mapped_column(String(16), nullable=True)
     normal_balance: Mapped[str] = mapped_column(String(10), default="debit")
     status: Mapped[str] = mapped_column(String(20), default="active")
 
