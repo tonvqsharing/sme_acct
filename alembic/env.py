@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from logging.config import fileConfig
 
-from alembic import context
 from sqlalchemy import engine_from_config, pool
+
+from alembic import context
 
 # Import every brick's Base so their metadata tables are registered.
 from src.bricks.audit_log.storage import Base as AuditBase

@@ -7,7 +7,7 @@ _Flask + SQLAlchemy app for Vietnamese SME accounting. Architecture: Modular Hex
 Package manager is `uv`. Prefix everything with `uv run` — no venv activation needed.
 
 ```bash
-uv run pytest -q                                  # full suite (currently 542 passing)
+uv run pytest -q                                  # full suite (currently 548 passing)
 uv run pytest tests/unit/company/ -k "<name>" -v  # single test / focused run
 uv run ruff check src tests                       # lint
 uv run black --check src tests                    # format check
@@ -119,7 +119,7 @@ Vietnamese compliance rules baked into specs: MST tax-ID format (`^[1-9]\d{2}(-\
 | Bank/Cash Accounts | ✅ core done — bank+cash masters, balances, balances auto-move with vouchers; bank reconciliation w/ SOD resolve done (15 tests) | `docs/bank-cash/` |
 | Purchase Invoices | ✅ core done — supplier invoices, deductibility engine (R-P4/R-P5), duplicate guard, SOD-lite cancel (25 tests); XML ingest v2 | docs/purchases/ |
 | Tax Engine (config + VAT declaration) | ✅ done — TaxRate catalog {0,5,8,10,-1} w/ date-effective windows, LAW-locked vat_rates, e-invoice series w/ SOD, 01/GTGT aggregation endpoint, tax_rate_windows master table w/ date-effective gate + SOD admin API (33 tests) | `docs/tax-engine/` |
-| Currencies | ✅ slices 1-2 done — Currency master (ISO 4217, VND base), ExchangeRate w/ Tryton gap-fill, resolve_booking_rate (Nợ=actual/Có=weighted-avg per TT99), RevaluationRun engine w/ SOD + idempotent reversal (34 tests); FX items provider stubbed empty until multi-currency vouchers | `docs/currencies-exchange/` |
+| Currencies | ✅ slices 1-2 done — Currency master (ISO 4217, VND base), ExchangeRate w/ Tryton gap-fill, resolve_booking_rate (Nợ=actual/Có=weighted-avg per TT99), RevaluationRun engine w/ SOD + idempotent reversal (34 tests); multi-currency voucher lines w/ currency_code+fx_rate+amount_original; bank balances auto-move with bank_account_id-tagged lines | `docs/currencies-exchange/` |
 | User Master Data / Auth | ✅ done — User entity w/ pbkdf2 hashing (deviation from spec SHA-256, justified), login/logout/me + user CRUD APIs, real user_loader wired in factory, session-based auth; 22+ tests | `docs/user-master-data/` |
 | System Settings (rest), Cost Centers, Multi-company | pending | `docs/<module>/` |
 

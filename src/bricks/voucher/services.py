@@ -22,12 +22,20 @@ class NoOpenPeriodError(Exception):
     pass
 
 
+class UnknownAccountError(Exception):
+    pass
+
+
 class AlreadyPostedError(Exception):
     pass
 
 
 class VoucherNotFoundError(Exception):
     pass
+
+
+def _d2(v: Any) -> Decimal:
+    return _d(v)
 
 
 def _d(v: Any) -> Decimal:
@@ -71,6 +79,7 @@ class VoucherService:
         repo: Any | None = None,
         regime_of: Any | None = None,
         on_posted: Any | None = None,
+        bank_repo: Any | None = None,
     ) -> None:
         self._fy = fy
         self._coa = coa
@@ -78,6 +87,7 @@ class VoucherService:
         self._audit = audit
         self._regime_of = regime_of
         self._on_posted = on_posted
+        self._bank_repo = bank_repo
         self._repo = repo if repo is not None else _MemoryRepo()
 
     def create_voucher(
@@ -106,6 +116,11 @@ class VoucherService:
                     credit=credit,
                     bank_account_id=(
                         UUID(l["bank_account_id"]) if l.get("bank_account_id") else None
+                    ),
+                    currency_code=l.get("currency_code"),
+                    fx_rate=_d(l["fx_rate"]) if l.get("fx_rate") else None,
+                    amount_original=(
+                        _d(l["amount_original"]) if l.get("amount_original") else None
                     ),
                 )
             )
@@ -152,6 +167,13 @@ class VoucherService:
         object.__setattr__(v, "_prev", v.status)
         v.status = VoucherStatus.POSTED
         v.checksum = v.compute_checksum(v.checksum, actor, reason)
+        if self._bank_repo is not None:
+
+            for ln in v.lines:
+                if ln.bank_account_id is None:
+                    continue
+                delta = _d2(ln.debit) - _d2(ln.credit)
+                self._bank_repo.adjust(ln.bank_account_id, delta)
         saved = self._repo.save(v)
         if self._audit is not None:
             self._audit.append(
