@@ -191,3 +191,36 @@ class TestVatRates:
         body["vat_rate"] = Decimal(rate)
         inv = svc.create_invoice(actor=uuid4(), reason="r", **body)
         assert inv.vat_amount == Decimal(expect_vat)
+
+
+class TestRateCatalogEnforcement:
+    """Invoice-level rate must come from the lawful catalog {0,.05,.08,.1}."""
+
+    def test_unknown_rate_rejected_at_gate(self):
+        svc = InvoiceService(
+            fy=FakeFY(),
+            coa=FakeCOA(),
+            numbering=FakeNumbering(),
+            terms=FakeTerms(),
+            audit=None,
+        )
+        body = _body()
+        body["items"] = [dict(ITEMS[0], amount="100000")]
+        body["vat_rate"] = "0.17"
+        with pytest.raises(ValueError, match="catalog"):
+            svc.create_invoice(actor=uuid4(), reason="r", **body)
+
+    def test_catalog_rates_accepted(self):
+        svc = InvoiceService(
+            fy=FakeFY(),
+            coa=FakeCOA(),
+            numbering=FakeNumbering(),
+            terms=FakeTerms(),
+            audit=None,
+        )
+        for rate in ("0", "0.05", "0.08", "0.1"):
+            body = _body()
+            body["items"] = [dict(ITEMS[0], amount="100000")]
+            body["vat_rate"] = rate
+            inv = svc.create_invoice(actor=uuid4(), reason="r", **body)
+            assert inv.vat_rate == Decimal(rate)

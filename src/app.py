@@ -244,6 +244,12 @@ def create_app(config: dict | None = None) -> Flask:
     dns_repo = SQLAlchemyDocumentNumberingSeriesRepository(pt_session2)
     dns_service = DocumentNumberingSeriesService(dns_repo)
     pt_repo2 = SQLAlchemyPaymentTermRepository(pt_session2)
+    from src.bricks.system_settings.domain import TaxRate as _TaxRate
+
+    LAWFUL_VAT_FRACTIONS = frozenset(
+        {r.to_fraction() for r in _TaxRate if r.value >= 0}
+    )  # NOT_TAXED(-1) maps to 0; excluded from distinct membership
+
     invoice_svc = InvoiceService(
         fy=app.fy_service,
         coa=app.coa_service,
@@ -252,6 +258,7 @@ def create_app(config: dict | None = None) -> Flask:
         audit=audit_svc,
         repo=SQLAlchemyInvoiceRepository(inv_session),
         regime_of=_RegimeOf(company_svc),
+        allowed_vat_rates=LAWFUL_VAT_FRACTIONS,
     )
 
     def _auto_journal(posted_invoice):
@@ -356,6 +363,7 @@ def create_app(config: dict | None = None) -> Flask:
     init_purchases_service(
         PurchaseService(
             repo=SQLAlchemySupplierInvoiceRepository(purchases_session),
+            allowed_vat_rates=LAWFUL_VAT_FRACTIONS,
             fy=_FyGate(app.fy_service),
             coa=_CoaGate(app.coa_service),
             regime_of=regime_provider,

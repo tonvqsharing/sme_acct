@@ -244,3 +244,37 @@ class TestPostCancelLifecycle:
     def test_unknown_get_raises(self):
         with pytest.raises(NotFoundError):
             _svc().post(uuid4(), ACTOR_A, "ghost")
+
+
+class TestRateCatalogEnforcement:
+    """Rates must come from the lawful catalog — no free-form decimals."""
+
+    def test_unknown_rate_rejected(self):
+        body = _body(
+            lines=[
+                {
+                    "expense_account": "6421000001",
+                    "description": "x",
+                    "amount_pre_vat": "100000",
+                    "vat_rate": "0.17",  # not in catalog
+                    "deductible": True,
+                }
+            ]
+        )
+        with pytest.raises(ValueError, match="[Vv]at"):
+            _svc().create_invoice(**body)
+
+    def test_catalog_rates_accepted(self):
+        for rate in ("0", "0.05", "0.08", "0.1"):
+            body = _body(
+                lines=[
+                    {
+                        "expense_account": "6421000001",
+                        "description": "x",
+                        "amount_pre_vat": "100000",
+                        "vat_rate": rate,
+                        "deductible": True,
+                    }
+                ]
+            )
+            _svc().create_invoice(**body)  # no raise

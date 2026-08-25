@@ -71,7 +71,10 @@ class PurchaseService:
         coa: Any,
         regime_of: Any | None = None,
         audit: Any | None = None,
+        allowed_vat_rates: frozenset[str] | None = None,
     ) -> None:
+        raw = allowed_vat_rates or DEFAULT_ALLOWED_VAT_RATES
+        self._allowed_vat_rates = frozenset(str(_d(r)) for r in raw)
         self._repo = repo
         self._fy = fy
         self._coa = coa
@@ -132,16 +135,23 @@ class PurchaseService:
         if self._repo.exists_duplicate(company_id, supplier_mst, invoice_number, invoice_symbol):
             raise DuplicateInvoiceError("Trùng số/ký hiệu hóa đơn đã nhập")
 
-        jl = [
-            SupplierLine(
-                expense_account=l["expense_account"],
-                description=l.get("description", ""),
-                amount_pre_vat=_d(l["amount_pre_vat"]),
-                vat_rate=_d(l.get("vat_rate", "0")),
-                deductible=bool(l.get("deductible", True)),
+        jl: list[SupplierLine] = []
+        for l in lines:
+            rate_str = str(_d(l.get("vat_rate", "0")))
+            if rate_str not in self._allowed_vat_rates:
+                raise ValueError(
+                    f"vat_rate {rate_str} không thuộc catalog thuế suất "
+                    f"({sorted(self._allowed_vat_rates)})"
+                )
+            jl.append(
+                SupplierLine(
+                    expense_account=l["expense_account"],
+                    description=l.get("description", ""),
+                    amount_pre_vat=_d(l["amount_pre_vat"]),
+                    vat_rate=_d(rate_str),
+                    deductible=bool(l.get("deductible", True)),
+                )
             )
-            for l in lines
-        ]
         inv = SupplierInvoice(
             company_id=company_id,
             supplier_name=supplier_name.strip(),
@@ -219,3 +229,9 @@ class PurchaseService:
         if inv is None:
             raise NotFoundError("Không tìm thấy hóa đơn mua vào")
         return inv
+
+
+# Canonical lawful fractions — mirrors TaxRate.to_fraction() values.
+# Kept as a primitive constant here (brick boundary: no cross-brick
+# domain import); composition root may override via allowed_vat_rates.
+DEFAULT_ALLOWED_VAT_RATES = frozenset({"0", "0.05", "0.08", "0.1"})
