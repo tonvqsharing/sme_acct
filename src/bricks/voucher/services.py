@@ -22,20 +22,12 @@ class NoOpenPeriodError(Exception):
     pass
 
 
-class UnknownAccountError(Exception):
-    pass
-
-
 class AlreadyPostedError(Exception):
     pass
 
 
 class VoucherNotFoundError(Exception):
     pass
-
-
-def _d2(v: Any) -> Decimal:
-    return _d(v)
 
 
 def _d(v: Any) -> Decimal:
@@ -167,14 +159,13 @@ class VoucherService:
         object.__setattr__(v, "_prev", v.status)
         v.status = VoucherStatus.POSTED
         v.checksum = v.compute_checksum(v.checksum, actor, reason)
+        saved = self._repo.save(v)
         if self._bank_repo is not None:
-
             for ln in v.lines:
                 if ln.bank_account_id is None:
                     continue
-                delta = _d2(ln.debit) - _d2(ln.credit)
+                delta = _d(ln.debit) - _d(ln.credit)
                 self._bank_repo.adjust(ln.bank_account_id, delta)
-        saved = self._repo.save(v)
         if self._audit is not None:
             self._audit.append(
                 entity_type="voucher",

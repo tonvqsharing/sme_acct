@@ -50,6 +50,15 @@ class SQLAlchemyVoucherRepository:
                         if getattr(l, "bank_account_id", None)
                         else {}
                     ),
+                    **(
+                        {
+                            "currency_code": l.currency_code,
+                            "fx_rate": str(l.fx_rate),
+                            "amount_original": str(l.amount_original),
+                        }
+                        if getattr(l, "currency_code", None)
+                        else {}
+                    ),
                 }
                 for l in v.lines
             ],
@@ -80,6 +89,11 @@ class SQLAlchemyVoucherRepository:
                     credit=Decimal(l["credit"]),
                     bank_account_id=(
                         UUID(l["bank_account_id"]) if l.get("bank_account_id") else None
+                    ),
+                    currency_code=l.get("currency_code"),
+                    fx_rate=Decimal(l["fx_rate"]) if l.get("fx_rate") else None,
+                    amount_original=(
+                        Decimal(l["amount_original"]) if l.get("amount_original") else None
                     ),
                 )
                 for l in m.lines
