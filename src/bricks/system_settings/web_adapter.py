@@ -147,11 +147,19 @@ def vat_declaration() -> tuple[Any, int]:
     try:
         cid = UUID(args.get("company_id", ""))
         year = int(args.get("year", ""))
-        month = int(args.get("month", ""))
+    except ValueError as exc:
+        abort(422, description=f"invalid param: {exc}")
+    month_raw, quarter_raw = args.get("month"), args.get("quarter")
+    try:
+        month = int(month_raw) if month_raw else None
+        quarter = int(quarter_raw) if quarter_raw else None
     except ValueError as exc:
         abort(422, description=f"invalid param: {exc}")
     try:
-        d = _vat_decl_service.declare(cid, year, month)
+        if quarter is not None:
+            d = _vat_decl_service.declare(cid, year, quarter=quarter)
+        else:
+            d = _vat_decl_service.declare(cid, year, month=month or 0)
     except InvalidPeriodError as exc:
         return jsonify({"error": str(exc), "code": "INVALID_PERIOD"}), 422
     payload = {

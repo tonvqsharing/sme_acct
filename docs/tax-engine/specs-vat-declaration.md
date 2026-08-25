@@ -82,3 +82,14 @@ Errors: 422 invalid params; 401 unauthenticated.
 | R-V3 | NON_DEDUCTIBLE VAT excluded (capitalized) |
 | R-V4 | Payable floors at zero; excess input carries forward |
 | R-V5 | Read-only: no mutation paths exist on this service |
+
+---
+
+## Addendum — Quarterly election
+
+Companies electing quarterly GTGT filing (per Luật QLT 108/2025) aggregate
+three consecutive months. The endpoint accepts `period_type=monthly|quarterly`
+with `year`+`month` (monthly) or `year`+`quarter` (quarterly, 1-4).
+
+Quarterly = sum of the three constituent monthly declarations. No new tables;
+pure aggregation over existing monthly computation.

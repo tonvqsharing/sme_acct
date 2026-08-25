@@ -103,40 +103,66 @@ class VatDeclarationService:
         self._output = output_source
         self._input = input_source
 
-    def declare(self, company_id: UUID, year: int, month: int) -> dict[str, Any]:
+    def declare(
+        self,
+        company_id: UUID,
+        year: int,
+        month: int | None = None,
+        quarter: int | None = None,
+    ) -> dict[str, Any]:
+        """Monthly or quarterly VAT declaration (§Addendum — quarterly)."""
         import calendar
 
-        if not 1 <= month <= 12:
-            raise InvalidPeriodError(f"Tháng không hợp lệ: {month}")
-        start = date(year, month, 1)
-        end = date(year, month, calendar.monthrange(year, month)[1])
+        if month is not None and quarter is not None:
+            raise InvalidPeriodError("Chỉ chọn tháng HOẶC quý")
+        if month is None and quarter is None:
+            raise InvalidPeriodError("Cần chỉ định tháng hoặc quý")
+
+        months: list[int]
+        if quarter is not None:
+            if not 1 <= quarter <= 4:
+                raise InvalidPeriodError(f"Quý không hợp lệ: {quarter}")
+            months = list(range(int(quarter) * 3 - 2, int(quarter) * 3 + 1))
+        else:
+            assert month is not None  # narrowed: one of month/quarter must be set
+            if not 1 <= month <= 12:
+                raise InvalidPeriodError(f"Tháng không hợp lệ: {month}")
+            months = [month]
 
         out_vat = Decimal(0)
-        out_count = 0
-        for line in self._output(company_id, start, end):
-            if not str(line["account_code"]).startswith("333"):
-                continue
-            out_vat += Decimal(str(line["credit"])) - Decimal(str(line["debit"]))
-            out_count += 1
-
         in_ded = Decimal(0)
+        out_count = 0
         in_count = 0
         pending_excluded = 0
-        for inv in self._input(company_id, start, end):
-            if inv.get("status") != "POSTED":
-                continue
-            ded = Decimal(str(inv["vat_deductible"]))
-            if inv.get("deductibility") == "DEDUCTIBLE":
-                in_ded += ded
-                in_count += 1
-            elif inv.get("deductibility") == "PENDING_PROOF":
-                pending_excluded += 1
+        for m in months:
+            m_start = date(year, m, 1)
+            m_end = date(year, m, calendar.monthrange(year, m)[1])
+            for line in self._output(company_id, m_start, m_end):
+                if not str(line["account_code"]).startswith("333"):
+                    continue
+                out_vat += Decimal(str(line["credit"])) - Decimal(str(line["debit"]))
+                out_count += 1
+            for inv in self._input(company_id, m_start, m_end):
+                if inv.get("status") != "POSTED":
+                    continue
+                ded = Decimal(str(inv["vat_deductible"]))
+                if inv.get("deductibility") == "DEDUCTIBLE":
+                    in_ded += ded
+                    in_count += 1
+                elif inv.get("deductibility") == "PENDING_PROOF":
+                    pending_excluded += 1
 
         payable = max(Decimal(0), out_vat - in_ded)
         carry = max(Decimal(0), in_ded - out_vat)
 
+        period_info: dict[str, Any] = {"year": year}
+        if quarter is not None:
+            period_info["quarter"] = quarter
+        else:
+            period_info["month"] = month
+
         return {
-            "period": {"year": year, "month": month},
+            "period": period_info,
             "output_vat": out_vat,
             "input_vat_deductible": in_ded,
             "vat_payable": payable,
