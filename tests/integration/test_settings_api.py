@@ -47,7 +47,7 @@ class TestSettingsApi:
         r = c.get("/api/v1/system-settings/tax-rates")
         assert r.status_code == 200
         names = {x["name"] for x in r.get_json()["data"]}
-        assert names == {"VAT_0", "VAT_5", "VAT_10", "NOT_TAXED"}
+        assert names == {"VAT_0", "VAT_5", "VAT_8", "VAT_10", "NOT_TAXED"}
 
     def test_unauthenticated_401(self, app):
         r = app.test_client().get("/api/v1/system-settings/tax-rates")

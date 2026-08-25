@@ -25,7 +25,10 @@ class SodViolationError(Exception):
     code = "SOD_VIOLATION"
 
 
-LAWFUL_RATES = frozenset({0, 5, 10})
+# Base rates per Luật GTGT 2024 + reduced 8% per NQ 204/2025/QH15 /
+# NĐ 174/2025/NĐ-CP (eff → 31/12/2026). NOT_TAXED(-1) remains an
+# item-level exemption flag, not a configurable deductible rate.
+LAWFUL_RATES = frozenset({0, 5, 8, 10})
 MAX_SERIES = 15
 
 

@@ -49,15 +49,22 @@ class TestTaxRates:
         assert {(r.name, r.value) for r in TaxRate} == {
             ("VAT_0", 0),
             ("VAT_5", 5),
+            ("VAT_8", 8),
             ("VAT_10", 10),
             ("NOT_TAXED", -1),
         }
 
-    @pytest.mark.parametrize("rate", [0, 5, 10])
-    def test_validate_accepts_lawful_rates(self, svc, rate):
+    @pytest.mark.parametrize("rate", [0, 5, 8, 10])
+    def test_validate_accepts_rates_in_force(self, svc, rate):
+        """8% per NĐ 174/2025 (eff → 31/12/2026)."""
         svc.validate_vat_rate(rate)  # no raise
 
-    @pytest.mark.parametrize("bad", [-1, 8, 20, 100])
+    def test_reduced_rate_bridge_fraction(self):
+        from decimal import Decimal
+
+        assert TaxRate.VAT_8.to_fraction() == Decimal("0.08")
+
+    @pytest.mark.parametrize("bad", [-1, 2, 20, 100])
     def test_validate_rejects_others_EX(self, svc, bad):
         """NOT_TAXED(-1) is an item-level exemption flag, not a deductible rate."""
         with pytest.raises(InvalidRegimeError):

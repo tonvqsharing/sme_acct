@@ -187,3 +187,14 @@ error report `{row: n, error: msg}`.
 | Ver | Date | Change |
 |---|---|---|
 | 0.1 | 2026-08-19 | Initial spec draft; module broken (missing repo); domain OK |
+---
+
+## Addendum 2026-08 — Reduced 8% VAT rate (TEMPORARY)
+
+**Source:** gdt.gov.vn (Bộ Tài chính reform page) · thuvienphapluat.vn · verified 2026-08-24.
+
+- **NQ 204/2025/QH15** + **NĐ 174/2025/NĐ-CP**: reduce 10% → **8%** for deduction-method businesses, **eff 01/07/2025 → 31/12/2026**. Invoice prints "8%"; input-VAT deducts at the reduced figure.
+- **Exclusions while active:** viễn thông; tài chính/ngân hàng/chứng khoán/bảo hiểm; kinh doanh BĐS; kim loại & sản phẩm kim loại đúc sẵn; khai khoáng (trừ than); hàng hóa/dịch vụ chịu TTĐB (**trừ xăng — xăng được giảm**).
+- After 31/12/2026 rates revert to Luật GTGT 2024 — enum must be revisited.
+
+**Implementation delta:** `TaxRate.VAT_8 = 8` added; `LAWFUL_RATES = {0,5,8,10}` for `validate_vat_rate`; `CompanyConfig.vat_rates` default remains `{0,5,10}` per base law — configure 8 explicitly when trading reduced goods.

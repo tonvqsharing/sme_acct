@@ -9,10 +9,21 @@ from uuid import UUID, uuid4
 
 
 class TaxRate(Enum):
-    """Thuế suất theo quy định Việt Nam (percent integers)."""
+    """Thuế suất theo quy định Việt Nam (percent integers).
+
+    VAT_8 is a TEMPORARY reduced rate per NQ 204/2025/QH15 +
+    NĐ 174/2025/NĐ-CP, eff 01/07/2025 → 31/12/2026 (invoice prints
+    "8%"). Reverts to Luật GTGT 2024 rates after that date — revisit
+    this enum when the decree expires.
+    Exclusions while active: viễn thông, tài chính/NH/CK/bảo hiểm,
+    BĐS, kim loại & đúc sẵn, khai khoáng (trừ than), TTĐB (trừ xăng).
+    Source: gdt.gov.vn reform page + thuvienphapluat.vn, verified
+    2026-08-24.
+    """
 
     VAT_0 = 0
     VAT_5 = 5
+    VAT_8 = 8
     VAT_10 = 10
     NOT_TAXED = -1
 
