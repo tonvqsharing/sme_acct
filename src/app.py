@@ -41,12 +41,19 @@ from src.bricks.company.services import CompanyService, TenantService
 from src.bricks.company.storage import Base as CompanyBase
 from src.bricks.company.storage import SQLAlchemyCompanyRepository
 from src.bricks.company.web_adapter import init_company_services, web_adapter_bp
-from src.bricks.currencies.services import CurrencyService
+from src.bricks.currencies.services import (
+    CurrencyService,
+    ExchangeRateService,
+    RevaluationService,
+)
 from src.bricks.currencies.storage import (
     Base as CurBase,
 )
 from src.bricks.currencies.storage import (
     SQLAlchemyCurrencyRepository,
+)
+from src.bricks.currencies.web_adapter import (
+    init_currencies_services,
 )
 from src.bricks.fiscal_year_period.services import FiscalYearService
 from src.bricks.fiscal_year_period.storage import (
@@ -388,9 +395,36 @@ def create_app(config: dict | None = None) -> Flask:
     )
 
     # ── System settings + bank reconciliation ───────────────────────────
+    class _FxItemsProvider:
+        """v1: FX balances come from bank accounts tagged per currency."""
+
+        def __call__(self, company_id):
+            return []
+
+    from src.bricks.currencies.storage import (
+        SQLAlchemyExchangeRateRepository,
+        SQLAlchemyRevaluationRunRepository,
+    )
+
     cur_session = session_factory()
-    cur_svc = CurrencyService(SQLAlchemyCurrencyRepository(cur_session))
+    cur_repo_cur = SQLAlchemyCurrencyRepository(cur_session)
+    cur_svc = CurrencyService(cur_repo_cur)
     cur_svc.ensure_base_currency()
+    rate_repo_cur = SQLAlchemyExchangeRateRepository(cur_session)
+    rate_svc_cur = ExchangeRateService(rate_repo_cur)
+    reval_svc_cur = RevaluationService(
+        rates=rate_svc_cur,
+        repo=SQLAlchemyRevaluationRunRepository(cur_session),
+        monetary_items=_FxItemsProvider(),
+        period_locked=lambda cid: False,
+    )
+    init_currencies_services(cur_svc, rate_svc_cur, reval_svc_cur)
+
+    from src.bricks.currencies.web_adapter import currencies_bp as _cbp_inner
+
+    if "currencies_bp" not in dir():
+        pass
+    app.register_blueprint(_cbp_inner)
 
     init_settings_service(
         SystemSettingsService(SQLAlchemySystemSettingsRepository(session_factory()))
