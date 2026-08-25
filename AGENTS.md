@@ -7,7 +7,7 @@ _Flask + SQLAlchemy app for Vietnamese SME accounting. Architecture: Modular Hex
 Package manager is `uv`. Prefix everything with `uv run` — no venv activation needed.
 
 ```bash
-uv run pytest -q                                  # full suite (currently 440 passing)
+uv run pytest -q                                  # full suite (currently 542 passing)
 uv run pytest tests/unit/company/ -k "<name>" -v  # single test / focused run
 uv run ruff check src tests                       # lint
 uv run black --check src tests                    # format check
@@ -26,6 +26,7 @@ uv run python -c "from src.app import create_app; create_app().run(port=5000)"  
 - **Never use `uv sync --no-dev` locally or in CI** — it strips ruff/black/mypy/pytest (they are dev deps).
 - **mypy strict bans bare `dict`** — write `dict[str, Any]` everywhere, including port/contract signatures and JSON-typed SQLAlchemy columns.
 - **ruff C408** forbids `dict(...)` calls (use literals) and **RUF059** flags unused tuple-unpack targets (`_`-prefix them).
+- **SQLAlchemy + `from __future__ import annotations`:** all types referenced in `Mapped[...]` annotations MUST be imported in the module namespace — SQLAlchemy evaluates the stringified annotations at class-definition time. Missing `date`, `Decimal`, `JSON`, or `uuid4` imports cause cryptic `NameError`/`MappedAnnotationError` at import time.
 
 ## Architecture: Lego Bricks
 
@@ -79,6 +80,17 @@ src/bricks/<name>/
   Unauthorized requests return 401 JSON via permanent `unauthorized_handler` in the factory.
 - Each brick gets its own suite. No `sleep()` in tests.
 
+## Adding a New Brick (checklist)
+
+When implementing a new brick from specs:
+
+1. Create `src/bricks/<name>/` with the 5-file layout above
+2. Add `Base.metadata.create_all(engine)` in `app.py`
+3. Add the brick's `Base` import + metadata to `alembic/env.py` `target_metadata`
+4. Add blueprint registration + `init_*_service()` wiring in `app.py` **in dependency order**
+5. Create `tests/unit/<name>/` and `tests/integration/test_<name>_api.py`
+6. Bump test count in AGENTS.md Commands section
+
 ## Docs Are Truth — Read Before Implementing
 
 Mandatory reads before ANY code change:
@@ -107,7 +119,8 @@ Vietnamese compliance rules baked into specs: MST tax-ID format (`^[1-9]\d{2}(-\
 | Bank/Cash Accounts | ✅ core done — bank+cash masters, balances, balances auto-move with vouchers; bank reconciliation w/ SOD resolve done (15 tests) | `docs/bank-cash/` |
 | Purchase Invoices | ✅ core done — supplier invoices, deductibility engine (R-P4/R-P5), duplicate guard, SOD-lite cancel (25 tests); XML ingest v2 | docs/purchases/ |
 | Tax Engine (config + VAT declaration) | ✅ done — TaxRate catalog {0,5,8,10,-1} w/ date-effective windows, LAW-locked vat_rates, e-invoice series w/ SOD, 01/GTGT aggregation endpoint, tax_rate_windows master table w/ date-effective gate + SOD admin API (33 tests) | `docs/tax-engine/` |
-| User Master Data / Auth | ✅ core done — User entity w/ pbkdf2 hashing (deviation from spec SHA-256, justified), login/logout/me + user CRUD APIs, real user_loader wired in factory, session-based auth; 22 tests | `docs/user-master-data/` |
+| Currencies | ✅ slices 1-2 done — Currency master (ISO 4217, VND base), ExchangeRate w/ Tryton gap-fill, resolve_booking_rate (Nợ=actual/Có=weighted-avg per TT99), RevaluationRun engine w/ SOD + idempotent reversal (34 tests); FX items provider stubbed empty until multi-currency vouchers | `docs/currencies-exchange/` |
+| User Master Data / Auth | ✅ done — User entity w/ pbkdf2 hashing (deviation from spec SHA-256, justified), login/logout/me + user CRUD APIs, real user_loader wired in factory, session-based auth; 22+ tests | `docs/user-master-data/` |
 | System Settings (rest), Cost Centers, Multi-company | pending | `docs/<module>/` |
 
 ## Migrations
