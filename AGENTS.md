@@ -110,6 +110,17 @@ Vietnamese compliance rules baked into specs: MST tax-ID format (`^[1-9]\d{2}(-\
 | User Master Data / Auth | ✅ core done — User entity w/ pbkdf2 hashing (deviation from spec SHA-256, justified), login/logout/me + user CRUD APIs, real user_loader wired in factory, session-based auth; 22 tests | `docs/user-master-data/` |
 | System Settings (rest), Cost Centers, Multi-company | pending | `docs/<module>/` |
 
+## Migrations
+
+Alembic manages schema. `alembic/env.py` aggregates all 11 brick Bases.
+
+```bash
+DATABASE_URL="sqlite:///./sme_acct.db" uv run alembic upgrade head    # apply
+DATABASE_URL="sqlite:///./sme_acct.db" uv run alembic revision --autogenerate -m "desc"  # new
+```
+
+After autogenerate: **review the migration file** — replace any `src.bricks.*.*Type()` custom-type references with their underlying sa types (e.g., `sa.Text()` for JSONType).
+
 ## Commits
 
 Conventional Commits required: `type(scope): description` — types: feat/fix/refactor/perf/docs/test/chore/build/ci/style/revert. Scope = brick name when applicable (`fix(company): ...`).

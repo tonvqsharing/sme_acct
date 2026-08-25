@@ -3,6 +3,9 @@ name = "sme-acct"
 version = "0.1.0"
 description = "Vietnamese SME Accounting Application"
 requires-python = ">=3.11"
+dependencies = [
+    "alembic>=1.19.1",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
