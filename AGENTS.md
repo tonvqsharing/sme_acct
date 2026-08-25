@@ -73,7 +73,10 @@ src/bricks/<name>/
 - Integration tests: `tests/integration/` — MUST go through real `create_app()`.
 - **Shared fixtures live in `tests/integration/conftest.py`**
 - **`tests/__init__.py` must exist** — without it pytest imports conftest as top-level `conftest` while explicit imports create a second module instance; two `_store` dicts → mystery 401s across the suite (`app`, `admin_client`, `accountant_client`, `chief_client`, `auditor_client`, `UUID_*`). Import the UUID *constants* from there — never import the fixture functions themselves (they shadow pytest params → F811).
-- **Auth seam for tests:** `create_app()`'s `user_loader` returns `None` (user brick not built yet). Integration tests override it post-hoc: `app.login_manager` → register test `user_loader` + `unauthorized_handler` returning 401. See `tests/integration/test_company_api.py` fixture block — copy that pattern.
+- **Auth:** real `user_loader` is wired (looks up users table). Two options for tests:
+  1. **Stub override** (legacy, still works): register test `user_loader` on `app.login_manager` — see `tests/unit/test_company_web_adapter.py`
+  2. **Real login**: create a user via `_user_service.create_user(...)` then POST `/api/v1/auth/login` — see `tests/integration/test_auth_api.py`
+  Unauthorized requests return 401 JSON via permanent `unauthorized_handler` in the factory.
 - Each brick gets its own suite. No `sleep()` in tests.
 
 ## Docs Are Truth — Read Before Implementing
@@ -104,7 +107,8 @@ Vietnamese compliance rules baked into specs: MST tax-ID format (`^[1-9]\d{2}(-\
 | Bank/Cash Accounts | ✅ core done — bank+cash masters, balances, balances auto-move with vouchers; bank reconciliation w/ SOD resolve done (15 tests) | `docs/bank-cash/` |
 | Purchase Invoices | ✅ core done — supplier invoices, deductibility engine (R-P4/R-P5), duplicate guard, SOD-lite cancel (25 tests); XML ingest v2 | docs/purchases/ |
 | Tax Engine (config + VAT declaration) | ✅ done — TaxRate catalog {0,5,8,10,-1} w/ date-effective windows, LAW-locked vat_rates, e-invoice series w/ SOD, 01/GTGT aggregation endpoint, tax_rate_windows master table w/ date-effective gate + SOD admin API (33 tests) | `docs/tax-engine/` |
-| System Settings (rest), Cost Centers, Currencies, Multi-company | pending | `docs/<module>/` |
+| User Master Data / Auth | ✅ core done — User entity w/ pbkdf2 hashing (deviation from spec SHA-256, justified), login/logout/me + user CRUD APIs, real user_loader wired in factory, session-based auth; 22 tests | `docs/user-master-data/` |
+| System Settings (rest), Cost Centers, Multi-company | pending | `docs/<module>/` |
 
 ## Commits
 

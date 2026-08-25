@@ -114,6 +114,18 @@ from src.bricks.system_settings.web_adapter import (
     init_vat_declaration_service,
     settings_bp,
 )
+from src.bricks.user_master_data.services import UserService
+from src.bricks.user_master_data.storage import (
+    Base as UserBase,
+)
+from src.bricks.user_master_data.storage import (
+    SQLAlchemyUserRepository,
+)
+from src.bricks.user_master_data.web_adapter import (
+    auth_bp,
+    init_user_service,
+    users_bp,
+)
 from src.bricks.voucher.services import AutoJournalService, VoucherService
 from src.bricks.voucher.storage import Base as VchBase
 from src.bricks.voucher.storage import SQLAlchemyVoucherRepository
@@ -155,6 +167,7 @@ def create_app(config: dict | None = None) -> Flask:
     SetBase.metadata.create_all(engine)
     CurBase.metadata.create_all(engine)
     VchBase.metadata.create_all(engine)
+    UserBase.metadata.create_all(engine)
     session_factory = sessionmaker(bind=engine)
     app.db_session = session_factory  # type: ignore[attr-defined]
 
@@ -163,13 +176,28 @@ def create_app(config: dict | None = None) -> Flask:
     login_manager.login_view = "login"
     login_manager.init_app(app)
 
+    user_repo_auth = SQLAlchemyUserRepository(session_factory())
+    user_svc_auth = UserService(user_repo_auth)
+
     @login_manager.user_loader
     def load_user(user_id: str):
-        # Placeholder — will be replaced when user brick is implemented
-        return None
+        from uuid import UUID as _U
+
+        try:
+            return user_repo_auth.get_by_id(_U(user_id))
+        except (ValueError, TypeError):
+            return None
+
+    from flask import jsonify as _jsonify
+
+    @login_manager.unauthorized_handler
+    def _unauthorized():
+        return _jsonify({"error": "Yêu cầu đăng nhập", "code": "UNAUTHENTICATED"}), 401
 
     # ── Blueprints ──────────────────────────────────────────────────────
     for bp in (
+        auth_bp,
+        users_bp,
         web_adapter_bp,
         payment_terms_bp,
         document_numbering_bp,
@@ -217,6 +245,7 @@ def create_app(config: dict | None = None) -> Flask:
     # ── Audit ───────────────────────────────────────────────────────────
     audit_svc = AuditLogService(SQLAlchemyAuditLogRepository(session_factory()))
     init_audit_service(audit_svc)
+    init_user_service(user_svc_auth)
 
     # ── COA + Fiscal Year (posting gates) ───────────────────────────────
     app.coa_service = AccountService(  # type: ignore[attr-defined]
