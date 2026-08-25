@@ -102,7 +102,7 @@ Vietnamese compliance rules baked into specs: MST tax-ID format (`^[1-9]\d{2}(-\
 | Invoice + Voucher + Ledger core loop | ✅ invoice/voucher bricks done; ledger reports done (325 total) | — |
 | Bank/Cash Accounts | ✅ core done — bank+cash masters, balances, balances auto-move with vouchers; bank reconciliation w/ SOD resolve done (15 tests) | `docs/bank-cash/` |
 | Purchase Invoices | ✅ core done — supplier invoices, deductibility engine (R-P4/R-P5), duplicate guard, SOD-lite cancel (25 tests); XML ingest v2 | docs/purchases/ |
-| Tax Engine (config) | ✅ core done — TaxRate catalog {0,5,10,-1}, LAW-locked vat_rates, e-invoice series w/ SOD (20 tests) | `docs/tax-engine/` |
+| Tax Engine (config + VAT declaration) | ✅ done — TaxRate catalog {0,5,8,10,-1} w/ date-effective windows, LAW-locked vat_rates, e-invoice series w/ SOD, 01/GTGT aggregation endpoint (27 tests) | `docs/tax-engine/` |
 | System Settings (rest), Cost Centers, Currencies, Multi-company | pending | `docs/<module>/` |
 
 ## Commits

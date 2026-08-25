@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import date
+from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
@@ -84,3 +86,63 @@ class SystemSettingsService:
         saved: CompanyConfig = self._repo.update_config(updated)
         assert saved.config_version >= 1
         return new_series
+
+
+# ═══ VAT declaration engine (specs-vat-declaration.md) ════════════════════
+
+
+class InvalidPeriodError(Exception):
+    code = "INVALID_PERIOD"
+
+
+class VatDeclarationService:
+    """Read-only aggregation feeding tờ khai 01/GTGT. R-V1..R-V5."""
+
+    def __init__(self, *, output_source: Any, input_source: Any) -> None:
+        self._output = output_source
+        self._input = input_source
+
+    def declare(self, company_id: UUID, year: int, month: int) -> dict[str, Any]:
+        import calendar
+
+        if not 1 <= month <= 12:
+            raise InvalidPeriodError(f"Tháng không hợp lệ: {month}")
+        start = date(year, month, 1)
+        end = date(year, month, calendar.monthrange(year, month)[1])
+
+        out_vat = Decimal(0)
+        out_count = 0
+        for line in self._output(company_id, start, end):
+            if not str(line["account_code"]).startswith("333"):
+                continue
+            out_vat += Decimal(str(line["credit"])) - Decimal(str(line["debit"]))
+            out_count += 1
+
+        in_ded = Decimal(0)
+        in_count = 0
+        pending_excluded = 0
+        for inv in self._input(company_id, start, end):
+            if inv.get("status") != "POSTED":
+                continue
+            ded = Decimal(str(inv["vat_deductible"]))
+            if inv.get("deductibility") == "DEDUCTIBLE":
+                in_ded += ded
+                in_count += 1
+            elif inv.get("deductibility") == "PENDING_PROOF":
+                pending_excluded += 1
+
+        payable = max(Decimal(0), out_vat - in_ded)
+        carry = max(Decimal(0), in_ded - out_vat)
+
+        return {
+            "period": {"year": year, "month": month},
+            "output_vat": out_vat,
+            "input_vat_deductible": in_ded,
+            "vat_payable": payable,
+            "carry_forward": carry,
+            "detail": {
+                "output_lines_count": out_count,
+                "input_invoices_count": in_count,
+                "pending_proof_excluded": pending_excluded,
+            },
+        }

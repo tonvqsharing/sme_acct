@@ -87,14 +87,18 @@ from src.bricks.purchases.storage import (
 )
 from src.bricks.purchases.web_adapter import init_purchases_service, purchases_bp
 from src.bricks.system_settings.rate_windows import make_rate_gate
-from src.bricks.system_settings.services import SystemSettingsService
+from src.bricks.system_settings.services import SystemSettingsService, VatDeclarationService
 from src.bricks.system_settings.storage import (
     Base as SetBase,
 )
 from src.bricks.system_settings.storage import (
     SQLAlchemySystemSettingsRepository,
 )
-from src.bricks.system_settings.web_adapter import init_settings_service, settings_bp
+from src.bricks.system_settings.web_adapter import (
+    init_settings_service,
+    init_vat_declaration_service,
+    settings_bp,
+)
 from src.bricks.voucher.services import VoucherService
 from src.bricks.voucher.storage import Base as VchBase
 from src.bricks.voucher.storage import SQLAlchemyVoucherRepository
@@ -340,13 +344,34 @@ def create_app(config: dict | None = None) -> Flask:
 
     from src.bricks.voucher.services import InvoiceServiceAdapter
 
-    ledger_svc = LedgerService(source=SQLAlchemyLedgerSource(session_factory()))
+    ledger_source = SQLAlchemyLedgerSource(session_factory())
+    ledger_svc = LedgerService(source=ledger_source)
+
+    def _decl_input_source(company_id, start, end):
+        """POSTED purchase invoices in window → primitive dicts."""
+        return [
+            {
+                "invoice_number": inv.invoice_number,
+                "status": inv.status.value,
+                "deductibility": inv.deductibility.value,
+                "vat_deductible": str(inv.vat_deductible),
+            }
+            for inv in purchases_repo_decl.get_by_company(company_id)
+            if start <= inv.entry_date <= end
+        ]
+
+    init_vat_declaration_service(
+        VatDeclarationService(
+            output_source=ledger_source.get_posted_lines,
+            input_source=_decl_input_source,
+        )
+    )
+
     init_ledger_service(ledger_svc)
     init_coa_service(app.coa_service)
 
-    init_settings_service(
-        SystemSettingsService(SQLAlchemySystemSettingsRepository(session_factory()))
-    )
+    settings_repo_ss = SQLAlchemySystemSettingsRepository(session_factory())
+    init_settings_service(SystemSettingsService(settings_repo_ss))
 
     purchases_session = session_factory()
 
@@ -375,6 +400,8 @@ def create_app(config: dict | None = None) -> Flask:
             audit=None,
         )
     )
+
+    purchases_repo_decl = SQLAlchemySupplierInvoiceRepository(purchases_session)
 
     bc_session = session_factory()
     from decimal import Decimal

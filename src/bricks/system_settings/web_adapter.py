@@ -10,6 +10,7 @@ from flask_login import current_user, login_required
 
 from src.bricks.system_settings.services import (
     DuplicateSeriesPrefixError,
+    InvalidPeriodError,
     MaxSeriesExceededError,
     SodViolationError,
 )
@@ -120,3 +121,44 @@ def add_e_invoice_series() -> tuple[Any, int]:
         ),
         201,
     )
+
+
+# ─── VAT declaration (read-only, specs-vat-declaration.md) ─────────────────
+
+_vat_decl_service: Any = None
+
+
+def init_vat_declaration_service(svc: Any) -> None:
+    global _vat_decl_service
+    _vat_decl_service = svc
+
+
+def _dec(v: Any) -> float:
+    return float(v)
+
+
+@settings_bp.get("/api/v1/reports/vat-declaration")
+@login_required  # type: ignore[untyped-decorator]
+def vat_declaration() -> tuple[Any, int]:
+    if _vat_decl_service is None:
+        abort(500, description="VatDeclarationService not initialized")
+    args = request.args
+    try:
+        cid = UUID(args.get("company_id", ""))
+        year = int(args.get("year", ""))
+        month = int(args.get("month", ""))
+    except ValueError as exc:
+        abort(422, description=f"invalid param: {exc}")
+    try:
+        d = _vat_decl_service.declare(cid, year, month)
+    except InvalidPeriodError as exc:
+        return jsonify({"error": str(exc), "code": "INVALID_PERIOD"}), 422
+    payload = {
+        "period": d["period"],
+        "output_vat": _dec(d["output_vat"]),
+        "input_vat_deductible": _dec(d["input_vat_deductible"]),
+        "vat_payable": _dec(d["vat_payable"]),
+        "carry_forward": _dec(d["carry_forward"]),
+        "detail": d["detail"],
+    }
+    return jsonify({"data": payload}), 200
