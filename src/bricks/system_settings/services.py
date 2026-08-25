@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import date
 from decimal import Decimal
 from typing import Any
@@ -146,3 +147,79 @@ class VatDeclarationService:
                 "pending_proof_excluded": pending_excluded,
             },
         }
+
+
+# ═══ Tax-rate catalog — effective-dated master data ═══════════════════════
+
+
+class DuplicateWindowError(Exception):
+    code = "DUPLICATE_WINDOW"
+
+
+class TaxRateCatalogService:
+    """Governance for date-effective rate windows.
+
+    Vietnamese-standard pattern (cf. danh mục thuế suất in MISA/Fast):
+    catalog seeded from statute, extended/closed by governed events with
+    SOD approval; never deleted — expired rows remain as history of what
+    applied when.
+    """
+
+    def __init__(self, repo: Any) -> None:
+        self._repo = repo
+
+    def ensure_seeded(self) -> None:
+        """Idempotent: insert statute windows only when table is empty."""
+        if self._repo.count() > 0:
+            return
+        for w in __import__(
+            "src.bricks.system_settings.rate_windows",
+            fromlist=["SEED_TAX_RATE_WINDOWS"],
+        ).SEED_TAX_RATE_WINDOWS:
+            self._repo.add(w)
+
+    def all_windows(self) -> list[Any]:
+        rows: list[Any] = self._repo.all()
+        return rows
+
+    def applicable_fractions(self, on_date: date) -> frozenset[str]:
+        self.ensure_seeded()
+        return frozenset(w.fraction for w in self.all_windows() if w.covers(on_date))
+
+    def add_window(
+        self,
+        window: Any,
+        *,
+        actor: UUID,
+        approver: UUID,
+    ) -> Any:
+        """New law event → new window row. SOD + overlap guard."""
+        if approver == actor:
+            raise SodViolationError("Cần người phê duyệt khác người thực hiện")
+        self.ensure_seeded()
+        for existing in self._repo.all():
+            if existing.fraction != window.fraction:
+                continue
+            a_from = window.valid_from or date.min
+            a_to = window.valid_to or date.max
+            e_from = existing.valid_from or date.min
+            e_to = existing.valid_to or date.max
+            if a_from <= e_to and e_from <= a_to:
+                raise ValueError(
+                    f"Window cho {window.fraction} chồng lấn "
+                    f"{e_from}..{e_to} ({existing.decree_ref})"
+                )
+        return self._repo.add(window)
+
+    def close_window(self, fraction: str, *, end_on: date, actor: UUID, approver: UUID) -> Any:
+        """Shorten valid_to (early repeal). SOD; keeps history."""
+        if approver == actor:
+            raise SodViolationError("Cần người phê duyệt khác người thực hiện")
+        for w in self.all_windows():
+            if w.fraction == fraction and (w.valid_to is None or w.valid_to > end_on):
+                closed = replace(w, valid_to=end_on)
+                self._repo.remove(w)
+                return self._repo.add(closed)
+        from src.bricks.bank_cash.services import NotFoundError as _NF
+
+        raise _NF(f"Không tìm thấy cửa sổ thuế suất {fraction}")

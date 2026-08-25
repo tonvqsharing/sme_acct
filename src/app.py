@@ -96,6 +96,7 @@ from src.bricks.system_settings.storage import (
 )
 from src.bricks.system_settings.web_adapter import (
     init_settings_service,
+    init_tax_rate_catalog_service,
     init_vat_declaration_service,
     settings_bp,
 )
@@ -250,8 +251,15 @@ def create_app(config: dict | None = None) -> Flask:
     dns_service = DocumentNumberingSeriesService(dns_repo)
     pt_repo2 = SQLAlchemyPaymentTermRepository(pt_session2)
     from src.bricks.system_settings.domain import TaxRate as _TaxRate
+    from src.bricks.system_settings.services import TaxRateCatalogService
+    from src.bricks.system_settings.storage import (
+        SQLAlchemyTaxRateWindowRepository,
+    )
 
-    RATE_GATE = make_rate_gate()
+    catalog_svc = TaxRateCatalogService(SQLAlchemyTaxRateWindowRepository(session_factory()))
+    init_tax_rate_catalog_service(catalog_svc)
+    catalog_svc.ensure_seeded()
+    RATE_GATE = make_rate_gate(tuple(catalog_svc.all_windows()))
 
     LAWFUL_VAT_FRACTIONS = frozenset(
         {r.to_fraction() for r in _TaxRate if r.value >= 0}

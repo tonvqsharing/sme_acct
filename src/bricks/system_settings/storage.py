@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal  # noqa: F401
+from typing import Any
 from uuid import UUID, uuid4
 
-from sqlalchemy import DateTime, Integer, String
+from sqlalchemy import Date, DateTime, Integer, String
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
 from sqlalchemy.types import JSON
 
@@ -105,3 +106,70 @@ class SQLAlchemySystemSettingsRepository(SystemSettingsRepositoryPort):
         m.updated_at = datetime.now(UTC)
         self._session.commit()
         return cfg
+
+
+class TaxRateWindowModel(Base):
+    __tablename__ = "tax_rate_windows"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    rate_pct: Mapped[int] = mapped_column(Integer)
+    fraction: Mapped[str] = mapped_column(String(10))
+    valid_from: Mapped[date | None] = mapped_column(Date, nullable=True)
+    valid_to: Mapped[date | None] = mapped_column(Date, nullable=True)
+    decree_ref: Mapped[str] = mapped_column(String(200))
+
+
+class SQLAlchemyTaxRateWindowRepository:
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def all(self) -> list[Any]:
+        rows = (
+            self._session.query(TaxRateWindowModel)
+            .order_by(TaxRateWindowModel.rate_pct.asc())
+            .all()
+        )
+        return [
+            __import__(
+                "src.bricks.system_settings.rate_windows",
+                fromlist=["TaxRateWindow"],
+            ).TaxRateWindow(
+                rate_pct=r.rate_pct,
+                fraction=r.fraction,
+                valid_from=r.valid_from,
+                valid_to=r.valid_to,
+                decree_ref=r.decree_ref,
+            )
+            for r in rows
+        ]
+
+    def add(self, w: Any) -> Any:
+        self._session.add(
+            TaxRateWindowModel(
+                id=str(uuid4()),
+                rate_pct=w.rate_pct,
+                fraction=w.fraction,
+                valid_from=w.valid_from,
+                valid_to=w.valid_to,
+                decree_ref=w.decree_ref,
+            )
+        )
+        self._session.commit()
+        return w
+
+    def remove(self, w: Any) -> Any:
+        m = (
+            self._session.query(TaxRateWindowModel)
+            .filter(
+                TaxRateWindowModel.fraction == w.fraction,
+                TaxRateWindowModel.decree_ref == w.decree_ref,
+            )
+            .first()
+        )
+        if m is not None:
+            self._session.delete(m)
+            self._session.commit()
+        return w
+
+    def count(self) -> int:
+        return self._session.query(TaxRateWindowModel).count()

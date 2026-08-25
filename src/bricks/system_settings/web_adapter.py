@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import date as _date
 from typing import Any
 from uuid import UUID
 
@@ -162,3 +163,80 @@ def vat_declaration() -> tuple[Any, int]:
         "detail": d["detail"],
     }
     return jsonify({"data": payload}), 200
+
+
+# ─── Tax-rate windows master data ──────────────────────────────────────────
+
+_catalog_service: Any = None
+
+
+def init_tax_rate_catalog_service(svc: Any) -> None:
+    global _catalog_service
+    _catalog_service = svc
+
+
+def _catalog() -> Any:
+    s = _catalog_service
+    if s is None:
+        abort(500, description="TaxRateCatalogService not initialized")
+    return s
+
+
+def _ser_window(w: Any) -> dict[str, Any]:
+    return {
+        "rate_pct": w.rate_pct,
+        "fraction": w.fraction,
+        "valid_from": w.valid_from.isoformat() if w.valid_from else None,
+        "valid_to": w.valid_to.isoformat() if w.valid_to else None,
+        "decree_ref": w.decree_ref,
+        "active_on": None,
+    }
+
+
+@settings_bp.get("/api/v1/tax-rate-windows")
+@login_required  # type: ignore[untyped-decorator]
+def list_rate_windows() -> tuple[Any, int]:
+    on_param = request.args.get("on")
+    rows = _catalog().all_windows()
+    if on_param:
+        from datetime import date as _d
+
+        try:
+            on_date = _d.fromisoformat(on_param)
+        except ValueError:
+            abort(422, description="invalid 'on' date")
+        rows = [w for w in rows if w.covers(on_date)]
+        return jsonify({"data": [{**_ser_window(w), "active_on": on_param} for w in rows]}), 200
+    return jsonify({"data": [_ser_window(w) for w in rows]}), 200
+
+
+@settings_bp.post("/api/v1/tax-rate-windows")
+@login_required  # type: ignore[untyped-decorator]
+def add_rate_window() -> tuple[Any, int]:
+    role = getattr(current_user, "role", "")
+    if role not in ADMIN_ROLES:
+        abort(403)
+    body = request.get_json(silent=True) or {}
+    try:
+        w = __import__(
+            "src.bricks.system_settings.rate_windows",
+            fromlist=["TaxRateWindow"],
+        ).TaxRateWindow(
+            rate_pct=int(body["rate_pct"]),
+            fraction=str(body["fraction"]),
+            valid_from=_date.fromisoformat(body["valid_from"]) if body.get("valid_from") else None,
+            valid_to=_date.fromisoformat(body["valid_to"]) if body.get("valid_to") else None,
+            decree_ref=body.get("decree_ref", ""),
+        )
+        out = _catalog().add_window(
+            w,
+            actor=UUID(str(current_user.id)),
+            approver=UUID(str(body["approver"])),
+        )
+    except KeyError as exc:
+        abort(422, description=f"missing {exc}")
+    except SodViolationError as exc:
+        return jsonify({"error": str(exc), "code": "SOD_VIOLATION"}), 403
+    except ValueError as exc:
+        return jsonify({"error": str(exc), "code": "OVERLAPPING_WINDOW"}), 409
+    return jsonify({"data": _ser_window(out)}), 201
