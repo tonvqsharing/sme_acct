@@ -97,8 +97,8 @@ Vietnamese compliance rules baked into specs: MST tax-ID format (`^[1-9]\d{2}(-\
 | Company | ✅ done — unit + integration suites green | `docs/company-module/` |
 | Payment Terms & Doc Numbering | ✅ done incl. SOD two-actor flow (request→202, approve/reject) | `docs/payment-terms/` |
 | Audit Log | ✅ core done — append-only checksum chain (17 tests); API/filters pending spec session | `docs/audit-log/` |
-| Fiscal Year & Periods | ✅ core done — years/monthly periods/posting gate (10 tests); web layer pending | `docs/fiscal-year-period/` |
-| Chart of Accounts | ✅ core done — codes/hierarchy/posting gate + SQLite repo (21 tests); web API pending | `docs/coa/` |
+| Fiscal Year & Periods | ✅ core done — years/monthly periods/posting gate + web create/list (18 tests) | `docs/fiscal-year-period/` |
+| Chart of Accounts | ✅ core done — codes/hierarchy/posting gate + SQLite repo + web CRUD (33 tests) | `docs/coa/` |
 | Invoice + Voucher + Ledger core loop | ✅ invoice/voucher bricks done; ledger reports done (325 total) | — |
 | Bank/Cash Accounts | ✅ core done — bank+cash masters, balances, balances auto-move with vouchers; bank reconciliation w/ SOD resolve done (15 tests) | `docs/bank-cash/` |
 | Purchase Invoices | ✅ core done — supplier invoices, deductibility engine (R-P4/R-P5), duplicate guard, SOD-lite cancel (25 tests); XML ingest v2 | docs/purchases/ |

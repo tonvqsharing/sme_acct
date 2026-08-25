@@ -6,6 +6,7 @@ from typing import Any
 from uuid import UUID
 
 from flask import Blueprint, abort, jsonify, request
+from flask_login import current_user
 
 fiscal_year_bp = Blueprint("fiscal_year", __name__)
 
@@ -82,3 +83,57 @@ def list_periods(year_id: str) -> tuple[Any, int]:
         ),
         200,
     )
+
+
+# ─── Write endpoints (onboarding) ──────────────────────────────────────────
+
+
+class OverlapHTTP(Exception):
+    code = "OVERLAPPING_YEAR"
+
+
+@fiscal_year_bp.post("/api/v1/fiscal-years")
+def create_fiscal_year() -> tuple[Any, int]:
+    _authed()
+    role = getattr(current_user, "role", "")
+    if role == "AUDITOR":
+        abort(403)
+    if role not in ("ADMIN", "CHIEF_ACCOUNTANT"):
+        abort(403, description="ADMIN/CHIEF_ACCOUNTANT required")
+    body = request.get_json(silent=True) or {}
+    from datetime import date as _d
+
+    from src.bricks.fiscal_year_period.services import OverlappingYearError as _OYE
+
+    try:
+        fy, periods = _svc().create_year(
+            UUID(body["company_id"]),
+            name=body.get("name", ""),
+            start_date=_d.fromisoformat(body["start_date"]),
+            end_date=_d.fromisoformat(body["end_date"]),
+            period_frequency=body.get("period_frequency", "MONTHLY"),
+            actor=UUID(str(current_user.id)),
+            reason=body.get("reason") or "create fiscal year",
+        )
+    except _OYE:
+        return jsonify({"error": "Năm tài chính chồng lấn", "code": "OVERLAPPING_YEAR"}), 409
+    except (KeyError, ValueError) as exc:
+        return jsonify({"error": str(exc), "code": "INVALID_FY"}), 422
+    return (
+        jsonify(
+            {
+                "data": {
+                    "id": str(fy.id),
+                    "name": fy.name,
+                    "periods_count": len(periods),
+                    "status": fy.status.value,
+                }
+            }
+        ),
+        201,
+    )
+
+
+@fiscal_year_bp.errorhandler(OverlapHTTP)
+def _overlap_http(e: OverlapHTTP) -> tuple[Any, int]:
+    return jsonify({"error": str(e), "code": e.code}), 409
