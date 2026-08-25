@@ -71,7 +71,8 @@ src/bricks/<name>/
 
 - Unit tests: `tests/unit/<brick>/` — may hand-build a minimal Flask app with fixtures (see `tests/unit/test_company_web_adapter.py`: `FakeUser(UserMixin)` + `_store` dict + `session_transaction` login).
 - Integration tests: `tests/integration/` — MUST go through real `create_app()`.
-- **Shared fixtures live in `tests/integration/conftest.py`** (`app`, `admin_client`, `accountant_client`, `chief_client`, `auditor_client`, `UUID_*`). Import the UUID *constants* from there — never import the fixture functions themselves (they shadow pytest params → F811).
+- **Shared fixtures live in `tests/integration/conftest.py`**
+- **`tests/__init__.py` must exist** — without it pytest imports conftest as top-level `conftest` while explicit imports create a second module instance; two `_store` dicts → mystery 401s across the suite (`app`, `admin_client`, `accountant_client`, `chief_client`, `auditor_client`, `UUID_*`). Import the UUID *constants* from there — never import the fixture functions themselves (they shadow pytest params → F811).
 - **Auth seam for tests:** `create_app()`'s `user_loader` returns `None` (user brick not built yet). Integration tests override it post-hoc: `app.login_manager` → register test `user_loader` + `unauthorized_handler` returning 401. See `tests/integration/test_company_api.py` fixture block — copy that pattern.
 - Each brick gets its own suite. No `sleep()` in tests.
 

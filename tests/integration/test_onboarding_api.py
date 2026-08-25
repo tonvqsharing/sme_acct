@@ -7,7 +7,6 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from src.app import create_app
 from tests.integration.conftest import (
     UUID_ACCOUNTANT,
     UUID_ADMIN,
@@ -17,22 +16,6 @@ from tests.integration.conftest import (
 )
 
 COMPANY = "16161616-1616-1616-1616-161616161616"
-
-
-@pytest.fixture()
-def app():
-    a = create_app(config={"TESTING": True, "SECRET_KEY": "x"})
-    lm = a.login_manager
-
-    @lm.user_loader
-    def load(i):
-        return _store.get(i)
-
-    @lm.unauthorized_handler
-    def un():  # noqa: ANNO01
-        return "", 401
-
-    return a
 
 
 def _client(app, uid, role):

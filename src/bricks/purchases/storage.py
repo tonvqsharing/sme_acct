@@ -137,6 +137,21 @@ class SQLAlchemySupplierInvoiceRepository(SupplierInvoiceRepositoryPort):
         self._session.commit()
         return inv
 
+    def get_posted_between(self, cid: UUID, start: date, end: date) -> list[SupplierInvoice]:
+        """POSTED invoices whose entry_date falls in [start, end]."""
+        rows = (
+            self._session.query(SupplierInvoiceModel)
+            .filter(
+                SupplierInvoiceModel.company_id == str(cid),
+                SupplierInvoiceModel.status == PurchaseStatus.POSTED.value,
+                SupplierInvoiceModel.entry_date >= start,
+                SupplierInvoiceModel.entry_date <= end,
+            )
+            .order_by(SupplierInvoiceModel.entry_date.asc())
+            .all()
+        )
+        return [_to_domain(r) for r in rows]
+
     def exists_duplicate(self, cid: UUID, mst: str, number: str, symbol: str) -> bool:
         row = (
             self._session.query(SupplierInvoiceModel.id)

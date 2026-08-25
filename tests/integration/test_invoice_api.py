@@ -8,26 +8,9 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from src.app import create_app
 from tests.integration.conftest import UUID_CHIEF, FakeUser, _store
 
 SYS = "00000000-0000-0000-0000-000000000009"
-
-
-@pytest.fixture()
-def app():
-    application = create_app(config={"TESTING": True, "SECRET_KEY": "x"})
-    lm = application.login_manager
-
-    @lm.user_loader
-    def load(user_id):
-        return _store.get(user_id)
-
-    @lm.unauthorized_handler
-    def unauth():
-        return "", 401
-
-    return application
 
 
 @pytest.fixture()

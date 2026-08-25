@@ -361,7 +361,7 @@ def create_app(config: dict | None = None) -> Flask:
     init_ledger_service(ledger_svc)
 
     def _decl_input_source(company_id, start, end):
-        """POSTED purchase invoices in window -> primitive dicts."""
+        """POSTED purchase invoices in window -> primitive dicts (SQL-filtered)."""
         return [
             {
                 "invoice_number": inv.invoice_number,
@@ -369,8 +369,7 @@ def create_app(config: dict | None = None) -> Flask:
                 "deductibility": inv.deductibility.value,
                 "vat_deductible": str(inv.vat_deductible),
             }
-            for inv in purchases_repo.get_by_company(company_id)
-            if start <= inv.entry_date <= end
+            for inv in purchases_repo.get_posted_between(company_id, start, end)
         ]
 
     init_vat_declaration_service(

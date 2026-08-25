@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import pytest
 
-from src.app import create_app
 from tests.integration.conftest import (
     UUID_ACCOUNTANT,
     UUID_AUDITOR,
@@ -14,22 +13,6 @@ from tests.integration.conftest import (
 )
 
 COMPANY = "88888888-8888-8888-8888-888888888888"
-
-
-@pytest.fixture()
-def app():
-    a = create_app(config={"TESTING": True, "SECRET_KEY": "x"})
-    lm = a.login_manager
-
-    @lm.user_loader
-    def load(i):
-        return _store.get(i)
-
-    @lm.unauthorized_handler
-    def un():
-        return "", 401
-
-    return a
 
 
 def _client(app, uid, role):

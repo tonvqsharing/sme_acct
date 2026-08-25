@@ -16,15 +16,7 @@ from __future__ import annotations
 
 from uuid import UUID, uuid4
 
-import pytest
-from flask import Flask
-from flask_login import UserMixin
-
-from src.app import create_app
-
 # ─── Fake user for Flask-Login ─────────────────────────────────────────────
-
-_store: dict = {}
 
 UUID_ADMIN = "00000000-0000-0000-0000-000000000001"
 UUID_ACCOUNTANT = "00000000-0000-0000-0000-000000000002"
@@ -32,70 +24,7 @@ UUID_CHIEF = "00000000-0000-0000-0000-000000000003"
 UUID_AUDITOR = "00000000-0000-0000-0000-000000000004"
 
 
-class FakeUser(UserMixin):
-    def __init__(self, user_id: str, role: str):
-        self.id = user_id
-        self.role = role
-
-
-# ─── Fixtures ──────────────────────────────────────────────────────────────
-
-
-@pytest.fixture(autouse=True)
-def _clear_store():
-    _store.clear()
-    yield
-    _store.clear()
-
-
-@pytest.fixture()
-def app() -> Flask:
-    """Real production app factory + test auth stubs."""
-    application = create_app(config={"TESTING": True, "SECRET_KEY": "test-secret"})
-
-    # Override placeholder user_loader (returns None) with test store.
-    # create_app's user brick isn't implemented yet; this is the documented seam.
-    login_manager = application.login_manager
-
-    @login_manager.user_loader
-    def load_user(user_id: str):
-        return _store.get(user_id)
-
-    @login_manager.unauthorized_handler
-    def unauthorized():
-        return "", 401
-
-    return application
-
-
-def _logged_in_client(app: Flask, user_id: str, role: str):
-    user = FakeUser(user_id, role)
-    _store[user.id] = user
-    client = app.test_client()
-    with client.session_transaction() as sess:
-        sess["_user_id"] = user.id
-    return client
-
-
-@pytest.fixture()
-def admin_client(app):
-    return _logged_in_client(app, UUID_ADMIN, "ADMIN")
-
-
-@pytest.fixture()
-def accountant_client(app):
-    return _logged_in_client(app, UUID_ACCOUNTANT, "ACCOUNTANT")
-
-
-@pytest.fixture()
-def chief_client(app):
-    return _logged_in_client(app, UUID_CHIEF, "CHIEF_ACCOUNTANT")
-
-
-@pytest.fixture()
-def auditor_client(app):
-    return _logged_in_client(app, UUID_AUDITOR, "AUDITOR")
-
+from tests.integration.conftest import FakeUser, _store  # noqa: F401
 
 VALID_COMPANY = {
     "legal_name": "Công ty TNHH ABC",
