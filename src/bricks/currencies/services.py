@@ -15,6 +15,8 @@ from src.bricks.currencies.domain import (
     InvalidCurrencyCodeError,
     InvalidRateError,
     RateType,
+    RevaluationEntry,
+    RevaluationRun,
 )
 
 
@@ -185,3 +187,136 @@ class ExchangeRateService:
                 return wavg.quantize(Decimal("0.0001"))
 
         return _d(self.latest(currency, RateType.TRANSFER, rate_date).rate)
+
+
+# ═══ Revaluation engine (§4) ══════════════════════════════════════════════
+
+
+class PeriodLockedError(Exception):
+    pass
+
+
+class SodViolationError(Exception):
+    pass
+
+
+class UnknownRateError(Exception):
+    pass
+
+
+class EmptyRunError(Exception):
+    code = "EMPTY_RUN"
+
+
+class _ClosingRates:
+    def __init__(self, rate_svc: Any, on_date: date) -> None:
+        self._svc = rate_svc
+        self._on = on_date
+        self._cache: dict[str, Decimal] = {}
+
+    def get(self, code: str) -> Decimal:
+        if code not in self._cache:
+            r = self._svc.latest(code, RateType.TRANSFER, self._on)
+            self._cache[code] = r.rate
+        return self._cache[code]
+
+
+class RevaluationService:
+    def __init__(
+        self,
+        *,
+        rates: Any,
+        repo: Any,
+        monetary_items: Any,
+        period_locked: Any,
+        audit: Any | None = None,
+    ) -> None:
+        self._rates = rates
+        self._repo = repo
+        self._items = monetary_items
+        self._locked = period_locked
+        self._audit = audit
+
+    def _get(self, rid: UUID) -> Any:
+        getter = getattr(self._repo, "get_by_id", None) or self._repo.rows_get
+        return getter(rid)
+
+    def create_run(
+        self,
+        company_id: UUID,
+        period_start: date,
+        period_end: date,
+        rate_date: date,
+        *,
+        actor: UUID,
+    ) -> Any:
+        if self._locked(company_id):
+            raise PeriodLockedError("Kỳ đã khóa")
+        closing = _ClosingRates(self._rates, rate_date)
+        entries: list[RevaluationEntry] = []
+        for item in self._items(company_id):
+            code = item["currency_code"]
+            orig = Decimal(str(item["balance_original"]))
+            old = Decimal(str(item["old_vnd"]))
+            try:
+                applied = closing.get(code)
+            except InvalidRateError as exc:
+                raise UnknownRateError(code) from exc
+            new_vnd = (orig * applied).quantize(Decimal(1))
+            entries.append(
+                RevaluationEntry(
+                    account_code=item["account_code"],
+                    currency_code=code,
+                    balance_original=orig,
+                    rate_applied=applied,
+                    old_vnd=old,
+                    new_vnd=new_vnd,
+                )
+            )
+        if not entries:
+            raise EmptyRunError("Không có khoản mục ngoại tệ")
+
+        # idempotent re-run: reverse prior POSTED overlap first
+        prior = self._repo.find_posted_overlap(company_id, period_start, period_end)
+        reversal_entries: list[Any] = []
+        if prior is not None:
+            reversal_entries = prior.reverse()
+            self._repo.update(prior)
+
+        run = RevaluationRun(
+            company_id=company_id,
+            period_start=period_start,
+            period_end=period_end,
+            rate_date=rate_date,
+            entries=entries,
+            reversal_entries=reversal_entries,
+            actor=actor,
+        )
+        run.stamp(run.checksum or "0" * 64, actor, "CREATE")
+        return self._repo.create(run)
+
+    def get(self, rid: UUID) -> Any:
+        return self._repo.get_by_id(rid) if hasattr(self._repo, "get_by_id") else None
+
+    def submit_for_approval(self, rid: UUID, actor: UUID) -> Any:
+        run = self._get(rid)
+        run.submit()
+        run.stamp(run.checksum, actor, "SUBMIT")
+        return self._repo.update(run)
+
+    def approve(self, rid: UUID, approver: UUID) -> Any:
+        run = self._get(rid)
+        if approver == run.actor:
+            raise SodViolationError("Người lập không được tự phê duyệt")
+        run.approve(approver)
+        run.stamp(run.checksum, approver, "APPROVE")
+        return self._repo.update(run)
+
+    def post(self, rid: UUID, actor: UUID) -> Any:
+        run = self._get(rid)
+        run.post(actor)
+        run.stamp(run.checksum, actor, "POST")
+        saved = self._repo.update(run)
+        if self._audit is not None:
+            pass
+        return saved
