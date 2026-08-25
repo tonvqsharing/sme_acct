@@ -184,3 +184,55 @@ class _MemoryRepo:
 
     def get_by_company(self, cid: UUID) -> list[Voucher]:
         return [x for x in self._rows.values() if x.company_id == cid]
+
+
+# ═══ Auto-journal policy (extracted from composition root) ════════════════
+
+
+class AutoJournalService:
+    """Posting an invoice generates + posts its balanced journal.
+
+    Owns the role→code resolution and voucher lifecycle; the composition
+    root only constructs it with injected ports.
+    """
+
+    def __init__(
+        self,
+        *,
+        voucher_svc: Any,
+        regime_provider: Any,
+    ) -> None:
+        self._vouchers = voucher_svc
+        self._regime_of = regime_provider
+
+    def build_for(self, posted_invoice: Any) -> dict[str, str]:
+        from uuid import NAMESPACE_URL, uuid5
+
+        from src.bricks.coa.domain import resolve_chart_role
+
+        sys_actor = uuid5(NAMESPACE_URL, "system:numbering")
+        regime = self._regime_of(posted_invoice.company_id)
+        role_codes = {
+            role: resolve_chart_role(role, regime) for role in ("ar", "revenue", "vat_output")
+        }
+        v = self._vouchers.create_voucher(
+            company_id=posted_invoice.company_id,
+            entry_date=posted_invoice.issue_date,
+            description=f"Auto journal for {posted_invoice.number}",
+            lines=[
+                {
+                    "account_code": l.account_code,
+                    "debit": str(l.debit),
+                    "credit": str(l.credit),
+                }
+                for l in InvoiceServiceAdapter.lines_from_invoice(posted_invoice, role_codes)
+            ],
+            actor=sys_actor,
+            reason=f"auto:{posted_invoice.number}",
+        )
+        posted = self._vouchers.post_voucher(
+            v.id,
+            actor=sys_actor,
+            reason=f"auto:{posted_invoice.number}",
+        )
+        return {"id": str(posted.id), "number": posted.number}

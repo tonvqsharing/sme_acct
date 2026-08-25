@@ -40,7 +40,7 @@ src/bricks/<name>/
 └── web_adapter.py  # Flask blueprint + routes. ONLY file allowed to import Flask
 ```
 
-`src/app.py` = composition root. Wiring order matters: COA + FY services must exist before invoice/voucher blocks (they consume `app.coa_service` / `app.fy_service`). Cross-brick needs are met by thin adapters defined inline there (`_NumberingAdapter`, `_TermsAdapter`) that translate brick contracts to narrow callables — do NOT import one brick's storage into another's service.
+`src/app.py` = composition root. **SECRET_KEY env var is mandatory outside TESTING** (fail-fast at factory). Wiring order matters: COA + FY services must exist before invoice/voucher blocks (they consume `app.coa_service` / `app.fy_service`). Cross-brick needs are met by thin adapters defined inline there (`_NumberingAdapter`, `_TermsAdapter`) that translate brick contracts to narrow callables — do NOT import one brick's storage into another's service.
 
 **Transaction gate order (invoice & voucher services):** fiscal-period open → COA posting accounts (ACTIVE + detail only) → balance/invariant. Keep this order; reports and tests assume it.
 

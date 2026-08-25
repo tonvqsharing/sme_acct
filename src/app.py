@@ -100,7 +100,7 @@ from src.bricks.system_settings.web_adapter import (
     init_vat_declaration_service,
     settings_bp,
 )
-from src.bricks.voucher.services import VoucherService
+from src.bricks.voucher.services import AutoJournalService, VoucherService
 from src.bricks.voucher.storage import Base as VchBase
 from src.bricks.voucher.storage import SQLAlchemyVoucherRepository
 from src.bricks.voucher.web_adapter import init_voucher_service, voucher_bp
@@ -118,7 +118,10 @@ def create_app(config: dict | None = None) -> Flask:
     app = Flask(__name__)
 
     # Default config
-    app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev-secret-change-in-production")
+    _key = os.environ.get("SECRET_KEY", "")
+    app.config["SECRET_KEY"] = _key or "dev-secret-change-in-production"
+    if not _key and not (app.config.get("TESTING") or (config or {}).get("TESTING")):
+        raise RuntimeError("SECRET_KEY env var is required outside TESTING mode")
     app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get(
         "SQLALCHEMY_DATABASE_URI", "sqlite:///:memory:"
     )
@@ -150,10 +153,37 @@ def create_app(config: dict | None = None) -> Flask:
         # Placeholder — will be replaced when user brick is implemented
         return None
 
-    # ── Wire Company brick services ─────────────────────────────────────
+    # ── Blueprints ──────────────────────────────────────────────────────
+    for bp in (
+        web_adapter_bp,
+        payment_terms_bp,
+        document_numbering_bp,
+        invoice_bp,
+        voucher_bp,
+        ledger_bp,
+        bank_cash_bp,
+        purchases_bp,
+        settings_bp,
+        coa_bp,
+        fiscal_year_bp,
+        audit_log_bp,
+    ):
+        app.register_blueprint(bp)
+
+    # ── Sessions ────────────────────────────────────────────────────────
     session = session_factory()
-    repo = SQLAlchemyCompanyRepository(session)
-    company_svc = CompanyService(repo)
+    bc_session = session_factory()
+    pt_session = session_factory()
+    pt_session2 = session_factory()
+    inv_session = session_factory()
+    voucher_session = session_factory()
+    coa_session = session_factory()
+    fy_session = session_factory()
+    purchases_session = session_factory()
+
+    # ── Company (tenant root) ───────────────────────────────────────────
+    company_repo = SQLAlchemyCompanyRepository(session)
+    company_svc = CompanyService(company_repo)
     tenant_svc = TenantService(company_svc)
     init_company_services(company_svc, tenant_svc)
 
@@ -169,87 +199,56 @@ def create_app(config: dict | None = None) -> Flask:
 
     regime_provider = _RegimeOf(company_svc)
 
-    # ── Wire Payment Terms brick services ───────────────────────────────
-    pt_session = session_factory()
+    # ── Audit ───────────────────────────────────────────────────────────
+    audit_svc = AuditLogService(SQLAlchemyAuditLogRepository(session_factory()))
+    init_audit_service(audit_svc)
+
+    # ── COA + Fiscal Year (posting gates) ───────────────────────────────
+    app.coa_service = AccountService(  # type: ignore[attr-defined]
+        SQLAlchemyAccountRepository(coa_session)
+    )
+    app.fy_service = FiscalYearService(  # type: ignore[attr-defined]
+        SQLAlchemyFiscalYearRepository(fy_session),
+        SQLAlchemyPeriodRepository(fy_session),
+    )
+    init_coa_service(app.coa_service)
+    init_fy_service(app.fy_service)
+
+    class _CoaGate:
+        def validate_posting_account(self, company_id, code, regime="tt133"):
+            app.coa_service.validate_posting_account(company_id, code, regime)
+
+    class _FyGate:
+        def find_open_period(self, company_id, d):
+            return app.fy_service.find_open_period(company_id, d)
+
+    # ── Payment Terms + Numbering + SOD approvals ───────────────────────
     term_repo = SQLAlchemyPaymentTermRepository(pt_session)
     series_repo = SQLAlchemyDocumentNumberingSeriesRepository(pt_session)
-    pt_audit = session_factory()  # dedicated session for audit writes
+    pt_term_svc = PaymentTermService(term_repo)
+
     from src.bricks.audit_log.storage import SQLAlchemyAuditLogRepository as _ALR
 
-    _pt_audit_svc = AuditLogService(_ALR(pt_audit))
+    pt_audit_svc = AuditLogService(_ALR(session_factory()))
     init_payment_terms_services(
-        PaymentTermService(term_repo, audit=_pt_audit_svc),
-        DocumentNumberingSeriesService(series_repo, audit=_pt_audit_svc),
+        PaymentTermService(term_repo, audit=pt_audit_svc),
+        DocumentNumberingSeriesService(series_repo, audit=pt_audit_svc),
     )
 
-    audit_svc = AuditLogService(SQLAlchemyAuditLogRepository(session_factory()))
+    dns_repo2 = SQLAlchemyDocumentNumberingSeriesRepository(pt_session2)
+    dns_service = DocumentNumberingSeriesService(dns_repo2)
+
     approval_svc = ApprovalService(
         SQLAlchemyApprovalRequestRepository(session_factory()),
         term_service=PaymentTermService(term_repo),
         series_service=DocumentNumberingSeriesService(series_repo),
         audit=audit_svc,
     )
-
-    # ── Register blueprints ─────────────────────────────────────────────
-    app.register_blueprint(web_adapter_bp)
-    app.register_blueprint(payment_terms_bp)
-    app.register_blueprint(document_numbering_bp)
-    app.register_blueprint(invoice_bp)
-    app.register_blueprint(voucher_bp)
-    app.register_blueprint(ledger_bp)
-    app.register_blueprint(bank_cash_bp)
-    app.register_blueprint(purchases_bp)
-    app.register_blueprint(settings_bp)
-    app.register_blueprint(coa_bp)
-    app.register_blueprint(fiscal_year_bp)
-    app.register_blueprint(audit_log_bp)
-
     from src.bricks.payment_terms.web_adapter import init_approval_service
 
     init_approval_service(approval_svc)
 
-    # ── Wire COA + Fiscal Year bricks ────────────────────────────────────
-    coa_session = session_factory()
-    fy_session = session_factory()
-    app.coa_service = AccountService(SQLAlchemyAccountRepository(coa_session))  # type: ignore[attr-defined]
-    app.fy_service = FiscalYearService(  # type: ignore[attr-defined]
-        SQLAlchemyFiscalYearRepository(fy_session),
-        SQLAlchemyPeriodRepository(fy_session),
-    )
-
-    # ── Wire Invoice brick ───────────────────────────────────────────────
-    class _NumberingAdapter:
-        """Issues next number from company's first active HD* series."""
-
-        def __init__(self, dns):
-            self._dns = dns
-
-        def issue(self, company_id):
-            series = self._dns.list_by_company(company_id, active=True)
-            target = next((x for x in series if x.prefix.startswith("HD")), None)
-            if target is None:
-                raise RuntimeError("No active HD/ numbering series")
-            from uuid import NAMESPACE_URL, uuid5
-
-            sys_actor = uuid5(NAMESPACE_URL, "system:numbering")
-            seq = self._dns.increment_sequence(target.id, sys_actor, "invoice")
-            return f"{target.prefix}{seq:06d}"
-
-    class _TermsAdapter:
-        def __init__(self, svc):
-            self._svc = svc
-
-        def get_default(self, company_id):
-            return self._svc.get_default(company_id)
-
-        def get_payment_term(self, tid):
-            return self._svc.get_payment_term(tid)
-
-    inv_session = session_factory()
-    pt_session2 = session_factory()
-    dns_repo = SQLAlchemyDocumentNumberingSeriesRepository(pt_session2)
-    dns_service = DocumentNumberingSeriesService(dns_repo)
-    pt_repo2 = SQLAlchemyPaymentTermRepository(pt_session2)
+    # ── Tax-rate catalog (master data) + lawful fractions ───────────────
     from src.bricks.system_settings.domain import TaxRate as _TaxRate
     from src.bricks.system_settings.services import TaxRateCatalogService
     from src.bricks.system_settings.storage import (
@@ -265,73 +264,20 @@ def create_app(config: dict | None = None) -> Flask:
         {r.to_fraction() for r in _TaxRate if r.value >= 0}
     )  # NOT_TAXED(-1) maps to 0; excluded from distinct membership
 
-    invoice_svc = InvoiceService(
-        fy=app.fy_service,
-        coa=app.coa_service,
-        numbering=_NumberingAdapter(dns_service),
-        terms=_TermsAdapter(PaymentTermService(pt_repo2)),
-        audit=audit_svc,
-        repo=SQLAlchemyInvoiceRepository(inv_session),
-        regime_of=_RegimeOf(company_svc),
-        allowed_vat_rates=LAWFUL_VAT_FRACTIONS,
-        rate_gate=RATE_GATE,
-    )
-
-    def _auto_journal(posted_invoice):
-        """Posting an invoice generates + posts its balanced journal."""
-        from uuid import NAMESPACE_URL, uuid5
-
-        from src.bricks.coa.domain import resolve_chart_role
-
-        sys_actor = uuid5(NAMESPACE_URL, "system:numbering")
-        regime = regime_provider(posted_invoice.company_id)
-        role_codes = {
-            role: resolve_chart_role(role, regime) for role in ("ar", "revenue", "vat_output")
-        }
-        v = voucher_svc.create_voucher(
-            company_id=posted_invoice.company_id,
-            entry_date=posted_invoice.issue_date,
-            description=f"Auto journal for {posted_invoice.number}",
-            lines=[
-                {"account_code": l.account_code, "debit": str(l.debit), "credit": str(l.credit)}
-                for l in InvoiceServiceAdapter.lines_from_invoice(posted_invoice, role_codes)
-            ],
-            actor=sys_actor,
-            reason=f"auto:{posted_invoice.number}",
-        )
-        posted = voucher_svc.post_voucher(
-            v.id,
-            actor=sys_actor,
-            reason=f"auto:{posted_invoice.number}",
-        )
-        return {"id": str(posted.id), "number": posted.number}
-
-    init_invoice_service(invoice_svc, on_posted=_auto_journal)
-
-    class _VNumbering:
-        def __init__(self, dns):
-            self._dns = dns
-
-        def issue(self, company_id):
-            from uuid import NAMESPACE_URL, uuid5
-
-            sys_actor = uuid5(NAMESPACE_URL, "system:numbering")
-            series = self._dns.list_by_company(company_id, active=True)
-            target = next((x for x in series if x.prefix.startswith("PT")), None)
-            if target is None:
-                raise RuntimeError("No active PT/ numbering series")
-            seq = self._dns.increment_sequence(target.id, sys_actor, "voucher")
-            return f"{target.prefix}{seq:06d}"
-
-    cash_repo_bc = SQLAlchemyCashAccountRepository(session_factory())
-    cash_svc_bc = CashAccountService(cash_repo_bc)
+    # ── Bank / Cash (balance side-effects for vouchers) ─────────────────
+    cash_svc_bc = CashAccountService(SQLAlchemyCashAccountRepository(bc_session))
+    bank_svc_bc = BankAccountService(SQLAlchemyBankAccountRepository(bc_session))
 
     def _apply_cash_balances(voucher, actor, chief_approved: bool) -> None:
-        """Mirror journal lines into cash-account balances (pre-check)."""
+        """Mirror journal lines into cash balances BEFORE status flip."""
         cash_svc_bc.apply_journal(
             voucher.company_id,
             [
-                {"account_code": l.account_code, "debit": str(l.debit), "credit": str(l.credit)}
+                {
+                    "account_code": l.account_code,
+                    "debit": str(l.debit),
+                    "credit": str(l.credit),
+                }
                 for l in voucher.lines
             ],
             actor=actor,
@@ -339,24 +285,83 @@ def create_app(config: dict | None = None) -> Flask:
             chief_approved=chief_approved,
         )
 
+    # ── Numbering adapters (HD* invoices, PT* vouchers) ─────────────────
+    class _SeriesIssueAdapter:
+        """Issues next number from company's first active series by prefix."""
+
+        def __init__(self, dns, prefix_startswith: str):
+            self._dns = dns
+            self._prefix = prefix_startswith
+
+        def issue(self, company_id):
+            from uuid import NAMESPACE_URL, uuid5
+
+            sys_actor = uuid5(NAMESPACE_URL, "system:numbering")
+            series = self._dns.list_by_company(company_id, active=True)
+            target = next((x for x in series if x.prefix.startswith(self._prefix)), None)
+            if target is None:
+                raise RuntimeError(f"No active {self._prefix}* numbering series")
+            seq = self._dns.increment_sequence(target.id, sys_actor, self._prefix.rstrip("/"))
+            return f"{target.prefix}{seq:06d}"
+
+    # ── Voucher brick ───────────────────────────────────────────────────
+    class _TermsAdapter:
+        def get_default(self, company_id):
+            return pt_term_svc.get_default(company_id)
+
+        def get_payment_term(self, tid):
+            return pt_term_svc.get_payment_term(tid)
+
     voucher_svc = VoucherService(
-        fy=app.fy_service,
-        coa=app.coa_service,
-        numbering=_VNumbering(dns_service),
+        fy=_FyGate(),
+        coa=_CoaGate(),
+        numbering=_SeriesIssueAdapter(dns_service, "PT"),
         audit=audit_svc,
-        repo=SQLAlchemyVoucherRepository(session_factory()),
-        regime_of=_RegimeOf(company_svc),
+        repo=SQLAlchemyVoucherRepository(voucher_session),
+        regime_of=regime_provider,
         on_posted=_apply_cash_balances,
     )
     init_voucher_service(voucher_svc)
 
-    from src.bricks.voucher.services import InvoiceServiceAdapter
+    auto_journal = AutoJournalService(
+        voucher_svc=voucher_svc,
+        regime_provider=regime_provider,
+    )
 
+    # ── Invoice brick (consumes voucher auto-journal) ───────────────────
+    invoice_svc = InvoiceService(
+        fy=_FyGate(),
+        coa=_CoaGate(),
+        numbering=_SeriesIssueAdapter(dns_service, "HD"),
+        terms=_TermsAdapter(),
+        audit=audit_svc,
+        repo=SQLAlchemyInvoiceRepository(inv_session),
+        regime_of=regime_provider,
+        allowed_vat_rates=LAWFUL_VAT_FRACTIONS,
+        rate_gate=RATE_GATE,
+    )
+    init_invoice_service(invoice_svc, on_posted=auto_journal.build_for)
+
+    # ── Purchases brick ─────────────────────────────────────────────────
+    purchases_repo = SQLAlchemySupplierInvoiceRepository(purchases_session)
+    init_purchases_service(
+        PurchaseService(
+            repo=purchases_repo,
+            fy=_FyGate(),
+            coa=_CoaGate(),
+            regime_of=regime_provider,
+            allowed_vat_rates=LAWFUL_VAT_FRACTIONS,
+            rate_gate=RATE_GATE,
+        )
+    )
+
+    # ── Ledger reports + VAT declaration (read-only) ────────────────────
     ledger_source = SQLAlchemyLedgerSource(session_factory())
     ledger_svc = LedgerService(source=ledger_source)
+    init_ledger_service(ledger_svc)
 
     def _decl_input_source(company_id, start, end):
-        """POSTED purchase invoices in window → primitive dicts."""
+        """POSTED purchase invoices in window -> primitive dicts."""
         return [
             {
                 "invoice_number": inv.invoice_number,
@@ -364,7 +369,7 @@ def create_app(config: dict | None = None) -> Flask:
                 "deductibility": inv.deductibility.value,
                 "vat_deductible": str(inv.vat_deductible),
             }
-            for inv in purchases_repo_decl.get_by_company(company_id)
+            for inv in purchases_repo.get_by_company(company_id)
             if start <= inv.entry_date <= end
         ]
 
@@ -375,44 +380,17 @@ def create_app(config: dict | None = None) -> Flask:
         )
     )
 
-    init_ledger_service(ledger_svc)
-    init_coa_service(app.coa_service)
-
-    settings_repo_ss = SQLAlchemySystemSettingsRepository(session_factory())
-    init_settings_service(SystemSettingsService(settings_repo_ss))
-
-    purchases_session = session_factory()
-
-    class _CoaGate:
-        def __init__(self, coa_svc):
-            self._coa = coa_svc
-
-        def validate_posting_account(self, company_id, code, regime="tt133"):
-            self._coa.validate_posting_account(company_id, code, regime)
-
-    class _FyGate:
-        def __init__(self, fy_svc):
-            self._fy = fy_svc
-
-        def find_open_period(self, company_id, d):
-            return self._fy.find_open_period(company_id, d)
-
-    init_purchases_service(
-        PurchaseService(
-            repo=SQLAlchemySupplierInvoiceRepository(purchases_session),
-            allowed_vat_rates=LAWFUL_VAT_FRACTIONS,
-            rate_gate=RATE_GATE,
-            fy=_FyGate(app.fy_service),
-            coa=_CoaGate(app.coa_service),
-            regime_of=regime_provider,
-            audit=None,
-        )
+    # ── System settings + bank reconciliation ───────────────────────────
+    init_settings_service(
+        SystemSettingsService(SQLAlchemySystemSettingsRepository(session_factory()))
     )
 
-    purchases_repo_decl = SQLAlchemySupplierInvoiceRepository(purchases_session)
-
-    bc_session = session_factory()
     from decimal import Decimal
+
+    from src.bricks.bank_cash.services import ReconciliationService
+    from src.bricks.bank_cash.storage import (
+        SQLAlchemyReconciliationRepository,
+    )
 
     class _BankInternalBalanceProvider:
         """Σ(debit-credit) over POSTED voucher lines tagged to a bank."""
@@ -421,7 +399,6 @@ def create_app(config: dict | None = None) -> Flask:
             self._session = session
 
         def __call__(self, company_id, bank_account_id, as_of):
-
             from src.bricks.voucher.storage import VoucherModel
 
             rows = (
@@ -443,21 +420,14 @@ def create_app(config: dict | None = None) -> Flask:
                     total += Decimal(ln["debit"]) - Decimal(ln["credit"])
             return total
 
-    from src.bricks.bank_cash.services import ReconciliationService
-    from src.bricks.bank_cash.storage import (
-        SQLAlchemyReconciliationRepository,
-    )
-
     init_bank_cash_services(
-        BankAccountService(SQLAlchemyBankAccountRepository(bc_session)),
-        CashAccountService(SQLAlchemyCashAccountRepository(bc_session)),
+        bank_svc_bc,
+        cash_svc_bc,
         ReconciliationService(
             SQLAlchemyReconciliationRepository(bc_session),
             internal_provider=_BankInternalBalanceProvider(session_factory()),
         ),
     )
-    init_fy_service(app.fy_service)
-    init_audit_service(audit_svc)
 
     # ── Health check ────────────────────────────────────────────────────
     @app.route("/health")

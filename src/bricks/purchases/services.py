@@ -128,9 +128,21 @@ class PurchaseService:
         # Gate 2 — COA posting accounts under the company's regime
         regime = self._regime(company_id)
         for l in lines:
+            from src.bricks.coa.services import (
+                AccountNotFoundError,
+                AggregateAccountError,
+                InactiveAccountError,
+            )
+
             try:
                 self._coa.validate_posting_account(company_id, l["expense_account"], regime)
-            except Exception as exc:
+            except ValueError as exc:
+                raise InvalidAccountError(str(exc)) from exc
+            except (
+                AccountNotFoundError,
+                AggregateAccountError,
+                InactiveAccountError,
+            ) as exc:
                 raise InvalidAccountError(str(exc)) from exc
 
         # Gate 3 — duplicate key (R-P1)
@@ -235,7 +247,6 @@ class PurchaseService:
         return inv
 
 
-# Canonical lawful fractions — mirrors TaxRate.to_fraction() values.
-# Kept as a primitive constant here (brick boundary: no cross-brick
-# domain import); composition root may override via allowed_vat_rates.
-DEFAULT_ALLOWED_VAT_RATES = frozenset({"0", "0.05", "0.08", "0.1"})
+from src.bricks.system_settings.contract import (
+    ALLOWED_VAT_FRACTIONS as DEFAULT_ALLOWED_VAT_RATES,
+)

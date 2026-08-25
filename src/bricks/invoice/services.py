@@ -66,7 +66,9 @@ class InvoiceService:
         self._audit = audit
         self._regime_of = regime_of
 
-        raw = allowed_vat_rates if allowed_vat_rates is not None else {"0", "0.05", "0.08", "0.1"}
+        from src.bricks.system_settings.contract import ALLOWED_VAT_FRACTIONS
+
+        raw = allowed_vat_rates if allowed_vat_rates is not None else ALLOWED_VAT_FRACTIONS
         self._allowed_vat_rates = frozenset(str(_d(r)) for r in raw)
         self._rate_gate = rate_gate
         self._repo = repo if repo is not None else _MemoryRepo()
