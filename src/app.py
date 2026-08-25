@@ -41,6 +41,13 @@ from src.bricks.company.services import CompanyService, TenantService
 from src.bricks.company.storage import Base as CompanyBase
 from src.bricks.company.storage import SQLAlchemyCompanyRepository
 from src.bricks.company.web_adapter import init_company_services, web_adapter_bp
+from src.bricks.currencies.services import CurrencyService
+from src.bricks.currencies.storage import (
+    Base as CurBase,
+)
+from src.bricks.currencies.storage import (
+    SQLAlchemyCurrencyRepository,
+)
 from src.bricks.fiscal_year_period.services import FiscalYearService
 from src.bricks.fiscal_year_period.storage import (
     Base as FyBase,
@@ -139,6 +146,7 @@ def create_app(config: dict | None = None) -> Flask:
     BankBase.metadata.create_all(engine)
     PurchBase.metadata.create_all(engine)
     SetBase.metadata.create_all(engine)
+    CurBase.metadata.create_all(engine)
     VchBase.metadata.create_all(engine)
     session_factory = sessionmaker(bind=engine)
     app.db_session = session_factory  # type: ignore[attr-defined]
@@ -380,6 +388,10 @@ def create_app(config: dict | None = None) -> Flask:
     )
 
     # ── System settings + bank reconciliation ───────────────────────────
+    cur_session = session_factory()
+    cur_svc = CurrencyService(SQLAlchemyCurrencyRepository(cur_session))
+    cur_svc.ensure_base_currency()
+
     init_settings_service(
         SystemSettingsService(SQLAlchemySystemSettingsRepository(session_factory()))
     )
