@@ -57,6 +57,7 @@ class InvoiceService:
         repo: Any | None = None,
         regime_of: Any | None = None,
         allowed_vat_rates: frozenset[str] | None = None,
+        rate_gate: Any | None = None,
     ) -> None:
         self._fy = fy
         self._coa = coa
@@ -67,6 +68,7 @@ class InvoiceService:
 
         raw = allowed_vat_rates if allowed_vat_rates is not None else {"0", "0.05", "0.08", "0.1"}
         self._allowed_vat_rates = frozenset(str(_d(r)) for r in raw)
+        self._rate_gate = rate_gate
         self._repo = repo if repo is not None else _MemoryRepo()
 
     # ── create ──────────────────────────────────────────────────────────
@@ -97,6 +99,8 @@ class InvoiceService:
         rate_str = str(_d(vat_rate))
         if rate_str not in self._allowed_vat_rates:
             raise ValueError(f"vat_rate {rate_str} không thuộc catalog thuế suất")
+        if self._rate_gate is not None and issue_date is not None:
+            self._rate_gate(rate_str, issue_date)
         vat_rate = _d(vat_rate)
 
         # Gate 2: every line posts to an ACTIVE posting-level account,

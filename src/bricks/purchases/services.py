@@ -72,9 +72,11 @@ class PurchaseService:
         regime_of: Any | None = None,
         audit: Any | None = None,
         allowed_vat_rates: frozenset[str] | None = None,
+        rate_gate: Any | None = None,
     ) -> None:
         raw = allowed_vat_rates or DEFAULT_ALLOWED_VAT_RATES
         self._allowed_vat_rates = frozenset(str(_d(r)) for r in raw)
+        self._rate_gate = rate_gate
         self._repo = repo
         self._fy = fy
         self._coa = coa
@@ -143,6 +145,8 @@ class PurchaseService:
                     f"vat_rate {rate_str} không thuộc catalog thuế suất "
                     f"({sorted(self._allowed_vat_rates)})"
                 )
+            if self._rate_gate is not None:
+                self._rate_gate(rate_str, entry_date)
             jl.append(
                 SupplierLine(
                     expense_account=l["expense_account"],

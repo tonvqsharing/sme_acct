@@ -278,3 +278,79 @@ class TestRateCatalogEnforcement:
                 ]
             )
             _svc().create_invoice(**body)  # no raise
+
+
+class TestDateEffectiveRateGate:
+    """NĐ 174/2025 sunset: 8% dies 31/12/2026 — gate must know."""
+
+    def _svc_with_real_gate(self):
+        from src.bricks.system_settings.rate_windows import make_rate_gate
+
+        return PurchaseService(
+            repo=FakeRepo(),
+            fy=type("F", (), {"find_open_period": staticmethod(lambda c, d: object())})(),
+            coa=type("C", (), {"validate_posting_account": staticmethod(lambda *a: None)})(),
+            rate_gate=make_rate_gate(),
+        )
+
+    def test_8pct_valid_inside_window(self):
+        svc = self._svc_with_real_gate()
+        inv = svc.create_invoice(
+            **_body(
+                entry_date=date(2026, 12, 15),
+                lines=[
+                    {
+                        "expense_account": "6421000001",
+                        "description": "hàng giảm thuế",
+                        "amount_pre_vat": "1000000",
+                        "vat_rate": "0.08",
+                        "deductible": True,
+                    }
+                ],
+            )
+        )
+        assert inv.lines[0].vat_amount == Decimal(80000)
+
+    def test_8pct_rejected_after_sunset(self):
+        svc = self._svc_with_real_gate()
+        with pytest.raises(ValueError, match="hết hiệu lực"):
+            svc.create_invoice(
+                **_body(
+                    entry_date=date(2027, 1, 5),
+                    lines=[
+                        {
+                            "expense_account": "6421000001",
+                            "description": "hàng sau sunset",
+                            "amount_pre_vat": "1000000",
+                            "vat_rate": "0.08",
+                            "deductible": True,
+                        }
+                    ],
+                )
+            )
+
+    def test_retroactive_december_entry_in_january_passes(self):
+        """Entered late, document dated inside window → legal."""
+        svc = self._svc_with_real_gate()
+        inv = svc.create_invoice(
+            **_body(
+                entry_date=date(2026, 12, 31),
+                lines=[
+                    {
+                        "expense_account": "6421000001",
+                        "description": "nộp muộn",
+                        "amount_pre_vat": "500000",
+                        "vat_rate": "0.08",
+                        "deductible": True,
+                    }
+                ],
+            )
+        )
+        assert inv.entry_date == date(2026, 12, 31)
+
+    def test_sentinel_decree_end_pinned(self):
+        from datetime import date as d
+
+        from src.bricks.system_settings.rate_windows import VAT_REDUCTION_END
+
+        assert VAT_REDUCTION_END == d(2026, 12, 31)

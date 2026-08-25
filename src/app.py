@@ -86,6 +86,7 @@ from src.bricks.purchases.storage import (
     SQLAlchemySupplierInvoiceRepository,
 )
 from src.bricks.purchases.web_adapter import init_purchases_service, purchases_bp
+from src.bricks.system_settings.rate_windows import make_rate_gate
 from src.bricks.system_settings.services import SystemSettingsService
 from src.bricks.system_settings.storage import (
     Base as SetBase,
@@ -246,6 +247,8 @@ def create_app(config: dict | None = None) -> Flask:
     pt_repo2 = SQLAlchemyPaymentTermRepository(pt_session2)
     from src.bricks.system_settings.domain import TaxRate as _TaxRate
 
+    RATE_GATE = make_rate_gate()
+
     LAWFUL_VAT_FRACTIONS = frozenset(
         {r.to_fraction() for r in _TaxRate if r.value >= 0}
     )  # NOT_TAXED(-1) maps to 0; excluded from distinct membership
@@ -259,6 +262,7 @@ def create_app(config: dict | None = None) -> Flask:
         repo=SQLAlchemyInvoiceRepository(inv_session),
         regime_of=_RegimeOf(company_svc),
         allowed_vat_rates=LAWFUL_VAT_FRACTIONS,
+        rate_gate=RATE_GATE,
     )
 
     def _auto_journal(posted_invoice):
@@ -364,6 +368,7 @@ def create_app(config: dict | None = None) -> Flask:
         PurchaseService(
             repo=SQLAlchemySupplierInvoiceRepository(purchases_session),
             allowed_vat_rates=LAWFUL_VAT_FRACTIONS,
+            rate_gate=RATE_GATE,
             fy=_FyGate(app.fy_service),
             coa=_CoaGate(app.coa_service),
             regime_of=regime_provider,
