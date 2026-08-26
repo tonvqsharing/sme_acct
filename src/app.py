@@ -67,6 +67,17 @@ from src.bricks.fiscal_year_period.web_adapter import (
     fiscal_year_bp,
     init_fy_service,
 )
+from src.bricks.fixed_assets.services import FixedAssetService
+from src.bricks.fixed_assets.storage import (
+    Base as Fabase,
+)
+from src.bricks.fixed_assets.storage import (
+    SQLAlchemyFixedAssetRepository,
+)
+from src.bricks.fixed_assets.web_adapter import (
+    fixed_assets_bp,
+    init_fixed_assets_service,
+)
 from src.bricks.invoice.services import InvoiceService
 from src.bricks.invoice.storage import Base as InvBase
 from src.bricks.invoice.storage import SQLAlchemyInvoiceRepository
@@ -166,6 +177,7 @@ def create_app(config: dict | None = None) -> Flask:
     PurchBase.metadata.create_all(engine)
     SetBase.metadata.create_all(engine)
     CurBase.metadata.create_all(engine)
+    Fabase.metadata.create_all(engine)
     VchBase.metadata.create_all(engine)
     UserBase.metadata.create_all(engine)
     session_factory = sessionmaker(bind=engine)
@@ -416,6 +428,14 @@ def create_app(config: dict | None = None) -> Flask:
             for inv in purchases_repo.get_posted_between(company_id, start, end)
         ]
 
+    fa_session = session_factory()
+    init_fixed_assets_service(
+        FixedAssetService(
+            repo=SQLAlchemyFixedAssetRepository(fa_session),
+            coa_gate=app.coa_service,
+        )
+    )
+
     init_vat_declaration_service(
         VatDeclarationService(
             output_source=ledger_source.get_posted_lines,
@@ -454,6 +474,7 @@ def create_app(config: dict | None = None) -> Flask:
     if "currencies_bp" not in dir():
         pass
     app.register_blueprint(_cbp_inner)
+    app.register_blueprint(fixed_assets_bp)
 
     init_settings_service(
         SystemSettingsService(SQLAlchemySystemSettingsRepository(session_factory()))
