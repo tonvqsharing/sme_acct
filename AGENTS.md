@@ -7,7 +7,7 @@ _Flask + SQLAlchemy app for Vietnamese SME accounting. Architecture: Modular Hex
 Package manager is `uv`. Prefix everything with `uv run` — no venv activation needed.
 
 ```bash
-uv run pytest -q                                  # full suite (currently 548 passing)
+uv run pytest -q                                  # full suite (currently 591 passing)
 uv run pytest tests/unit/company/ -k "<name>" -v  # single test / focused run
 uv run ruff check src tests                       # lint
 uv run black --check src tests                    # format check
@@ -127,7 +127,7 @@ Vietnamese compliance rules baked into specs: MST tax-ID format (`^[1-9]\d{2}(-\
 
 ## Migrations
 
-Alembic manages schema. `alembic/env.py` aggregates all 11 brick Bases.
+Alembic manages schema. `alembic/env.py` aggregates all 12 brick Bases.
 
 ```bash
 DATABASE_URL="sqlite:///./sme_acct.db" uv run alembic upgrade head    # apply
