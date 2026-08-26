@@ -41,6 +41,12 @@ from src.bricks.company.services import CompanyService, TenantService
 from src.bricks.company.storage import Base as CompanyBase
 from src.bricks.company.storage import SQLAlchemyCompanyRepository
 from src.bricks.company.web_adapter import init_company_services, web_adapter_bp
+from src.bricks.cost_centers.storage import (
+    Base as CcBase,
+)
+from src.bricks.cost_centers.web_adapter import (
+    cost_centers_bp,
+)
 from src.bricks.currencies.services import (
     CurrencyService,
     ExchangeRateService,
@@ -178,6 +184,7 @@ def create_app(config: dict | None = None) -> Flask:
     SetBase.metadata.create_all(engine)
     CurBase.metadata.create_all(engine)
     Fabase.metadata.create_all(engine)
+    CcBase.metadata.create_all(engine)
     VchBase.metadata.create_all(engine)
     UserBase.metadata.create_all(engine)
     session_factory = sessionmaker(bind=engine)
@@ -475,6 +482,7 @@ def create_app(config: dict | None = None) -> Flask:
         pass
     app.register_blueprint(_cbp_inner)
     app.register_blueprint(fixed_assets_bp)
+    app.register_blueprint(cost_centers_bp)
 
     init_settings_service(
         SystemSettingsService(SQLAlchemySystemSettingsRepository(session_factory()))

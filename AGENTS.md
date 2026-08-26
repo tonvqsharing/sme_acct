@@ -122,7 +122,8 @@ Vietnamese compliance rules baked into specs: MST tax-ID format (`^[1-9]\d{2}(-\
 | Currencies | ✅ slices 1-2 done — Currency master (ISO 4217, VND base), ExchangeRate w/ Tryton gap-fill, resolve_booking_rate (Nợ=actual/Có=weighted-avg per TT99), RevaluationRun engine w/ SOD + idempotent reversal (34 tests); multi-currency voucher lines w/ currency_code+fx_rate+amount_original; bank balances auto-move with bank_account_id-tagged lines | `docs/currencies-exchange/` |
 | User Master Data / Auth | ✅ done — User entity w/ pbkdf2 hashing (deviation from spec SHA-256, justified), login/logout/me + user CRUD APIs, real user_loader wired in factory, session-based auth; 22+ tests | `docs/user-master-data/` |
 | Fixed Assets (TSCĐ) | ✅ done — asset master, straight-line depreciation engine, grouped journal by expense account, capped-at-remaining guard, soft deactivate (22 tests incl. 3 integration + deactivate CHIEF+ endpoint; COA re-validation on monthly compute) | `docs/fixed-assets/` |
-| System Settings (rest), Cost Centers, Multi-company | pending | `docs/<module>/` |
+| Cost Centers | ✅ done — code/name/status lifecycle (Active→Inactive/Closed), checksum chain, duplicate guard, deactivate/reactivate/close endpoints (12 unit + 4 API tests) | `docs/cost-centers-dimensions/` |
+| System Settings (rest), Multi-company | pending | `docs/<module>/` |
 
 ## Migrations
 
