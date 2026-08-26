@@ -12,6 +12,7 @@ from flask_login import current_user, login_required
 
 from src.bricks.fixed_assets.services import (
     DuplicateAssetCodeError,
+    NotFoundError,
 )
 
 fixed_assets_bp = Blueprint("fixed_assets", __name__)
@@ -107,6 +108,24 @@ def get_fixed_asset(aid: str) -> tuple[Any, int]:
         abort(422, description="Invalid UUID")
     fa = _svc().get_asset(aid_u)
     if fa is None:
+        abort(404)
+    return jsonify({"data": ser_fa(fa)}), 200
+
+
+@fixed_assets_bp.post("/api/v1/fixed-assets/<aid>/deactivate")
+@login_required  # type: ignore[untyped-decorator]
+def deactivate_fixed_asset(aid: str) -> tuple[Any, int]:
+    role = getattr(current_user, "role", "")
+    if role not in ("CHIEF_ACCOUNTANT", "ADMIN"):
+        abort(403)
+    body = request.get_json(silent=True) or {}
+    try:
+        fa = _svc().deactivate(
+            UUID(aid),
+            actor=UUID(str(current_user.id)),
+            reason=body.get("reason") or "deactivate",
+        )
+    except NotFoundError:
         abort(404)
     return jsonify({"data": ser_fa(fa)}), 200
 

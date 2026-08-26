@@ -47,11 +47,9 @@ class FixedAssetService:
         repo: Any,
         *,
         coa_gate: Any | None = None,
-        fy_gate: Any | None = None,
     ) -> None:
         self._repo = repo
         self._coa_gate = coa_gate
-        self._fy_gate = fy_gate
 
     # ── create ──────────────────────────────────────────────────────────
 
@@ -132,6 +130,15 @@ class FixedAssetService:
         """
         _require(actor)
         assets = self._repo.find_active_with_remaining(company_id)
+
+        # Re-validate each asset's expense account is still ACTIVE + detail
+        if self._coa_gate is not None:
+            seen_accounts: set[str] = set()
+            for fa in assets:
+                acct = fa.depreciation_account
+                if acct not in seen_accounts:
+                    self._coa_gate.validate_posting_account(company_id, acct)
+                    seen_accounts.add(acct)
 
         entries: list[dict[str, Any]] = []
         journal_groups: dict[str, list[dict[str, Any]]] = {}

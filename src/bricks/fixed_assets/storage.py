@@ -93,6 +93,13 @@ class SQLAlchemyFixedAssetRepository(FixedAssetRepositoryPort):
         m = self._session.get(FixedAssetModel, str(a.id))
         if m is None:
             raise ValueError("not found")
+        # Full-field projection — prevents silent field drops when domain
+        # surface grows. All mutable fields written explicitly.
+        m.name = a.name
+        m.category = a.category
+        m.original_cost = a.original_cost
+        m.useful_life_months = a.useful_life_months
+        m.depreciation_account = a.depreciation_account
         m.is_active = a.is_active
         m.accumulated_depreciation = a.accumulated_depreciation
         m.checksum = a.checksum
