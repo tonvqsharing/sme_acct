@@ -44,8 +44,21 @@ from src.bricks.company.web_adapter import init_company_services, web_adapter_bp
 from src.bricks.cost_centers.storage import (
     Base as CcBase,
 )
+from src.bricks.cost_centers.storage import (
+    SQLAlchemyCostCenterRepository,
+    SQLAlchemyDimensionRepository,
+    SQLAlchemyDimensionValueRepository,
+)
+from src.bricks.cost_centers.services import (
+    CostCenterService,
+    DimensionService,
+    DimensionValueService,
+)
 from src.bricks.cost_centers.web_adapter import (
     cost_centers_bp,
+    init_cost_center_service,
+    init_dimension_service,
+    init_dimension_value_service,
 )
 from src.bricks.currencies.services import (
     CurrencyService,
@@ -483,6 +496,19 @@ def create_app(config: dict | None = None) -> Flask:
     app.register_blueprint(_cbp_inner)
     app.register_blueprint(fixed_assets_bp)
     app.register_blueprint(cost_centers_bp)
+
+    # -- Cost Centers + Dimensions services --------------------------------
+    cc_repo = SQLAlchemyCostCenterRepository(session_factory())
+    cc_svc = CostCenterService(cc_repo)
+    init_cost_center_service(cc_svc)
+
+    dim_repo = SQLAlchemyDimensionRepository(session_factory())
+    dim_svc = DimensionService(dim_repo)
+    init_dimension_service(dim_svc)
+
+    dv_repo = SQLAlchemyDimensionValueRepository(session_factory())
+    dv_svc = DimensionValueService(dv_repo)
+    init_dimension_value_service(dv_svc)
 
     init_settings_service(
         SystemSettingsService(SQLAlchemySystemSettingsRepository(session_factory()))
