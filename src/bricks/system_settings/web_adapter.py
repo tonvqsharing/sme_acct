@@ -9,7 +9,9 @@ from uuid import UUID
 from flask import Blueprint, abort, jsonify, request
 from flask_login import current_user, login_required
 
+from src.bricks.system_settings.domain import FlagLockedError
 from src.bricks.system_settings.services import (
+    ConfigVersionConflictError,
     DuplicateSeriesPrefixError,
     InvalidPeriodError,
     MaxSeriesExceededError,
@@ -34,6 +36,7 @@ def _svc() -> Any:
 
 
 ADMIN_ROLES = ("CHIEF_ACCOUNTANT", "ADMIN")
+CONFIG_UPDATE_ROLES = ("CHIEF_ACCOUNTANT", "ADMIN", "ACCOUNTANT")
 
 
 @settings_bp.get("/api/v1/system-settings/tax-rates")
@@ -78,11 +81,150 @@ def get_config(cid: str) -> tuple[Any, int]:
                         for x in sorted(cfg.e_invoice_series, key=lambda s: s.prefix)
                     ],
                     "config_version": cfg.config_version,
+                    "fiscal_year_start_month": cfg.fiscal_year_start_month,
+                    "fiscal_year_start_day": cfg.fiscal_year_start_day,
+                    "vat_settlement_cycle": cfg.vat_settlement_cycle,
+                    "decimal_places": cfg.decimal_places,
+                    "default_currency": cfg.default_currency,
+                    "cost_center_required": cfg.cost_center_required,
+                    "legal_reviewed_at": (
+                        cfg.legal_reviewed_at.isoformat() if cfg.legal_reviewed_at else None
+                    ),
+                    "legal_reviewed_by": (
+                        str(cfg.legal_reviewed_by) if cfg.legal_reviewed_by else None
+                    ),
                 }
             }
         ),
         200,
     )
+
+
+@settings_bp.patch("/api/v1/system-settings/config/<cid>/flags/<flag_name>")
+@login_required  # type: ignore[untyped-decorator]
+def update_config_flag(cid: str, flag_name: str) -> tuple[Any, int]:
+    """Update a CONFIG-type flag."""
+    role = getattr(current_user, "role", "")
+    if role not in CONFIG_UPDATE_ROLES:
+        abort(403)
+    try:
+        cid_u = UUID(cid)
+    except ValueError:
+        abort(422, description="Invalid UUID")
+    body = request.get_json(silent=True) or {}
+    if "value" not in body:
+        abort(422, description="Missing 'value'")
+    config_version = body.get("config_version", 0)
+    try:
+        cfg = _svc().update_config_flag(
+            cid_u, flag_name, body["value"], UUID(str(current_user.id)), config_version
+        )
+    except FlagLockedError as exc:
+        return jsonify({"error": str(exc), "code": "FLAG_LOCKED"}), 403
+    except ConfigVersionConflictError as exc:
+        return jsonify({"error": str(exc), "code": "CONFIG_VERSION_CONFLICT"}), 409
+    except ValueError as exc:
+        return jsonify({"error": str(exc), "code": "INVALID_FLAG_VALUE"}), 422
+    return jsonify({"data": {"config_version": cfg.config_version}}), 200
+
+
+@settings_bp.post("/api/v1/system-settings/config/<cid>/legal-review")
+@login_required  # type: ignore[untyped-decorator]
+def legal_review(cid: str) -> tuple[Any, int]:
+    """Mark config as legally reviewed by Chief Accountant."""
+    role = getattr(current_user, "role", "")
+    if role != "CHIEF_ACCOUNTANT":
+        abort(403)
+    try:
+        cid_u = UUID(cid)
+    except ValueError:
+        abort(422, description="Invalid UUID")
+    cfg = _svc().legal_review(cid_u, UUID(str(current_user.id)))
+    return (
+        jsonify(
+            {
+                "data": {
+                    "config_version": cfg.config_version,
+                    "legal_reviewed_at": (
+                        cfg.legal_reviewed_at.isoformat() if cfg.legal_reviewed_at else None
+                    ),
+                    "legal_reviewed_by": (
+                        str(cfg.legal_reviewed_by) if cfg.legal_reviewed_by else None
+                    ),
+                }
+            }
+        ),
+        200,
+    )
+
+
+# ─── Period lock endpoints (P0-02) ──────────────────────────────────────
+
+
+@settings_bp.post("/api/v1/system-settings/config/<cid>/period/lock")
+@login_required  # type: ignore[untyped-decorator]
+def lock_period(cid: str) -> tuple[Any, int]:
+    """Lock a specific accounting period."""
+    role = getattr(current_user, "role", "")
+    if role not in ("ACCOUNTANT", "ADMIN", "CHIEF_ACCOUNTANT"):
+        abort(403)
+    try:
+        cid_u = UUID(cid)
+    except ValueError:
+        abort(422, description="Invalid UUID")
+    body = request.get_json(silent=True) or {}
+    try:
+        fiscal_year = int(body["fiscal_year"])
+        period = int(body["period"])
+    except (KeyError, TypeError, ValueError) as exc:
+        abort(422, description=f"Missing or invalid: {exc}")
+    notes = body.get("notes")
+    try:
+        _svc().lock_period(cid_u, fiscal_year, period, UUID(str(current_user.id)), notes)
+    except InvalidPeriodError as exc:
+        return jsonify({"error": str(exc), "code": "INVALID_PERIOD"}), 422
+    return jsonify({"data": {"locked": True, "fiscal_year": fiscal_year, "period": period}}), 200
+
+
+@settings_bp.post("/api/v1/system-settings/config/<cid>/period/unlock")
+@login_required  # type: ignore[untyped-decorator]
+def unlock_period(cid: str) -> tuple[Any, int]:
+    """Unlock a specific accounting period."""
+    role = getattr(current_user, "role", "")
+    if role not in ("CHIEF_ACCOUNTANT", "ADMIN"):
+        abort(403)
+    try:
+        cid_u = UUID(cid)
+    except ValueError:
+        abort(422, description="Invalid UUID")
+    body = request.get_json(silent=True) or {}
+    try:
+        fiscal_year = int(body["fiscal_year"])
+        period = int(body["period"])
+    except (KeyError, TypeError, ValueError) as exc:
+        abort(422, description=f"Missing or invalid: {exc}")
+    was_locked = _svc().unlock_period(cid_u, fiscal_year, period)
+    return (
+        jsonify({"data": {"unlocked": was_locked, "fiscal_year": fiscal_year, "period": period}}),
+        200,
+    )
+
+
+@settings_bp.get("/api/v1/system-settings/config/<cid>/period/status")
+@login_required  # type: ignore[untyped-decorator]
+def period_status(cid: str) -> tuple[Any, int]:
+    """Get period lock status for a company."""
+    try:
+        cid_u = UUID(cid)
+    except ValueError:
+        abort(422, description="Invalid UUID")
+    fiscal_year = request.args.get("fiscal_year")
+    fy_int = int(fiscal_year) if fiscal_year else None
+    locked = _svc().list_locked_periods(cid_u, fy_int)
+    return jsonify({"data": locked}), 200
+
+
+# ─── E-invoice series endpoints ──────────────────────────────────────────
 
 
 @settings_bp.post("/api/v1/system-settings/e-invoice-series")

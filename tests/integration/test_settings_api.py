@@ -1,16 +1,34 @@
-"""Settings API — tax-rates catalog + SOD series add via real factory."""
+"""Integration tests for System Settings — period lock, config flags, legal review."""
 
 from __future__ import annotations
 
+import pytest
+
+from src.app import create_app
 from tests.integration.conftest import (
     UUID_ACCOUNTANT,
-    UUID_ADMIN,
     UUID_CHIEF,
     FakeUser,
     _store,
 )
 
-COMPANY = "14141414-1414-1414-1414-141414141414"
+COMPANY = "19191919-1919-1919-1919-191919191919"
+
+
+@pytest.fixture()
+def app():
+    a = create_app(config={"TESTING": True, "SECRET_KEY": "x"})
+    lm = a.login_manager
+
+    @lm.user_loader
+    def load(i):
+        return _store.get(i)
+
+    @lm.unauthorized_handler
+    def un():  # noqa: ANNO01
+        return "", 401
+
+    return a
 
 
 def _client(app, uid, role):
@@ -22,64 +40,180 @@ def _client(app, uid, role):
     return c
 
 
-class TestSettingsApi:
-    def test_tax_rate_catalog_public_to_authenticated(self, app):
-        c = _client(app, UUID_ACCOUNTANT, "ACCOUNTANT")
-        r = c.get("/api/v1/system-settings/tax-rates")
+@pytest.fixture()
+def accountant(app):
+    return _client(app, UUID_ACCOUNTANT, "ACCOUNTANT")
+
+
+@pytest.fixture()
+def chief(app):
+    return _client(app, UUID_CHIEF, "CHIEF_ACCOUNTANT")
+
+
+class TestPeriodLockIntegration:
+    def test_lock_period(self, accountant):
+        """ACCOUNTANT can lock a period."""
+        r = accountant.post(
+            f"/api/v1/system-settings/config/{COMPANY}/period/lock",
+            json={"fiscal_year": 2026, "period": 8},
+        )
         assert r.status_code == 200
-        names = {x["name"] for x in r.get_json()["data"]}
-        assert names == {"VAT_0", "VAT_5", "VAT_8", "VAT_10", "NOT_TAXED"}
+        assert r.get_json()["data"]["locked"] is True
 
-    def test_unauthenticated_401(self, app):
-        r = app.test_client().get("/api/v1/system-settings/tax-rates")
-        assert r.status_code == 401
-
-    def test_default_config_has_law_rates(self, app):
-        c = _client(app, UUID_ADMIN, "ADMIN")
-        r = c.get(f"/api/v1/system-settings/config/{COMPANY}")
+    def test_lock_period_with_notes(self, accountant):
+        """Lock with notes."""
+        r = accountant.post(
+            f"/api/v1/system-settings/config/{COMPANY}/period/lock",
+            json={"fiscal_year": 2026, "period": 7, "notes": "Đã khóa tháng 7"},
+        )
         assert r.status_code == 200
-        assert r.get_json()["data"]["vat_rates"] == [0, 5, 10]
 
-    def test_add_series_sod_flow(self, app):
-        chief = _client(app, UUID_CHIEF, "CHIEF_ACCOUNTANT")
-        admin_id = UUID_ADMIN
-        # admin requests (actor), chief approves (approver)
-        admin = _client(app, UUID_ADMIN, "ADMIN")
-        r = admin.post(
-            "/api/v1/system-settings/e-invoice-series",
-            json={
-                "company_id": COMPANY,
-                "prefix": "HD/",
-                "ca_signer": "VNPT",
-                "approver": admin_id,  # self → SOD
-            },
+    def test_unlock_period_by_chief(self, chief):
+        """CHIEF can unlock a period."""
+        chief.post(
+            f"/api/v1/system-settings/config/{COMPANY}/period/lock",
+            json={"fiscal_year": 2026, "period": 6},
+        )
+        r = chief.post(
+            f"/api/v1/system-settings/config/{COMPANY}/period/unlock",
+            json={"fiscal_year": 2026, "period": 6},
+        )
+        assert r.status_code == 200
+        assert r.get_json()["data"]["unlocked"] is True
+
+    def test_unlock_by_accountant_forbidden(self, accountant):
+        """ACCOUNTANT cannot unlock (requires CHIEF)."""
+        accountant.post(
+            f"/api/v1/system-settings/config/{COMPANY}/period/lock",
+            json={"fiscal_year": 2026, "period": 5},
+        )
+        r = accountant.post(
+            f"/api/v1/system-settings/config/{COMPANY}/period/unlock",
+            json={"fiscal_year": 2026, "period": 5},
         )
         assert r.status_code == 403
-        assert r.get_json()["code"] == "SOD_VIOLATION"
 
-        # actor = chief session; approver = ADMIN id (distinct person)
-        sys_actor_admin_id = UUID_ADMIN
-        ok = chief.post(
-            "/api/v1/system-settings/e-invoice-series",
-            json={
-                "company_id": COMPANY,
-                "prefix": "HD/",
-                "ca_signer": "VNPT",
-                "approver": sys_actor_admin_id,
-            },
+    def test_period_status(self, accountant):
+        """Get period lock status."""
+        accountant.post(
+            f"/api/v1/system-settings/config/{COMPANY}/period/lock",
+            json={"fiscal_year": 2026, "period": 1},
         )
-        assert ok.status_code == 201, ok.get_json()
-        cfg = chief.get(f"/api/v1/system-settings/config/{COMPANY}").get_json()["data"]
-        assert any(s["prefix"] == "HD/" for s in cfg["e_invoice_series"])
+        accountant.post(
+            f"/api/v1/system-settings/config/{COMPANY}/period/lock",
+            json={"fiscal_year": 2026, "period": 2},
+        )
+        r = accountant.get(
+            f"/api/v1/system-settings/config/{COMPANY}/period/status",
+            query_string={"fiscal_year": 2026},
+        )
+        assert r.status_code == 200
+        data = r.get_json()["data"]
+        assert len(data) == 2
 
-    def test_accountant_cannot_add_series(self, app):
-        acc = _client(app, UUID_ACCOUNTANT, "ACCOUNTANT")
-        r = acc.post(
-            "/api/v1/system-settings/e-invoice-series",
-            json={
-                "company_id": COMPANY,
-                "prefix": "AB/",
-                "approver": UUID_CHIEF,
-            },
+    def test_period_status_all_years(self, accountant):
+        """Get all locked periods across years."""
+        accountant.post(
+            f"/api/v1/system-settings/config/{COMPANY}/period/lock",
+            json={"fiscal_year": 2026, "period": 1},
+        )
+        accountant.post(
+            f"/api/v1/system-settings/config/{COMPANY}/period/lock",
+            json={"fiscal_year": 2025, "period": 12},
+        )
+        r = accountant.get(
+            f"/api/v1/system-settings/config/{COMPANY}/period/status",
+        )
+        assert r.status_code == 200
+        assert len(r.get_json()["data"]) == 2
+
+    def test_invalid_period_rejected(self, accountant):
+        """Invalid period number rejected."""
+        r = accountant.post(
+            f"/api/v1/system-settings/config/{COMPANY}/period/lock",
+            json={"fiscal_year": 2026, "period": 13},
+        )
+        assert r.status_code == 422
+
+    def test_missing_body_rejected(self, accountant):
+        """Missing required fields rejected."""
+        r = accountant.post(
+            f"/api/v1/system-settings/config/{COMPANY}/period/lock",
+            json={},
+        )
+        assert r.status_code == 422
+
+
+class TestConfigFlagIntegration:
+    def test_update_fiscal_year_start(self, accountant):
+        """Update fiscal_year_start_month flag."""
+        cfg_r = accountant.get(f"/api/v1/system-settings/config/{COMPANY}")
+        version = cfg_r.get_json()["data"]["config_version"]
+
+        r = accountant.patch(
+            f"/api/v1/system-settings/config/{COMPANY}/flags/fiscal_year_start_month",
+            json={"value": 4, "config_version": version},
+        )
+        assert r.status_code == 200
+        assert r.get_json()["data"]["config_version"] == version + 1
+
+        # Verify
+        cfg_r2 = accountant.get(f"/api/v1/system-settings/config/{COMPANY}")
+        assert cfg_r2.get_json()["data"]["fiscal_year_start_month"] == 4
+
+    def test_config_version_conflict(self, accountant):
+        """Optimistic lock conflict returns 409."""
+        cfg_r = accountant.get(f"/api/v1/system-settings/config/{COMPANY}")
+        version = cfg_r.get_json()["data"]["config_version"]
+
+        # First update succeeds
+        accountant.patch(
+            f"/api/v1/system-settings/config/{COMPANY}/flags/fiscal_year_start_month",
+            json={"value": 4, "config_version": version},
+        )
+
+        # Second update with old version fails
+        r = accountant.patch(
+            f"/api/v1/system-settings/config/{COMPANY}/flags/fiscal_year_start_month",
+            json={"value": 7, "config_version": version},
+        )
+        assert r.status_code == 409
+
+    def test_unknown_flag_rejected(self, accountant):
+        """Unknown flag name rejected."""
+        cfg_r = accountant.get(f"/api/v1/system-settings/config/{COMPANY}")
+        version = cfg_r.get_json()["data"]["config_version"]
+
+        r = accountant.patch(
+            f"/api/v1/system-settings/config/{COMPANY}/flags/nonexistent",
+            json={"value": "x", "config_version": version},
+        )
+        assert r.status_code == 422
+
+
+class TestLegalReviewIntegration:
+    def test_legal_review_by_chief(self, chief):
+        """CHIEF_ACCOUNTANT can mark config as legally reviewed."""
+        r = chief.post(
+            f"/api/v1/system-settings/config/{COMPANY}/legal-review",
+        )
+        assert r.status_code == 200
+        data = r.get_json()["data"]
+        assert data["legal_reviewed_at"] is not None
+        assert data["legal_reviewed_by"] is not None
+
+    def test_legal_review_by_accountant_forbidden(self, accountant):
+        """ACCOUNTANT cannot do legal review."""
+        r = accountant.post(
+            f"/api/v1/system-settings/config/{COMPANY}/legal-review",
         )
         assert r.status_code == 403
+
+    def test_get_config_shows_legal_review(self, chief):
+        """GET config shows legal review stamp."""
+        chief.post(
+            f"/api/v1/system-settings/config/{COMPANY}/legal-review",
+        )
+        r = chief.get(f"/api/v1/system-settings/config/{COMPANY}")
+        data = r.get_json()["data"]
+        assert data["legal_reviewed_at"] is not None

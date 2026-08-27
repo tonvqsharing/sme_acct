@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
+from datetime import datetime
 from decimal import Decimal
 from enum import Enum
+from typing import Any
 from uuid import UUID, uuid4
 
 
@@ -61,12 +63,43 @@ class CompanyConfig:
     e_invoice_series: frozenset[EInvoiceSeries] = frozenset()
     config_version: int = 0
     updated_by: UUID | None = None
+    legal_reviewed_at: datetime | None = None
+    legal_reviewed_by: UUID | None = None
+
+    # ── CONFIG flags (changeable) ────────────────────────────────────────
+    fiscal_year_start_month: int = 1
+    fiscal_year_start_day: int = 1
+    vat_settlement_cycle: str = "monthly"  # monthly | quarterly
+    decimal_places: int = 2
+    default_currency: str = "VND"
+    cost_center_required: bool = False
 
     def with_series(self, series: EInvoiceSeries, actor: UUID) -> CompanyConfig:
         """Immutable update — returns new config, bumps version."""
         return replace(
             self,
             e_invoice_series=frozenset({*self.e_invoice_series, series}),
+            updated_by=actor,
+            config_version=self.config_version + 1,
+        )
+
+    def with_flag_update(self, flag_name: str, value: Any, actor: UUID) -> CompanyConfig:
+        """Update a CONFIG-type flag. Returns new config, bumps version."""
+        if not hasattr(self, flag_name):
+            raise ValueError(f"Unknown flag: {flag_name}")
+        return replace(
+            self,
+            **{flag_name: value},
+            updated_by=actor,
+            config_version=self.config_version + 1,
+        )
+
+    def with_legal_review(self, actor: UUID, reviewed_at: Any) -> CompanyConfig:
+        """Stamp legal review. Returns new config, bumps version."""
+        return replace(
+            self,
+            legal_reviewed_by=actor,
+            legal_reviewed_at=reviewed_at,
             updated_by=actor,
             config_version=self.config_version + 1,
         )

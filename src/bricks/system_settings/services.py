@@ -11,8 +11,10 @@ from uuid import UUID
 from src.bricks.system_settings.domain import (
     CompanyConfig,
     EInvoiceSeries,
-    FlagLockedError,
     InvalidRegimeError,
+)
+from src.bricks.system_settings.domain import (
+    FlagLockedError as DomainFlagLockedError,
 )
 
 
@@ -28,6 +30,18 @@ class SodViolationError(Exception):
     code = "SOD_VIOLATION"
 
 
+class PeriodLockedError(Exception):
+    code = "PERIOD_LOCKED"
+
+
+class ConfigVersionConflictError(Exception):
+    code = "CONFIG_VERSION_CONFLICT"
+
+
+# Re-export domain exception for backward compatibility
+FlagLockedError = DomainFlagLockedError
+
+
 # Base rates per Luật GTGT 2024 + reduced 8% per NQ 204/2025/QH15 /
 # NĐ 174/2025/NĐ-CP (eff → 31/12/2026). NOT_TAXED(-1) remains an
 # item-level exemption flag, not a configurable deductible rate.
@@ -36,8 +50,9 @@ MAX_SERIES = 15
 
 
 class SystemSettingsService:
-    def __init__(self, repo: Any) -> None:
+    def __init__(self, repo: Any, period_lock_repo: Any = None) -> None:
         self._repo = repo
+        self._period_lock_repo = period_lock_repo
 
     # ── VAT rates (LAW-type) ────────────────────────────────────────────
     def validate_vat_rate(self, rate: int) -> None:
@@ -57,7 +72,89 @@ class SystemSettingsService:
 
     def set_vat_rates(self, cid: UUID, rates: set[int], *, actor: UUID) -> None:
         """R-FLAG: LAW-type — immutable without migration. Always locked."""
-        raise FlagLockedError("vat_rates là LAW-type; thay đổi chỉ qua migration có phê duyệt")
+        raise DomainFlagLockedError(
+            "vat_rates là LAW-type; thay đổi chỉ qua migration có phê duyệt"
+        )
+
+    # ── Period lock (P0-02) ─────────────────────────────────────────────
+    def is_period_locked(self, company_id: UUID, fiscal_year: int, period: int) -> bool:
+        """Check if a period is locked for posting."""
+        if self._period_lock_repo is None:
+            return False
+        result: bool = self._period_lock_repo.is_locked(company_id, fiscal_year, period)
+        return result
+
+    def lock_period(
+        self,
+        company_id: UUID,
+        fiscal_year: int,
+        period: int,
+        actor: UUID,
+        notes: str | None = None,
+    ) -> None:
+        """Lock a period. Requires ACCOUNTANT+ role (checked at API layer)."""
+        if not 1 <= period <= 12:
+            raise InvalidPeriodError(f"Period must be 1-12, got {period}")
+        if self._period_lock_repo is None:
+            raise RuntimeError("PeriodLockRepository not initialized")
+        self._period_lock_repo.lock(company_id, fiscal_year, period, actor, notes=notes)
+
+    def unlock_period(
+        self,
+        company_id: UUID,
+        fiscal_year: int,
+        period: int,
+    ) -> bool:
+        """Unlock a period. Returns True if was locked."""
+        if self._period_lock_repo is None:
+            return False
+        result2: bool = self._period_lock_repo.unlock(company_id, fiscal_year, period)
+        return result2
+
+    def list_locked_periods(
+        self,
+        company_id: UUID,
+        fiscal_year: int | None = None,
+    ) -> list[dict[str, Any]]:
+        """List all locked periods for a company."""
+        if self._period_lock_repo is None:
+            return []
+        result3: list[dict[str, Any]] = self._period_lock_repo.list_locked(company_id, fiscal_year)
+        return result3
+
+    # ── Config flags (CONFIG-type) ──────────────────────────────────────
+    def update_config_flag(
+        self,
+        company_id: UUID,
+        flag_name: str,
+        value: Any,
+        actor: UUID,
+        config_version: int,
+    ) -> CompanyConfig:
+        """Update a CONFIG-type flag with optimistic locking."""
+        cfg = self.get_config(company_id)
+        if cfg.config_version != config_version:
+            raise ConfigVersionConflictError(
+                f"Config version mismatch: expected {config_version}, got {cfg.config_version}"
+            )
+        # Update the config with the new flag value
+        updated = cfg.with_flag_update(flag_name, value, actor)
+        saved: CompanyConfig = self._repo.update_config(updated)
+        return saved
+
+    # ── Legal review stamp ──────────────────────────────────────────────
+    def legal_review(
+        self,
+        company_id: UUID,
+        actor: UUID,
+    ) -> CompanyConfig:
+        """Mark config as legally reviewed by Chief Accountant."""
+        from datetime import UTC, datetime
+
+        cfg = self.get_config(company_id)
+        updated = cfg.with_legal_review(actor, datetime.now(UTC))
+        saved2: CompanyConfig = self._repo.update_config(updated)
+        return saved2
 
     # ── e-invoice series (CONFIG-type, SOD) ─────────────────────────────
     def add_e_invoice_series(

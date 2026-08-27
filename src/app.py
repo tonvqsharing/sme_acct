@@ -575,8 +575,13 @@ def create_app(config: dict | None = None) -> Flask:
     )
     init_tools_equipment_bp(te_svc, te_alloc_engine)
 
+    from src.bricks.system_settings.storage import SQLAlchemyPeriodLockRepository
+
     init_settings_service(
-        SystemSettingsService(SQLAlchemySystemSettingsRepository(session_factory()))
+        SystemSettingsService(
+            SQLAlchemySystemSettingsRepository(session_factory()),
+            SQLAlchemyPeriodLockRepository(session_factory()),
+        )
     )
 
     from decimal import Decimal
