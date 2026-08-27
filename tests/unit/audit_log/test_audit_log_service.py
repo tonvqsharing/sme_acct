@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import pytest
@@ -124,3 +125,70 @@ class TestRetrieval:
 
         assert not hasattr(AuditLogPort, "update")
         assert not hasattr(AuditLogPort, "delete")
+
+
+class TestQuery:
+    def setup_method(self):
+        self.repo = FakeAuditRepo()
+        self.svc = AuditLogService(self.repo)
+        self.actor2 = uuid4()
+        self.entity2 = uuid4()
+        _append(self.svc, action="CREATE", actor_id=ACTOR, entity_id=ENTITY)
+        _append(self.svc, action="UPDATE", actor_id=ACTOR, entity_id=ENTITY, field_name="status")
+        _append(self.svc, action="CREATE", actor_id=self.actor2, entity_id=self.entity2)
+
+    def test_no_filters_returns_all(self):
+        result = self.svc.query()
+        assert result.total == 3
+
+    def test_filter_by_entity_type(self):
+        result = self.svc.query(entity_type="payment_term")
+        assert result.total == 3
+
+    def test_filter_by_entity_id(self):
+        result = self.svc.query(entity_id=ENTITY)
+        assert result.total == 2
+
+    def test_filter_by_action(self):
+        result = self.svc.query(action="UPDATE")
+        assert result.total == 1
+        assert result.items[0].action == "UPDATE"
+
+    def test_filter_by_actor_id(self):
+        result = self.svc.query(actor_id=self.actor2)
+        assert result.total == 1
+
+    def test_filter_by_field_name(self):
+        result = self.svc.query(field_name="status")
+        assert result.total == 1
+
+    def test_combined_filters(self):
+        result = self.svc.query(action="CREATE", actor_id=ACTOR)
+        assert result.total == 1
+
+    def test_pagination_page1(self):
+        result = self.svc.query(page=1, page_size=2)
+        assert len(result.items) == 2
+        assert result.total == 3
+        assert result.page == 1
+        assert result.page_size == 2
+
+    def test_pagination_page2(self):
+        result = self.svc.query(page=2, page_size=2)
+        assert len(result.items) == 1
+        assert result.total == 3
+
+    def test_date_range_filter(self):
+        now = datetime.now(UTC)
+        # All events are around now, so filter to now-1h..now+1h
+        result = self.svc.query(
+            start_date=now - timedelta(hours=1),
+            end_date=now + timedelta(hours=1),
+        )
+        assert result.total == 3
+        # Filter to future only → 0
+        result = self.svc.query(start_date=now + timedelta(hours=1))
+        assert result.total == 0
+
+    def test_count_all(self):
+        assert self.svc.count_all() == 3

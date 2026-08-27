@@ -10,9 +10,10 @@ class JSONDict(TypedDict, total=False):
 
 
 import re
+from datetime import datetime
 from uuid import UUID
 
-from src.bricks.audit_log.contract import AuditLogPort
+from src.bricks.audit_log.contract import AuditLogPort, AuditQueryResult
 from src.bricks.audit_log.domain import AuditEvent, compute_event_checksum
 
 _HEX64 = re.compile(r"^[0-9a-f]{64}$")
@@ -63,6 +64,32 @@ class AuditLogService:
     def get_by_entity(self, entity_type: str, entity_id: UUID) -> list[AuditEvent]:
         return self._repo.get_by_entity(entity_type, entity_id)
 
+    def query(
+        self,
+        *,
+        entity_type: str | None = None,
+        entity_id: UUID | None = None,
+        action: str | None = None,
+        actor_id: UUID | None = None,
+        field_name: str | None = None,
+        start_date: datetime | None = None,
+        end_date: datetime | None = None,
+        page: int = 1,
+        page_size: int = 50,
+    ) -> AuditQueryResult:
+        """Filtered, paginated query (FR-2.1, FR-2.3)."""
+        return self._repo.query(
+            entity_type=entity_type,
+            entity_id=entity_id,
+            action=action,
+            actor_id=actor_id,
+            field_name=field_name,
+            start_date=start_date,
+            end_date=end_date,
+            page=page,
+            page_size=page_size,
+        )
+
     def verify_chain(self, entity_type: str, entity_id: UUID) -> bool:
         events = self._repo.get_by_entity(entity_type, entity_id)
         prev = "0" * 64
@@ -85,3 +112,8 @@ class AuditLogService:
                 return False
             prev = ev.checksum
         return True
+
+    def count_all(self) -> int:
+        """Total audit records (for retention status, FR-4)."""
+        result = self._repo.query(page=1, page_size=1)
+        return result.total

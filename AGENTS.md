@@ -7,7 +7,7 @@ _Flask + SQLAlchemy app for Vietnamese SME accounting. Architecture: Modular Hex
 Package manager is `uv`. Prefix everything with `uv run` — no venv activation needed.
 
 ```bash
-uv run pytest -q                                  # full suite (currently 682 passing)
+uv run pytest -q                                  # full suite (currently 715 passing)
 uv run pytest tests/unit/company/ -k "<name>" -v  # single test / focused run
 uv run ruff check src tests                       # lint
 uv run black --check src tests                    # format check
@@ -41,7 +41,7 @@ src/bricks/<name>/
 └── web_adapter.py  # Flask blueprint + routes. ONLY file allowed to import Flask
 ```
 
-`src/app.py` = composition root. **SECRET_KEY env var is mandatory outside TESTING** (fail-fast at factory). Wiring order matters: COA + FY services must exist before invoice/voucher blocks (they consume `app.coa_service` / `app.fy_service`). Cross-brick needs are met by thin adapters defined inline there (`_NumberingAdapter`, `_TermsAdapter`) that translate brick contracts to narrow callables — do NOT import one brick's storage into another's service.
+`src/app.py` = composition root. **SECRET_KEY env var is mandatory outside TESTING** (fail-fast at factory). Wiring order matters: COA + FY services must exist before invoice/voucher blocks (they consume `app.coa_service` / `app.fy_service`). Cross-brick needs are met by thin adapters defined inline there (`_NumberingAdapter`, `_TermsAdapter`, `_COAServiceAdapter`) that translate brick contracts to narrow callables — do NOT import one brick's storage into another's service.
 
 **Transaction gate order (invoice & voucher services):** fiscal-period open → COA posting accounts (ACTIVE + detail only) → balance/invariant. Keep this order; reports and tests assume it.
 
@@ -51,6 +51,7 @@ src/bricks/<name>/
 - No cross-brick SQLAlchemy joins. Cross-brick calls go through the target's `contract.py`, passing primitives (`str`, `int`, `Decimal`, `UUID`, `dict`) only.
 - Domain layer purity is architectural law: no Flask/SQLAlchemy imports in `domain.py`.
 - When testing cross-brick calls, mock the target brick's `contract.py`.
+- Config-type flags (changeable via API) must have an explicit allowlist (`CONFIG_FLAGS = frozenset({...})`) in domain — `with_flag_update()` validates against this before any mutation.
 
 **Known spec-vs-repo conflicts** — specs predate the brick structure:
 1. Specs reference Casbin ("CASRBAC"). **Never import casbin/pycasbin** — translate role matrices to Flask built-in checks.
@@ -112,7 +113,7 @@ Vietnamese compliance rules baked into specs: MST tax-ID format (`^[1-9]\d{2}(-\
 |---|---|---|
 | Company | ✅ done — unit + integration suites green | `docs/company-module/` |
 | Payment Terms & Doc Numbering | ✅ done incl. SOD two-actor flow (request→202, approve/reject) | `docs/payment-terms/` |
-| Audit Log | ✅ core done — append-only checksum chain (17 tests); API/filters pending spec session | `docs/audit-log/` |
+| Audit Log | ✅ done — append-only checksum chain + full API (POST create, GET query/filter/pagination, GET verify chain integrity) (46 tests incl. 20 integration) | `docs/audit-log/` |
 | Fiscal Year & Periods | ✅ core done — years/monthly periods/posting gate + web create/list (18 tests) | `docs/fiscal-year-period/` |
 | Chart of Accounts | ✅ core done — codes/hierarchy/posting gate + SQLite repo + web CRUD (33 tests) | `docs/coa/` |
 | Invoice + Voucher + Ledger core loop | ✅ invoice/voucher bricks done; ledger reports done (325 total) | — |
@@ -124,7 +125,7 @@ Vietnamese compliance rules baked into specs: MST tax-ID format (`^[1-9]\d{2}(-\
 | Fixed Assets (TSCĐ) | ✅ done — asset master, straight-line depreciation engine, grouped journal by expense account, capped-at-remaining guard, soft deactivate (22 tests incl. 3 integration + deactivate CHIEF+ endpoint; COA re-validation on monthly compute) | `docs/fixed-assets/` |
 | Tools & Equipment (CCDC) | ✅ done — CCDC master, lifecycle (ACTIVE→INACTIVE→WRITTEN_OFF), monthly allocation engine, SOD deactivation/reactivation/write-off; 38 tests (26 unit + 12 integration) | `docs/tools-equipment/` |
 | Cost Centers | ✅ done — code/name/status lifecycle (Active→Inactive/Closed), checksum chain, duplicate guard, deactivate/reactivate/close endpoints; Dimension + DimensionValue CRUD/lifecycle with spec-correct RBAC, FK validation, updated_at (43 unit tests) | `docs/cost-centers-dimensions/` |
-| System Settings (rest), Multi-company | ✅ System Settings done — period lock/unlock, CONFIG flags (fiscal year, VAT cycle, decimal places), legal review stamp; 22 new tests (13 unit + 9 integration); multi-company deferred | `docs/system-settings/` |
+| System Settings (rest), Multi-company | ✅ System Settings done — period lock/unlock, CONFIG flags (fiscal year, VAT cycle, decimal places), legal review stamp, CONFIG_FLAGS allowlist, domain-level validation; 53 unit + 18 integration tests; multi-company deferred | `docs/system-settings/` |
 
 ## Migrations
 

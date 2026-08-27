@@ -93,8 +93,11 @@ class TestAuditLogReads:
         assert ev and ev[0]["action"] == "CREATE"
         assert len(ev[0]["checksum"]) == 64
 
-    def test_missing_params_422(self, auditor):
-        assert auditor.get("/api/v1/audit-log").status_code == 422
+    def test_no_params_returns_all(self, auditor):
+        """GET without filters returns paginated results (FR-2.1)."""
+        r = auditor.get("/api/v1/audit-log")
+        assert r.status_code == 200
+        assert "pagination" in r.get_json()
 
     def test_unauthenticated_401(self, app, seeded):
         r = app.test_client().get(

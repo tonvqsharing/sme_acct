@@ -16,7 +16,7 @@ from sqlalchemy import DateTime, Integer, String
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
 from sqlalchemy.types import JSON, Text
 
-from src.bricks.audit_log.contract import AuditLogPort
+from src.bricks.audit_log.contract import AuditLogPort, AuditQueryResult
 from src.bricks.audit_log.domain import AuditEvent
 
 
@@ -107,7 +107,7 @@ class SQLAlchemyAuditLogRepository(AuditLogPort):
         self._session.commit()
         return event
 
-    def get_by_entity(self, entity_type: str, entity_id: UUID) -> list[AuditEvent]:
+    def get_by_entity(self, entity_type: str, entity_id: object) -> list[AuditEvent]:
         rows = (
             self._session.query(AuditEventModel)
             .filter(
@@ -119,7 +119,7 @@ class SQLAlchemyAuditLogRepository(AuditLogPort):
         )
         return [self._to_domain(r) for r in rows]
 
-    def last_checksum_for(self, entity_type: str, entity_id: UUID) -> str | None:
+    def last_checksum_for(self, entity_type: str, entity_id: object) -> str | None:
         row = (
             self._session.query(AuditEventModel)
             .filter(
@@ -130,3 +130,46 @@ class SQLAlchemyAuditLogRepository(AuditLogPort):
             .first()
         )
         return row.checksum if row else None
+
+    def query(
+        self,
+        *,
+        entity_type: str | None = None,
+        entity_id: object | None = None,
+        action: str | None = None,
+        actor_id: object | None = None,
+        field_name: str | None = None,
+        start_date: datetime | None = None,
+        end_date: datetime | None = None,
+        page: int = 1,
+        page_size: int = 50,
+    ) -> AuditQueryResult:
+        """Filtered, paginated query across all audit events (FR-2.1, FR-2.3)."""
+        q = self._session.query(AuditEventModel)
+        if entity_type is not None:
+            q = q.filter(AuditEventModel.entity_type == entity_type)
+        if entity_id is not None:
+            q = q.filter(AuditEventModel.entity_id == str(entity_id))
+        if action is not None:
+            q = q.filter(AuditEventModel.action == action)
+        if actor_id is not None:
+            q = q.filter(AuditEventModel.actor_id == str(actor_id))
+        if field_name is not None:
+            q = q.filter(AuditEventModel.field_name == field_name)
+        if start_date is not None:
+            q = q.filter(AuditEventModel.changed_at >= start_date)
+        if end_date is not None:
+            q = q.filter(AuditEventModel.changed_at <= end_date)
+        total = q.count()
+        rows = (
+            q.order_by(AuditEventModel.seq.desc())
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+            .all()
+        )
+        return AuditQueryResult(
+            items=[self._to_domain(r) for r in rows],
+            total=total,
+            page=page,
+            page_size=page_size,
+        )
