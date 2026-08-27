@@ -12,15 +12,16 @@ from alembic import context
 from src.bricks.audit_log.storage import Base as AuditBase
 from src.bricks.bank_cash.storage import Base as BankBase
 from src.bricks.coa.storage import Base as CoaBase
-from src.bricks.cost_centers.storage import Base as CcBase
 from src.bricks.company.storage import Base as CompanyBase
+from src.bricks.cost_centers.storage import Base as CcBase
 from src.bricks.currencies.storage import Base as CurBase
-from src.bricks.fixed_assets.storage import Base as Fabase
 from src.bricks.fiscal_year_period.storage import Base as FyBase
+from src.bricks.fixed_assets.storage import Base as Fabase
 from src.bricks.invoice.storage import Base as InvBase
 from src.bricks.payment_terms.storage import Base as PtBase
 from src.bricks.purchases.storage import Base as PurchBase
 from src.bricks.system_settings.storage import Base as SetBase
+from src.bricks.tools_equipment.storage import Base as TeBase
 from src.bricks.user_master_data.storage import Base as UserBase
 from src.bricks.voucher.storage import Base as VchBase
 
@@ -47,6 +48,7 @@ target_metadata = [
     CurBase.metadata,
     VchBase.metadata,
     UserBase.metadata,
+    TeBase.metadata,
 ]
 
 

@@ -41,6 +41,11 @@ from src.bricks.company.services import CompanyService, TenantService
 from src.bricks.company.storage import Base as CompanyBase
 from src.bricks.company.storage import SQLAlchemyCompanyRepository
 from src.bricks.company.web_adapter import init_company_services, web_adapter_bp
+from src.bricks.cost_centers.services import (
+    CostCenterService,
+    DimensionService,
+    DimensionValueService,
+)
 from src.bricks.cost_centers.storage import (
     Base as CcBase,
 )
@@ -48,11 +53,6 @@ from src.bricks.cost_centers.storage import (
     SQLAlchemyCostCenterRepository,
     SQLAlchemyDimensionRepository,
     SQLAlchemyDimensionValueRepository,
-)
-from src.bricks.cost_centers.services import (
-    CostCenterService,
-    DimensionService,
-    DimensionValueService,
 )
 from src.bricks.cost_centers.web_adapter import (
     cost_centers_bp,
@@ -144,6 +144,22 @@ from src.bricks.system_settings.web_adapter import (
     init_vat_declaration_service,
     settings_bp,
 )
+
+# Tools & Equipment (CCDC) brick
+from src.bricks.tools_equipment.services import AllocationEngine, ToolEquipmentService
+from src.bricks.tools_equipment.storage import (
+    Base as TeBase,
+)
+from src.bricks.tools_equipment.storage import (
+    ToolEquipmentAllocationRepo,
+    ToolEquipmentRepo,
+)
+from src.bricks.tools_equipment.web_adapter import (
+    bp as tools_equipment_bp,
+)
+from src.bricks.tools_equipment.web_adapter import (
+    init_tools_equipment_bp,
+)
 from src.bricks.user_master_data.services import UserService
 from src.bricks.user_master_data.storage import (
     Base as UserBase,
@@ -200,6 +216,7 @@ def create_app(config: dict | None = None) -> Flask:
     CcBase.metadata.create_all(engine)
     VchBase.metadata.create_all(engine)
     UserBase.metadata.create_all(engine)
+    TeBase.metadata.create_all(engine)
     session_factory = sessionmaker(bind=engine)
     app.db_session = session_factory  # type: ignore[attr-defined]
 
@@ -242,6 +259,7 @@ def create_app(config: dict | None = None) -> Flask:
         coa_bp,
         fiscal_year_bp,
         audit_log_bp,
+        tools_equipment_bp,
     ):
         app.register_blueprint(bp)
 
@@ -509,6 +527,24 @@ def create_app(config: dict | None = None) -> Flask:
     dv_repo = SQLAlchemyDimensionValueRepository(session_factory())
     dv_svc = DimensionValueService(dv_repo, dim_repo)
     init_dimension_value_service(dv_svc)
+
+    # ── Tools & Equipment (CCDC) ─────────────────────────────────────────
+    te_session = session_factory()
+    te_repo = ToolEquipmentRepo(te_session)
+    te_alloc_repo = ToolEquipmentAllocationRepo(te_session)
+    te_svc = ToolEquipmentService(
+        repo=te_repo,
+        alloc_repo=te_alloc_repo,
+        fy_service=app.fy_service,  # type: ignore[attr-defined]
+        coa_service=app.coa_service,  # type: ignore[attr-defined]
+    )
+    te_alloc_engine = AllocationEngine(
+        repo=te_repo,
+        alloc_repo=te_alloc_repo,
+        fy_service=app.fy_service,  # type: ignore[attr-defined]
+        coa_service=app.coa_service,  # type: ignore[attr-defined]
+    )
+    init_tools_equipment_bp(te_svc, te_alloc_engine)
 
     init_settings_service(
         SystemSettingsService(SQLAlchemySystemSettingsRepository(session_factory()))
