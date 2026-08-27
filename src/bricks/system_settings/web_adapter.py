@@ -114,7 +114,10 @@ def update_config_flag(cid: str, flag_name: str) -> tuple[Any, int]:
     body = request.get_json(silent=True) or {}
     if "value" not in body:
         abort(422, description="Missing 'value'")
-    config_version = body.get("config_version", 0)
+    try:
+        config_version = int(body.get("config_version", 0))
+    except (TypeError, ValueError):
+        abort(422, description="config_version must be integer")
     try:
         cfg = _svc().update_config_flag(
             cid_u, flag_name, body["value"], UUID(str(current_user.id)), config_version
@@ -178,6 +181,8 @@ def lock_period(cid: str) -> tuple[Any, int]:
         period = int(body["period"])
     except (KeyError, TypeError, ValueError) as exc:
         abort(422, description=f"Missing or invalid: {exc}")
+    if fiscal_year < 1:
+        abort(422, description="fiscal_year must be positive")
     notes = body.get("notes")
     try:
         _svc().lock_period(cid_u, fiscal_year, period, UUID(str(current_user.id)), notes)
@@ -219,7 +224,12 @@ def period_status(cid: str) -> tuple[Any, int]:
     except ValueError:
         abort(422, description="Invalid UUID")
     fiscal_year = request.args.get("fiscal_year")
-    fy_int = int(fiscal_year) if fiscal_year else None
+    fy_int = None
+    if fiscal_year:
+        try:
+            fy_int = int(fiscal_year)
+        except (TypeError, ValueError):
+            abort(422, description="fiscal_year must be integer")
     locked = _svc().list_locked_periods(cid_u, fy_int)
     return jsonify({"data": locked}), 200
 

@@ -55,6 +55,41 @@ class EInvoiceSeries:
 
 DEFAULT_VAT_RATES = frozenset({0, 5, 10})
 
+# CONFIG-type flags that can be updated via API
+CONFIG_FLAGS = frozenset(
+    {
+        "fiscal_year_start_month",
+        "fiscal_year_start_day",
+        "vat_settlement_cycle",
+        "decimal_places",
+        "default_currency",
+        "cost_center_required",
+    }
+)
+
+
+def _validate_flag_value(flag_name: str, value: Any) -> None:
+    """Validate CONFIG flag value at domain boundary."""
+    if flag_name == "fiscal_year_start_month":
+        if not isinstance(value, int) or not 1 <= value <= 12:
+            raise ValueError(f"fiscal_year_start_month must be 1-12, got {value!r}")
+    elif flag_name == "fiscal_year_start_day":
+        if not isinstance(value, int) or not 1 <= value <= 31:
+            raise ValueError(f"fiscal_year_start_day must be 1-31, got {value!r}")
+    elif flag_name == "vat_settlement_cycle":
+        if value not in ("monthly", "quarterly"):
+            raise ValueError(
+                f"vat_settlement_cycle must be 'monthly' or 'quarterly', got {value!r}"
+            )
+    elif flag_name == "decimal_places":
+        if value not in (0, 2):
+            raise ValueError(f"decimal_places must be 0 or 2, got {value!r}")
+    elif flag_name == "default_currency":
+        if not isinstance(value, str) or len(value) != 3:
+            raise ValueError(f"default_currency must be 3-letter ISO code, got {value!r}")
+    elif flag_name == "cost_center_required" and not isinstance(value, bool):
+        raise ValueError(f"cost_center_required must be bool, got {value!r}")
+
 
 @dataclass
 class CompanyConfig:
@@ -85,8 +120,9 @@ class CompanyConfig:
 
     def with_flag_update(self, flag_name: str, value: Any, actor: UUID) -> CompanyConfig:
         """Update a CONFIG-type flag. Returns new config, bumps version."""
-        if not hasattr(self, flag_name):
-            raise ValueError(f"Unknown flag: {flag_name}")
+        if flag_name not in CONFIG_FLAGS:
+            raise ValueError(f"Unknown or immutable flag: {flag_name}")
+        _validate_flag_value(flag_name, value)
         return replace(
             self,
             **{flag_name: value},

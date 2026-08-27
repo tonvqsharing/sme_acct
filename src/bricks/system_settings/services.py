@@ -30,12 +30,12 @@ class SodViolationError(Exception):
     code = "SOD_VIOLATION"
 
 
-class PeriodLockedError(Exception):
-    code = "PERIOD_LOCKED"
-
-
 class ConfigVersionConflictError(Exception):
     code = "CONFIG_VERSION_CONFLICT"
+
+
+class WindowNotFoundError(Exception):
+    code = "WINDOW_NOT_FOUND"
 
 
 # Re-export domain exception for backward compatibility
@@ -343,6 +343,4 @@ class TaxRateCatalogService:
                 closed = replace(w, valid_to=end_on)
                 self._repo.remove(w)
                 return self._repo.add(closed)
-        from src.bricks.bank_cash.services import NotFoundError as _NF
-
-        raise _NF(f"Không tìm thấy cửa sổ thuế suất {fraction}")
+        raise WindowNotFoundError(f"Không tìm thấy cửa sổ thuế suất {fraction}")
