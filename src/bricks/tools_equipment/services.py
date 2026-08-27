@@ -81,13 +81,9 @@ class ToolEquipmentService:
         if existing is not None:
             raise DuplicateCodeError(f"CCDC code {code!r} already exists for company")
 
-        # COA validation
-        if not self._coa_service.is_account_active(expense_account_code):
+        # COA validation — account must exist and be active
+        if not self._coa_service.is_account_active(company_id, expense_account_code):
             raise ValidationError(f"Expense account {expense_account_code!r} is not active")
-        if not self._coa_service.is_account_detail(expense_account_code):
-            raise ValidationError(
-                f"Expense account {expense_account_code!r} is not a detail account"
-            )
 
         # Create entity
         entity = ToolEquipment(

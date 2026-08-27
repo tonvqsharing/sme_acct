@@ -142,13 +142,13 @@ class COAServicePort(ABC):
     """Port for Chart of Accounts validation."""
 
     @abstractmethod
-    def is_account_active(self, account_code: str) -> bool:
+    def is_account_active(self, company_id: UUID, account_code: str) -> bool:
         """Check if an account exists and is ACTIVE."""
 
     @abstractmethod
-    def is_account_detail(self, account_code: str) -> bool:
+    def is_account_detail(self, company_id: UUID, account_code: str) -> bool:
         """Check if an account is a detail (posting) account."""
 
     @abstractmethod
-    def get_account(self, account_code: str) -> dict[str, Any] | None:
+    def get_account(self, company_id: UUID, account_code: str) -> dict[str, Any] | None:
         """Get account details by code."""

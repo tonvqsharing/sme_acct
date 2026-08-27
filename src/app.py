@@ -216,6 +216,7 @@ def create_app(config: dict | None = None) -> Flask:
     CcBase.metadata.create_all(engine)
     VchBase.metadata.create_all(engine)
     UserBase.metadata.create_all(engine)
+    TeBase.metadata.reflect(bind=engine)
     TeBase.metadata.create_all(engine)
     session_factory = sessionmaker(bind=engine)
     app.db_session = session_factory  # type: ignore[attr-defined]
@@ -529,20 +530,48 @@ def create_app(config: dict | None = None) -> Flask:
     init_dimension_value_service(dv_svc)
 
     # ── Tools & Equipment (CCDC) ─────────────────────────────────────────
+    class _COAServiceAdapter:
+        """Adapt AccountService to COAServicePort for CCDC brick."""
+
+        def __init__(self, coa_svc):
+            self._coa = coa_svc
+
+        def is_account_active(self, company_id, account_code: str) -> bool:
+            try:
+                acct = self._coa.get_account(company_id, account_code)
+                if acct is None:
+                    return False
+                return acct.status.value == "active"
+            except (AttributeError, ValueError, TypeError):
+                return False
+
+        def is_account_detail(self, company_id, account_code: str) -> bool:
+            acct = self._coa.get_account(company_id, account_code)
+            if acct is None:
+                return False
+            return getattr(acct, "is_detail", False)
+
+        def get_account(self, company_id, account_code: str) -> dict | None:
+            acct = self._coa.get_account(company_id, account_code)
+            if acct is None:
+                return None
+            return {"code": acct.code, "name": acct.name, "is_detail": acct.is_detail}
+
     te_session = session_factory()
     te_repo = ToolEquipmentRepo(te_session)
     te_alloc_repo = ToolEquipmentAllocationRepo(te_session)
+    te_coa_adapter = _COAServiceAdapter(app.coa_service)  # type: ignore[attr-defined]
     te_svc = ToolEquipmentService(
         repo=te_repo,
         alloc_repo=te_alloc_repo,
         fy_service=app.fy_service,  # type: ignore[attr-defined]
-        coa_service=app.coa_service,  # type: ignore[attr-defined]
+        coa_service=te_coa_adapter,
     )
     te_alloc_engine = AllocationEngine(
         repo=te_repo,
         alloc_repo=te_alloc_repo,
         fy_service=app.fy_service,  # type: ignore[attr-defined]
-        coa_service=app.coa_service,  # type: ignore[attr-defined]
+        coa_service=te_coa_adapter,
     )
     init_tools_equipment_bp(te_svc, te_alloc_engine)
 

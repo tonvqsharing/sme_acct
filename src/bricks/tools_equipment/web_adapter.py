@@ -85,7 +85,7 @@ def create_ccdc() -> tuple[Any, int]:
             purchase_price=Decimal(str(data["purchase_price"])),
             useful_life_months=int(data["useful_life_months"]),
             expense_account_code=data["expense_account_code"],
-            actor_id=current_user.id,
+            actor_id=UUID(str(current_user.id)),
             salvage_value=Decimal(str(data.get("salvage_value", 0))),
             prepaid_account_code=data.get("prepaid_account_code"),
             assigned_to=(UUID(data["assigned_to"]) if data.get("assigned_to") else None),
@@ -95,7 +95,7 @@ def create_ccdc() -> tuple[Any, int]:
             ),
             description=data.get("description"),
         )
-        return _serialize_entity(entity), 201
+        return jsonify({"data": _serialize_entity(entity)}), 201
     except ValidationError as e:
         return _error(str(e), 400)
     except KeyError as e:
@@ -203,7 +203,7 @@ def update_ccdc(ccdc_id: UUID) -> tuple[Any, int]:
         fields["description"] = data["description"]
 
     try:
-        entity = svc.update(ccdc_id, current_user.company_id, current_user.id, **fields)
+        entity = svc.update(ccdc_id, current_user.company_id, UUID(str(current_user.id)), **fields)
         return jsonify({"data": _serialize_entity(entity)}), 200
     except ValidationError as e:
         return _error(str(e), 400)
@@ -224,7 +224,7 @@ def deactivate_ccdc(ccdc_id: UUID) -> tuple[Any, int]:
 
     svc: ToolEquipmentService = _get_service()
     try:
-        entity = svc.deactivate(ccdc_id, current_user.company_id, current_user.id)
+        entity = svc.deactivate(ccdc_id, current_user.company_id, UUID(str(current_user.id)))
         return jsonify({"data": _serialize_entity(entity)}), 200
     except ValidationError as e:
         return _error(str(e), 400)
@@ -241,7 +241,7 @@ def reactivate_ccdc(ccdc_id: UUID) -> tuple[Any, int]:
 
     svc: ToolEquipmentService = _get_service()
     try:
-        entity = svc.reactivate(ccdc_id, current_user.company_id, current_user.id)
+        entity = svc.reactivate(ccdc_id, current_user.company_id, UUID(str(current_user.id)))
         return jsonify({"data": _serialize_entity(entity)}), 200
     except ValidationError as e:
         return _error(str(e), 400)
@@ -258,7 +258,7 @@ def write_off_ccdc(ccdc_id: UUID) -> tuple[Any, int]:
 
     svc: ToolEquipmentService = _get_service()
     try:
-        entity = svc.write_off(ccdc_id, current_user.company_id, current_user.id)
+        entity = svc.write_off(ccdc_id, current_user.company_id, UUID(str(current_user.id)))
         return jsonify({"data": _serialize_entity(entity)}), 200
     except ValidationError as e:
         return _error(str(e), 400)

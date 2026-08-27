@@ -7,7 +7,7 @@ _Flask + SQLAlchemy app for Vietnamese SME accounting. Architecture: Modular Hex
 Package manager is `uv`. Prefix everything with `uv run` — no venv activation needed.
 
 ```bash
-uv run pytest -q                                  # full suite (currently 622 passing)
+uv run pytest -q                                  # full suite (currently 660 passing)
 uv run pytest tests/unit/company/ -k "<name>" -v  # single test / focused run
 uv run ruff check src tests                       # lint
 uv run black --check src tests                    # format check
@@ -122,6 +122,7 @@ Vietnamese compliance rules baked into specs: MST tax-ID format (`^[1-9]\d{2}(-\
 | Currencies | ✅ slices 1-2 done — Currency master (ISO 4217, VND base), ExchangeRate w/ Tryton gap-fill, resolve_booking_rate (Nợ=actual/Có=weighted-avg per TT99), RevaluationRun engine w/ SOD + idempotent reversal (34 tests); multi-currency voucher lines w/ currency_code+fx_rate+amount_original; bank balances auto-move with bank_account_id-tagged lines | `docs/currencies-exchange/` |
 | User Master Data / Auth | ✅ done — User entity w/ pbkdf2 hashing (deviation from spec SHA-256, justified), login/logout/me + user CRUD APIs, real user_loader wired in factory, session-based auth; 22+ tests | `docs/user-master-data/` |
 | Fixed Assets (TSCĐ) | ✅ done — asset master, straight-line depreciation engine, grouped journal by expense account, capped-at-remaining guard, soft deactivate (22 tests incl. 3 integration + deactivate CHIEF+ endpoint; COA re-validation on monthly compute) | `docs/fixed-assets/` |
+| Tools & Equipment (CCDC) | ✅ done — CCDC master, lifecycle (ACTIVE→INACTIVE→WRITTEN_OFF), monthly allocation engine, SOD deactivation/reactivation/write-off; 38 tests (26 unit + 12 integration) | `docs/tools-equipment/` |
 | Cost Centers | ✅ done — code/name/status lifecycle (Active→Inactive/Closed), checksum chain, duplicate guard, deactivate/reactivate/close endpoints; Dimension + DimensionValue CRUD/lifecycle with spec-correct RBAC, FK validation, updated_at (43 unit tests) | `docs/cost-centers-dimensions/` |
 | System Settings (rest), Multi-company | pending | `docs/<module>/` |
 
