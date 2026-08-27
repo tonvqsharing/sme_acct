@@ -1,137 +1,161 @@
-# Implementation Plan: Company Module (Root Aggregate)
+# Implementation Plan: XML Invoice Ingest v2 (TT91/2026)
 
 ## Overview
-Implement Company module per `docs/company-module/specs-company.md`. Lego brick architecture.
-Company is root aggregate — ALL other bricks need `company_id`. Build from domain out:
-enums/exceptions → entities → contract → storage → services → web_adapter → migration → tests.
-TDD per slice. No third-party integration (next version). SQLite3 default.
+Parse Vietnamese e-invoice XML files (TT91/2026 format) and auto-create `SupplierInvoice` records. Handles VAT invoices (mau so 1), sales invoices (mau so 2), and other types per Appendix I symbol system. Integrates with existing `PurchaseService.create_invoice` gates.
 
 ## Architecture Decisions
-- Company is root aggregate. All other bricks reference via `company_id: str` (UUID passed as primitive).
-- No cross-brick SQLAlchemy joins. Communication via `contract.py` primitives only.
-- Domain layer pure Python — no Flask/SQLAlchemy imports.
-- RBAC: Flask-Login `@login_required` + `current_user.role` checks only.
-- MST uniqueness enforced at DB level + domain validation.
-- Audit trail via `created_by`, `updated_by`, `config_version` (optimistic lock).
-- `BankAccount` stored as JSON field (not separate table) per spec v1.
+- XML parsing: `xml.etree.ElementTree` (stdlib, no new deps)
+- New brick: `src/bricks/xml_ingest/` — separates parsing concern from purchase domain
+- Parser is pure Python (domain layer) — no Flask/SQLAlchemy imports
+- Service layer calls `PurchaseService.create_invoice` for gate enforcement
+- Duplicate guard: `exists_duplicate()` already on repository port
 
-## Task List (slices, TDD red-green)
+## Task List
 
-### Slice 1: Domain enums + exceptions
-- [ ] `src/bricks/company/domain.py`: CompanyType, CompanyStatus, AccountingRegime enums
-- [ ] `src/bricks/company/domain.py`: Company dataclass, BankAccount dataclass, TaxId value object
-- [ ] `src/bricks/company/domain.py`: CompanyError base + DuplicateMSTError, CompanyNotFoundError, CompanyLockedError, InvalidCompanyStateError
-- [ ] `tests/unit/company/test_company_enums.py` (red first)
-- [ ] `tests/unit/test_company_domain.py` (entity construction, validation, state machine)
+### Phase 1: Domain — XML parser
+
+#### Task 1: TT91 invoice symbol parser
+Parse 6-char invoice symbol string into structured data (coded/uncoded, year, type, internal code).
 
 **Acceptance criteria:**
-- [ ] Enums match spec values exactly
-- [ ] TaxId validates format: `r"^\d{10}(-\d{3})?$"`
-- [ ] Company dataclass has all 30+ fields from spec
-- [ ] All domain tests pass, zero Flask/SQLAlchemy imports in domain.py
+- [ ] `InvoiceSymbol` dataclass with fields: is_coded, year, type_code, internal_code
+- [ ] `parse_symbol("1C26TAA")` returns correct breakdown
+- [ ] `parse_symbol("1K26TYY")` returns correct breakdown
+- [ ] Invalid symbols raise `ValueError`
 
-### Slice 2: Contract interface
-- [ ] `src/bricks/company/contract.py`: CompanyRepositoryPort (ABC)
-- [ ] `src/bricks/company/contract.py`: CompanyServiceProtocol (typing.Protocol)
-- [ ] `tests/unit/test_company_contract.py` (verify interface shape)
+**Files:** `src/bricks/xml_ingest/domain.py`
+**Scope:** S (1 file)
 
-**Acceptance criteria:**
-- [ ] Port methods match spec: create, get_by_id, get_by_mst, list_active, update, deactivate, list_subsidiaries
-- [ ] Only primitive types in/out (str, int, float, dict, Decimal, UUID)
-- [ ] No domain/model imports in contract.py
-
-### Slice 3: Storage layer (models + repo adapters)
-- [ ] `src/bricks/company/storage.py`: CompanyModel (SQLAlchemy 2.0 mapped_column)
-- [ ] `src/bricks/company/storage.py`: SQLAlchemyCompanyRepository (implements CompanyRepositoryPort)
-- [ ] `tests/integration/test_company_repository.py` (CRUD + MST uniqueness + list_active)
+#### Task 2: XML field mapping constants
+Define XPath expressions for TT91 XML invoice fields per Appendix III templates.
 
 **Acceptance criteria:**
-- [ ] CompanyModel maps all DB columns per spec schema
-- [ ] MST unique constraint enforced
-- [ ] company_id as UUID PK with default gen_random_uuid
-- [ ] JSON fields for business_fields, bank_accounts
-- [ ] Audit fields: created_at, updated_at, created_by, updated_by, config_version
-- [ ] Repository tests use SQLite in-memory
+- [ ] Constants for seller info (name, MST, address)
+- [ ] Constants for buyer info (name, MST, address)
+- [ ] Constants for invoice lines (item name, quantity, unit price, amount, VAT rate)
+- [ ] Constants for invoice header (number, symbol, date, type)
 
-### Slice 4: Service layer
-- [ ] `src/bricks/company/services.py`: CompanyService (create, get, update, deactivate, dissolve)
-- [ ] `src/bricks/company/services.py`: TenantService (resolve_company, check_access, scope_query)
-- [ ] `tests/unit/test_company_service.py` (business rules, RBAC, audit log)
+**Files:** `src/bricks/xml_ingest/domain.py`
+**Scope:** S (1 file)
 
-**Acceptance criteria:**
-- [ ] create_company: validates MST uniqueness, legal fields completeness
-- [ ] update_company: MST locked after invoicing, config_version increment
-- [ ] deactivate_company: checks no open periods, no pending invoices
-- [ ] dissolve_company: CHIEF_ACCOUNTANT only, all periods closed
-- [ ] TenantService.scope_query appends WHERE company_id = :cid
-- [ ] All service tests use fake repo (no DB)
-
-### Slice 5: Web adapter (Flask blueprint + REST API)
-- [ ] `src/bricks/company/web_adapter.py`: companies_bp Blueprint
-- [ ] `src/bricks/company/web_adapter.py`: REST endpoints (POST/GET/PATCH/DELETE /api/v1/companies)
-- [ ] `tests/integration/test_company_api.py` (endpoint tests with test client)
+#### Task 3: XML invoice parser
+Parse TT91-format XML into `ParsedInvoice` dataclass.
 
 **Acceptance criteria:**
-- [ ] All endpoints have `@login_required`
-- [ ] Role checks: ACCOUNTANT/CHIEF_ACCOUNTANT can CRUD, AUDITOR read-only
-- [ ] POST validates MST format + uniqueness
-- [ ] PATCH returns 409 on MST change if invoices exist
-- [ ] DELETE (deactivate) returns 200 with updated status
-- [ ] Error responses match spec format: `{"error": "Mô tả lỗi", "code": "ERROR_CODE"}`
+- [ ] `ParsedInvoice` dataclass with all fields from SupplierInvoice
+- [ ] `parse_xml_invoice(xml_bytes: bytes) -> ParsedInvoice`
+- [ ] Handles VAT invoice lines with amount + VAT
+- [ ] Handles invoice symbol decomposition
+- [ ] Invalid XML raises descriptive errors
 
-### Slice 6: App registration + migration
-- [ ] `src/app.py`: Register companies_bp blueprint
-- [ ] `migrations/versions/xxx_add_companies_table.py`: Alembic migration
-- [ ] Verify migration applies on fresh SQLite
+**Files:** `src/bricks/xml_ingest/domain.py`
+**Scope:** M (1 file, complex logic)
+
+### Phase 2: Service — ingest orchestration
+
+#### Task 4: XMLIngestService
+Orchestrate XML parse → domain validation → PurchaseService.create_invoice.
 
 **Acceptance criteria:**
-- [ ] Blueprint registered at `/api/v1/companies`
-- [ ] Migration creates companies table with all columns + constraints
-- [ ] Migration rollback works
+- [ ] `ingest_single(xml_bytes, company_id, actor_id) -> SupplierInvoice`
+- [ ] Calls `parse_xml_invoice` then `PurchaseService.create_invoice`
+- [ ] Duplicate check: returns existing invoice if `exists_duplicate` matches
+- [ ] Propagates gate errors (PERIOD_CLOSED, INVALID_ACCOUNT, etc.)
 
-### Slice 7: Full test suite + quality gates
-- [ ] Run `ruff check src/bricks/company/`
-- [ ] Run `black --check src/bricks/company/`
-- [ ] Run `mypy src/bricks/company/`
-- [ ] Run `pytest tests/unit/company/ tests/integration/test_company_*`
-- [ ] Verify all tests pass, no regressions
+**Files:** `src/bricks/xml_ingest/services.py`
+**Scope:** S (1 file)
 
-### Slice 8: Docs sync + git
-- [ ] Update `docs/company-module/README.md` status
-- [ ] Update `AGENTS.md` Company module status
-- [ ] codegraph sync
-- [ ] git commit (no push — review required)
+#### Task 5: Batch ingest
+Support multiple XML files in one call.
 
-## Checkpoints
-- After Slice 2: Domain + contract defined; unit tests green.
-- After Slice 4: Service tests green; full pytest still green.
-- After Slice 5: API integration tests green.
-- After Slice 6: Migration applies; app starts.
-- After Slice 8: Ready for review.
+**Acceptance criteria:**
+- [ ] `ingest_batch(xml_list, company_id, actor_id) -> list[IngestResult]`
+- [ ] Each result has `status` (created/duplicate/error) + `invoice_id` or `error`
+- [ ] Partial failures don't abort batch
 
-## Risks
-| Risk | Mitigation |
-|---|---|
-| Breaking existing tests | Run full suite after each slice |
-| MST validation drift | TaxId value object centralizes format |
-| JSON field portability | SQLite JSON function limited; keep queries simple |
-| Audit trail gaps | Service layer enforces created_by/updated_by |
+**Files:** `src/bricks/xml_ingest/services.py`
+**Scope:** S (extend service)
 
-## Files Likely Touched
-```
-src/bricks/company/__init__.py
-src/bricks/company/domain.py
-src/bricks/company/contract.py
-src/bricks/company/storage.py
-src/bricks/company/services.py
-src/bricks/company/web_adapter.py
-src/app.py
-migrations/versions/xxx_add_companies_table.py
-tests/unit/company/__init__.py
-tests/unit/test_company_domain.py
-tests/unit/test_company_enums.py
-tests/unit/test_company_contract.py
-tests/unit/test_company_service.py
-tests/integration/test_company_repository.py
-tests/integration/test_company_api.py
-```
+### Phase 3: Web adapter — API endpoints
+
+#### Task 6: Single XML upload endpoint
+POST `/api/v1/purchase-invoices/ingest` with XML file upload.
+
+**Acceptance criteria:**
+- [ ] Accepts `multipart/form-data` with XML file
+- [ ] Returns created `SupplierInvoice` (201) or duplicate (409)
+- [ ] Validates content-type is XML
+- [ ] WRITE_ROLES required
+
+**Files:** `src/bricks/purchases/web_adapter.py`
+**Scope:** S (1 file)
+
+#### Task 7: Batch XML upload endpoint
+POST `/api/v1/purchase-invoices/ingest-batch` with multiple XML files.
+
+**Acceptance criteria:**
+- [ ] Accepts multiple XML files in single request
+- [ ] Returns per-file results (created/duplicate/error)
+- [ ] WRITE_ROLES required
+
+**Files:** `src/bricks/purchases/web_adapter.py`
+**Scope:** S (1 file)
+
+### Phase 4: Tests
+
+#### Task 8: Unit tests — domain parser
+Test invoice symbol parsing, XML field extraction, ParsedInvoice construction.
+
+**Acceptance criteria:**
+- [ ] Test all 9 template codes (1-9)
+- [ ] Test C/K coded/uncoded
+- [ ] Test year extraction
+- [ ] Test valid XML parse
+- [ ] Test invalid XML handling
+- [ ] Test missing required fields
+
+**Files:** `tests/unit/xml_ingest/`
+**Scope:** M (multiple test cases)
+
+#### Task 9: Unit tests — service layer
+Test ingest orchestration with mock PurchaseService.
+
+**Acceptance criteria:**
+- [ ] Test single ingest success
+- [ ] Test duplicate detection
+- [ ] Test gate error propagation
+- [ ] Test batch with mixed results
+
+**Files:** `tests/unit/xml_ingest/`
+**Scope:** M
+
+#### Task 10: Integration tests — API endpoints
+Test XML upload endpoints with real app.
+
+**Acceptance criteria:**
+- [ ] Test POST single XML → 201
+- [ ] Test POST duplicate → 409
+- [ ] Test POST invalid XML → 422
+- [ ] Test POST batch → 200 with results
+- [ ] Test unauthenticated → 401
+
+**Files:** `tests/integration/test_xml_ingest_api.py`
+**Scope:** M
+
+### Checkpoint: Complete
+- [ ] All tests pass
+- [ ] Quality gates pass (ruff, black, mypy)
+- [ ] AGENTS.md updated
+
+## Risks and Mitigations
+| Risk | Impact | Mitigation |
+|------|--------|------------|
+| TT91 XML schema varies by provider | High | Map common fields first; accept optional extras |
+| Large XML files cause memory issues | Low | Stream parse if needed; start with full parse |
+| PurchaseService gates too strict for batch | Medium | Log failures per-file, continue batch |
+
+## Legal Reference
+- Thông tư 91/2026/TT-BTC (eff 01/07/2026)
+- Phụ lục I: Invoice symbol system
+- Phụ lục III: Data transfer templates (01/TH-HĐĐT)
+- NĐ 254/2026/NĐ-CP Art 10: Invoice content requirements

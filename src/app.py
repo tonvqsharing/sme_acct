@@ -176,6 +176,8 @@ from src.bricks.voucher.services import AutoJournalService, VoucherService
 from src.bricks.voucher.storage import Base as VchBase
 from src.bricks.voucher.storage import SQLAlchemyVoucherRepository
 from src.bricks.voucher.web_adapter import init_voucher_service, voucher_bp
+from src.bricks.xml_ingest.services import XMLIngestService
+from src.bricks.xml_ingest.web_adapter import init_xml_ingest_service, xml_ingest_bp
 
 
 def create_app(config: dict | None = None) -> Flask:
@@ -261,6 +263,7 @@ def create_app(config: dict | None = None) -> Flask:
         fiscal_year_bp,
         audit_log_bp,
         tools_equipment_bp,
+        xml_ingest_bp,
     ):
         app.register_blueprint(bp)
 
@@ -439,16 +442,19 @@ def create_app(config: dict | None = None) -> Flask:
 
     # ── Purchases brick ─────────────────────────────────────────────────
     purchases_repo = SQLAlchemySupplierInvoiceRepository(purchases_session)
-    init_purchases_service(
-        PurchaseService(
-            repo=purchases_repo,
-            fy=_FyGate(),
-            coa=_CoaGate(),
-            regime_of=regime_provider,
-            allowed_vat_rates=LAWFUL_VAT_FRACTIONS,
-            rate_gate=RATE_GATE,
-        )
+    purchase_svc = PurchaseService(
+        repo=purchases_repo,
+        fy=_FyGate(),
+        coa=_CoaGate(),
+        regime_of=regime_provider,
+        allowed_vat_rates=LAWFUL_VAT_FRACTIONS,
+        rate_gate=RATE_GATE,
     )
+    init_purchases_service(purchase_svc)
+
+    # ── XML Ingest brick ─────────────────────────────────────────────────
+    xml_ingest_svc = XMLIngestService(purchase_service=purchase_svc)
+    init_xml_ingest_service(xml_ingest_svc)
 
     # ── Ledger reports + VAT declaration (read-only) ────────────────────
     ledger_source = SQLAlchemyLedgerSource(session_factory())
