@@ -27,6 +27,10 @@ from src.bricks.tools_equipment.domain import (
     ToolEquipmentAllocation,
     ToolEquipmentStatus,
     ValidationError,
+    _validate_category,
+    _validate_expense_account,
+    _validate_price,
+    _validate_useful_life,
 )
 
 
@@ -130,8 +134,8 @@ class ToolEquipmentService:
                 f"Can only update ACTIVE CCDC, current: {entity.status.value}"
             )
 
-        # Block code modification
-        if "code" in fields and fields["code"] != entity.code:
+        # Block code modification entirely
+        if "code" in fields:
             raise CodeImmutableError("Cannot modify code after creation")
 
         # Apply allowed fields
@@ -152,6 +156,17 @@ class ToolEquipmentService:
         for key, value in fields.items():
             if key in allowed:
                 setattr(entity, key, value)
+
+        # Re-validate domain invariants after mutation
+        _validate_price(entity.purchase_price)
+        _validate_useful_life(entity.useful_life_months)
+        _validate_category(entity.category)
+        _validate_expense_account(entity.expense_account_code)
+        if entity.salvage_value >= entity.purchase_price:
+            raise ValidationError(
+                f"Salvage value ({entity.salvage_value}) must be < "
+                f"purchase price ({entity.purchase_price})"
+            )
 
         return self._repo.update(entity)
 
@@ -282,10 +297,14 @@ class AllocationEngine:
         # Get all ACTIVE CCDC for this company
         active_items = self._repo.list_active_by_company(company_id)
 
+        # Batch sum allocated amounts (avoid N+1 queries)
+        item_ids = [item.id for item in active_items]
+        allocated_map = self._alloc_repo.sum_allocated_by_tools(item_ids)
+
         results: list[dict[str, Any]] = []
         for item in active_items:
             # Skip if already fully allocated
-            total_allocated = self._alloc_repo.sum_allocated_by_tool(item.id)
+            total_allocated = allocated_map.get(item.id, Decimal(0))
             remaining = item.purchase_price - total_allocated
             if remaining <= 0:
                 continue
@@ -374,6 +393,11 @@ class AllocationEngine:
     ) -> dict[str, Any]:
         """Get allocation summary for a year."""
         items = self._repo.list_by_company(company_id)
+
+        # Batch sum allocated amounts (avoid N+1 queries)
+        item_ids = [item.id for item in items]
+        allocated_map = self._alloc_repo.sum_allocated_by_tools(item_ids)
+
         summary: dict[str, Any] = {
             "year": year,
             "items": [],
@@ -383,7 +407,7 @@ class AllocationEngine:
         }
 
         for item in items:
-            allocated = self._alloc_repo.sum_allocated_by_tool(item.id)
+            allocated = allocated_map.get(item.id, Decimal(0))
             remaining = item.purchase_price - allocated
             summary["items"].append(
                 {

@@ -113,6 +113,13 @@ class ToolEquipmentAllocationRepositoryPort(ABC):
     def sum_allocated_by_tool(self, tool_equipment_id: UUID) -> Decimal:
         """Sum of all allocated amounts for a CCDC item."""
 
+    @abstractmethod
+    def sum_allocated_by_tools(self, tool_equipment_ids: list[UUID]) -> dict[UUID, Decimal]:
+        """Batch sum of allocated amounts for multiple CCDC items.
+
+        Returns a mapping of tool_equipment_id → total allocated amount.
+        """
+
 
 # ---------------------------------------------------------------------------
 # Service ports (external dependencies)

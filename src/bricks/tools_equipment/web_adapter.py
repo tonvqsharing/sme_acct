@@ -104,6 +104,7 @@ def create_ccdc() -> tuple[Any, int]:
         return _error(f"Invalid value: {e}", 400)
 
 
+@bp.route("", methods=["GET"])
 @login_required  # type: ignore[untyped-decorator]
 def list_ccdc() -> tuple[Any, int]:
     """List CCDC for the current company."""
@@ -315,6 +316,12 @@ def list_allocations(ccdc_id: UUID) -> tuple[Any, int]:
         _require_role(ALL_ROLES)
     except PermissionError as e:
         return _error(str(e), 403)
+
+    # Verify CCDC exists and belongs to this company (security scoping)
+    svc: ToolEquipmentService = _get_service()
+    entity = svc.get_by_id(ccdc_id, current_user.company_id)
+    if entity is None:
+        return _error("CCDC not found", 404)
 
     year_filter = request.args.get("year")
     year = int(year_filter) if year_filter else None

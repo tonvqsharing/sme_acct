@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import sqlalchemy as sa
 from sqlalchemy import orm
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 from src.bricks.tools_equipment.contract import (
     ToolEquipmentAllocationRepositoryPort,
@@ -20,7 +20,11 @@ from src.bricks.tools_equipment.domain import (
     ToolEquipmentAllocation,
     ToolEquipmentStatus,
 )
-from src.storage import Base
+
+
+class Base(DeclarativeBase):
+    pass
+
 
 # ---------------------------------------------------------------------------
 # SQLAlchemy models
@@ -398,3 +402,26 @@ class ToolEquipmentAllocationRepo(ToolEquipmentAllocationRepositoryPort):
             ).where(ToolEquipmentAllocationModel.tool_equipment_id == tool_equipment_id)
         ).scalar_one()
         return result or Decimal(0)
+
+    def sum_allocated_by_tools(
+        self, tool_equipment_ids: list[sa.Uuid]
+    ) -> dict[sa.Uuid, sa.Numeric]:
+        """Batch sum of allocated amounts for multiple CCDC items."""
+        from decimal import Decimal
+
+        if not tool_equipment_ids:
+            return {}
+
+        result = self._session.execute(
+            sa.select(
+                ToolEquipmentAllocationModel.tool_equipment_id,
+                sa.func.coalesce(
+                    sa.func.sum(ToolEquipmentAllocationModel.allocated_amount),
+                    Decimal(0),
+                ),
+            )
+            .where(ToolEquipmentAllocationModel.tool_equipment_id.in_(tool_equipment_ids))
+            .group_by(ToolEquipmentAllocationModel.tool_equipment_id)
+        ).all()
+
+        return {row[0]: row[1] for row in result}

@@ -190,8 +190,6 @@ class ToolEquipment:
     @property
     def monthly_allocation(self) -> Decimal:
         """Monthly allocation amount (直线法)."""
-        if self.useful_life_months == 0:
-            return Decimal(0)
         return (self.purchase_price - self.salvage_value) / self.useful_life_months
 
     @property
@@ -246,7 +244,7 @@ class ToolEquipment:
         return payload
 
     def __repr__(self) -> str:
-        return f"<ToolEquipment {self.code!r} name={self.name!r} " f"status={self.status.value}>"
+        return f"<ToolEquipment {self.code!r} name={self.name!r} status={self.status.value}>"
 
 
 class ToolEquipmentAllocation:
