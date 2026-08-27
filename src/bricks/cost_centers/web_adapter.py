@@ -60,6 +60,8 @@ def _dv_svc() -> Any:
 
 WRITE_ROLES = ("ACCOUNTANT", "CHIEF_ACCOUNTANT", "ADMIN")
 CLOSE_ROLES = ("CHIEF_ACCOUNTANT", "ADMIN")
+AUTO_SEED_ROLES = ("ACCOUNTANT", "CHIEF_ACCOUNTANT", "ADMIN", "DIRECTOR")
+FY_ADMIN_ROLES = ("CHIEF_ACCOUNTANT", "ADMIN", "DIRECTOR")
 
 
 def _write(close: bool = False) -> None:
@@ -68,6 +70,14 @@ def _write(close: bool = False) -> None:
         abort(403, description="AUDITOR chỉ đọc")
     allowed = CLOSE_ROLES if close else WRITE_ROLES
     if role not in allowed:
+        abort(403)
+
+
+def _require_roles(roles: tuple[str, ...]) -> None:
+    role = getattr(current_user, "role", "")
+    if role == "AUDITOR":
+        abort(403, description="AUDITOR chỉ đọc")
+    if role not in roles:
         abort(403)
 
 
@@ -211,7 +221,7 @@ def list_dimensions() -> tuple[Any, int]:
 @cost_centers_bp.post("/api/v1/dimensions")
 @login_required  # type: ignore[untyped-decorator]
 def create_dimension() -> tuple[Any, int]:
-    _write()
+    _require_roles(AUTO_SEED_ROLES)
     body = request.get_json(silent=True) or {}
     try:
         dim = _dim_svc().create(
@@ -234,7 +244,7 @@ def create_dimension() -> tuple[Any, int]:
 @cost_centers_bp.patch("/api/v1/dimensions/<did>")
 @login_required  # type: ignore[untyped-decorator]
 def modify_dimension(did: str) -> tuple[Any, int]:
-    _write()
+    _require_roles(FY_ADMIN_ROLES)
     body = request.get_json(silent=True) or {}
     try:
         dim = _dim_svc().modify(
@@ -290,7 +300,7 @@ def list_dimension_values() -> tuple[Any, int]:
 @cost_centers_bp.post("/api/v1/dimension-values")
 @login_required  # type: ignore[untyped-decorator]
 def create_dimension_value() -> tuple[Any, int]:
-    _write()
+    _require_roles(AUTO_SEED_ROLES)
     body = request.get_json(silent=True) or {}
     try:
         dv = _dv_svc().create(
@@ -312,7 +322,7 @@ def create_dimension_value() -> tuple[Any, int]:
 @cost_centers_bp.patch("/api/v1/dimension-values/<dvid>")
 @login_required  # type: ignore[untyped-decorator]
 def modify_dimension_value(dvid: str) -> tuple[Any, int]:
-    _write()
+    _require_roles(FY_ADMIN_ROLES)
     body = request.get_json(silent=True) or {}
     try:
         dv = _dv_svc().modify(
@@ -331,7 +341,7 @@ def modify_dimension_value(dvid: str) -> tuple[Any, int]:
 @cost_centers_bp.post("/api/v1/dimension-values/<dvid>/deactivate")
 @login_required  # type: ignore[untyped-decorator]
 def deactivate_dimension_value(dvid: str) -> tuple[Any, int]:
-    _write()
+    _require_roles(CLOSE_ROLES)
     body = request.get_json(silent=True) or {}
     try:
         dv = _dv_svc().deactivate(
@@ -349,7 +359,7 @@ def deactivate_dimension_value(dvid: str) -> tuple[Any, int]:
 @cost_centers_bp.post("/api/v1/dimension-values/<dvid>/reactivate")
 @login_required  # type: ignore[untyped-decorator]
 def reactivate_dimension_value(dvid: str) -> tuple[Any, int]:
-    _write()
+    _require_roles(CLOSE_ROLES)
     body = request.get_json(silent=True) or {}
     try:
         dv = _dv_svc().reactivate(

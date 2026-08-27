@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 from decimal import Decimal  # noqa: F401
 from uuid import UUID
 
-from sqlalchemy import DateTime, String
+from sqlalchemy import DateTime, String, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
 
 from src.bricks.cost_centers.contract import (
@@ -125,13 +125,14 @@ class SQLAlchemyCostCenterRepository(CostCenterRepositoryPort):
 
 class DimensionModel(Base):
     __tablename__ = "dimensions"
+    __table_args__ = (UniqueConstraint("code", "company_id", name="uq_dimensions_code_company"),)
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     company_id: Mapped[str] = mapped_column(String(36), index=True)
     code: Mapped[str] = mapped_column(String(50))
     name: Mapped[str] = mapped_column(String(200))
-    type: Mapped[str] = mapped_column(String(20))
-    is_system: Mapped[bool] = mapped_column(default=False)
+    type: Mapped[str] = mapped_column(String(20), index=True)
+    is_system: Mapped[bool] = mapped_column(default=False, index=True)
     description: Mapped[str | None] = mapped_column(String(500), nullable=True)
     created_by: Mapped[str | None] = mapped_column(String(36), nullable=True)
     audit_checksum: Mapped[str] = mapped_column(String(64), default="")
@@ -197,6 +198,7 @@ class SQLAlchemyDimensionRepository(DimensionRepositoryPort):
         if m is None:
             raise ValueError("not found")
         m.name = dim.name
+        m.description = dim.description
         m.is_system = dim.is_system
         m.audit_checksum = dim.audit_checksum
         self._session.commit()
@@ -221,13 +223,21 @@ class SQLAlchemyDimensionRepository(DimensionRepositoryPort):
 
 class DimensionValueModel(Base):
     __tablename__ = "dimension_values"
+    __table_args__ = (
+        UniqueConstraint(
+            "code",
+            "dimension_id",
+            "company_id",
+            name="uq_dimension_values_code_dim_company",
+        ),
+    )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     company_id: Mapped[str] = mapped_column(String(36), index=True)
     dimension_id: Mapped[str] = mapped_column(String(36), index=True)
     code: Mapped[str] = mapped_column(String(50))
     name: Mapped[str] = mapped_column(String(200))
-    status: Mapped[str] = mapped_column(String(20), default="Active")
+    status: Mapped[str] = mapped_column(String(20), default="Active", index=True)
     description: Mapped[str | None] = mapped_column(String(500), nullable=True)
     created_by: Mapped[str | None] = mapped_column(String(36), nullable=True)
     audit_checksum: Mapped[str] = mapped_column(String(64), default="")
@@ -295,6 +305,7 @@ class SQLAlchemyDimensionValueRepository(DimensionValueRepositoryPort):
         if m is None:
             raise ValueError("not found")
         m.name = dv.name
+        m.description = dv.description
         m.status = dv.status.value
         m.audit_checksum = dv.audit_checksum
         self._session.commit()

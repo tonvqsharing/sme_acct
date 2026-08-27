@@ -58,7 +58,7 @@ class CostCenter:
 DIMENSION_CODE_RE = re.compile(r"^[A-Za-z][A-Za-z0-9\-]{0,49}$")
 
 
-class DimensionType(Enum):
+class DimensionType(str, Enum):
     PROJECT = "Project"
     LOCATION = "Location"
     PRODUCT = "Product"
@@ -68,7 +68,7 @@ class DimensionType(Enum):
     CUSTOM = "Custom"
 
 
-class DimensionValueStatus(Enum):
+class DimensionValueStatus(str, Enum):
     ACTIVE = "Active"
     INACTIVE = "Inactive"
 
