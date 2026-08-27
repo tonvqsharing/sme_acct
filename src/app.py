@@ -507,7 +507,7 @@ def create_app(config: dict | None = None) -> Flask:
     init_dimension_service(dim_svc)
 
     dv_repo = SQLAlchemyDimensionValueRepository(session_factory())
-    dv_svc = DimensionValueService(dv_repo)
+    dv_svc = DimensionValueService(dv_repo, dim_repo)
     init_dimension_value_service(dv_svc)
 
     init_settings_service(

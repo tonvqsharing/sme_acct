@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID
 
 from src.bricks.cost_centers.contract import (
@@ -85,7 +87,7 @@ class CostCenterService:
         a = _require(actor)
         cc = self._get_or_404(cid)
         if not cc.can_modify:
-            raise InvalidTransitionError("Chỉ TSCĐ ACTIVE mới được vô hiệu hóa")
+            raise InvalidTransitionError("Chỉ chi phí trung tâm ACTIVE mới được vô hiệu hóa")
         cc.status = CostCenterStatus.INACTIVE
         cc.audit_checksum = _stamp(cc, "DEACTIVATE", a, reason)
         saved: CostCenter = self._repo.update(cc)
@@ -94,8 +96,8 @@ class CostCenterService:
     def reactivate(self, cid: UUID, *, actor: UUID, reason: str = "") -> CostCenter:
         a = _require(actor)
         cc = self._get_or_404(cid)
-        if cc.status == CostCenterStatus.CLOSED:
-            raise InvalidTransitionError("TSCĐ đã đóng không thể mở lại")
+        if cc.status != CostCenterStatus.INACTIVE:
+            raise InvalidTransitionError("Chỉ chi phí INACTIVE mới được kích hoạt lại")
         cc.status = CostCenterStatus.ACTIVE
         cc.audit_checksum = _stamp(cc, "REACTIVATE", a, reason)
         saved: CostCenter = self._repo.update(cc)
@@ -104,6 +106,8 @@ class CostCenterService:
     def close(self, cid: UUID, *, actor: UUID, reason: str = "") -> CostCenter:
         a = _require(actor)
         cc = self._get_or_404(cid)
+        if cc.status != CostCenterStatus.ACTIVE:
+            raise InvalidTransitionError("Chỉ chi phí ACTIVE mới được đóng")
         cc.status = CostCenterStatus.CLOSED
         cc.audit_checksum = _stamp(cc, "CLOSE", a, reason)
         saved: CostCenter = self._repo.update(cc)
@@ -113,7 +117,7 @@ class CostCenterService:
         a = _require(actor)
         cc = self._get_or_404(cid)
         if not cc.can_modify:
-            raise InvalidTransitionError("Chỉ TSCĐ ACTIVE mới được sửa")
+            raise InvalidTransitionError("Chỉ chi phí trung tâm ACTIVE mới được sửa")
         cc.name = new_name.strip()
         cc.audit_checksum = _stamp(cc, "MODIFY", a, reason)
         saved: CostCenter = self._repo.update(cc)
@@ -145,7 +149,6 @@ class DimensionService:
         actor: UUID | None = None,
         reason: str = "",
         description: str | None = None,
-        is_system: bool = False,
     ) -> Dimension:
         a = _require(actor)
         if self._repo.exists_duplicate(company_id, code):
@@ -155,11 +158,11 @@ class DimensionService:
             code=(code or "").strip(),
             name=name.strip(),
             type=dimension_type,
-            is_system=is_system,
+            is_system=False,
             description=description,
             created_by=a,
         )
-        dim.audit_checksum = _stamp_dim(dim, "CREATE", a, reason)
+        dim.audit_checksum = _stamp_entity(dim, "CREATE", a, reason)
         return self._repo.create(dim)
 
     def get(self, did: UUID) -> Dimension | None:
@@ -170,20 +173,32 @@ class DimensionService:
     ) -> list[Dimension]:
         return self._repo.get_by_company(cid, dimension_type=dimension_type, is_system=is_system)
 
-    def modify(self, did: UUID, *, new_name: str, actor: UUID, reason: str = "") -> Dimension:
+    def modify(
+        self,
+        did: UUID,
+        *,
+        new_name: str,
+        description: str | None = None,
+        actor: UUID,
+        reason: str = "",
+    ) -> Dimension:
         a = _require(actor)
         dim = self._get_or_404(did)
         if not dim.can_modify:
             raise InvalidTransitionError("Hệ thống dimension không thể sửa")
         dim.name = new_name.strip()
-        dim.audit_checksum = _stamp_dim(dim, "MODIFY", a, reason)
+        if description is not None:
+            dim.description = description
+        dim.updated_at = datetime.now(UTC)
+        dim.audit_checksum = _stamp_entity(dim, "MODIFY", a, reason)
         return self._repo.update(dim)
 
     def set_system(self, did: UUID, *, actor: UUID, reason: str = "") -> Dimension:
         a = _require(actor)
         dim = self._get_or_404(did)
         dim.is_system = True
-        dim.audit_checksum = _stamp_dim(dim, "SET_SYSTEM", a, reason)
+        dim.updated_at = datetime.now(UTC)
+        dim.audit_checksum = _stamp_entity(dim, "SET_SYSTEM", a, reason)
         return self._repo.update(dim)
 
     def _get_or_404(self, did: UUID) -> Dimension:
@@ -199,8 +214,11 @@ class DimensionService:
 
 
 class DimensionValueService:
-    def __init__(self, repo: DimensionValueRepositoryPort) -> None:
+    def __init__(
+        self, repo: DimensionValueRepositoryPort, dim_repo: DimensionRepositoryPort
+    ) -> None:
         self._repo = repo
+        self._dim_repo = dim_repo
 
     def create(
         self,
@@ -214,6 +232,8 @@ class DimensionValueService:
         description: str | None = None,
     ) -> DimensionValue:
         a = _require(actor)
+        if self._dim_repo.get_by_id(dimension_id) is None:
+            raise NotFoundError(f"Không tìm thấy dimension {dimension_id}")
         if self._repo.exists_duplicate(dimension_id, company_id, code):
             raise DuplicateCodeError(f"Trùng mã: {code}")
         dv = DimensionValue(
@@ -224,7 +244,7 @@ class DimensionValueService:
             description=description,
             created_by=a,
         )
-        dv.audit_checksum = _stamp_dv(dv, "CREATE", a, reason)
+        dv.audit_checksum = _stamp_entity(dv, "CREATE", a, reason)
         return self._repo.create(dv)
 
     def get(self, dvid: UUID) -> DimensionValue | None:
@@ -241,7 +261,8 @@ class DimensionValueService:
         if not dv.can_modify:
             raise InvalidTransitionError("Dimension value đã INACTIVE")
         dv.status = DimensionValueStatus.INACTIVE
-        dv.audit_checksum = _stamp_dv(dv, "DEACTIVATE", a, reason)
+        dv.updated_at = datetime.now(UTC)
+        dv.audit_checksum = _stamp_entity(dv, "DEACTIVATE", a, reason)
         return self._repo.update(dv)
 
     def reactivate(self, dvid: UUID, *, actor: UUID, reason: str = "") -> DimensionValue:
@@ -250,16 +271,28 @@ class DimensionValueService:
         if dv.status == DimensionValueStatus.ACTIVE:
             raise InvalidTransitionError("Dimension value đã ACTIVE")
         dv.status = DimensionValueStatus.ACTIVE
-        dv.audit_checksum = _stamp_dv(dv, "REACTIVATE", a, reason)
+        dv.updated_at = datetime.now(UTC)
+        dv.audit_checksum = _stamp_entity(dv, "REACTIVATE", a, reason)
         return self._repo.update(dv)
 
-    def modify(self, dvid: UUID, *, new_name: str, actor: UUID, reason: str = "") -> DimensionValue:
+    def modify(
+        self,
+        dvid: UUID,
+        *,
+        new_name: str,
+        description: str | None = None,
+        actor: UUID,
+        reason: str = "",
+    ) -> DimensionValue:
         a = _require(actor)
         dv = self._get_or_404(dvid)
         if not dv.can_modify:
             raise InvalidTransitionError("Dimension value đã INACTIVE")
         dv.name = new_name.strip()
-        dv.audit_checksum = _stamp_dv(dv, "MODIFY", a, reason)
+        if description is not None:
+            dv.description = description
+        dv.updated_at = datetime.now(UTC)
+        dv.audit_checksum = _stamp_entity(dv, "MODIFY", a, reason)
         return self._repo.update(dv)
 
     def _get_or_404(self, dvid: UUID) -> DimensionValue:
@@ -274,11 +307,6 @@ class DimensionValueService:
 # ---------------------------------------------------------------------------
 
 
-def _stamp_dim(dim: Dimension, action: str, actor: UUID, reason: str) -> str:
-    prev = dim.audit_checksum or GENESIS_CHECKSUM
-    return dim.compute_checksum(prev, actor, action, reason)
-
-
-def _stamp_dv(dv: DimensionValue, action: str, actor: UUID, reason: str) -> str:
-    prev = dv.audit_checksum or GENESIS_CHECKSUM
-    return dv.compute_checksum(prev, actor, action, reason)
+def _stamp_entity(entity: Any, action: str, actor: UUID, reason: str) -> str:
+    prev: str = entity.audit_checksum or GENESIS_CHECKSUM
+    return str(entity.compute_checksum(prev, actor, action, reason))

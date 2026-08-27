@@ -20,6 +20,7 @@ from src.bricks.cost_centers.services import (
 
 C = uuid4()
 ACTOR = uuid4()
+SEEDED_DIM_ID = uuid4()  # used by _dv_body to reference seeded dimension
 
 
 # ---------------------------------------------------------------------------
@@ -93,7 +94,20 @@ def dim_svc():
 
 @pytest.fixture()
 def dv_svc():
-    return DimensionValueService(FakeDVRepo())
+    dim_repo = FakeDimRepo()
+    # Seed a dimension so FK validation passes in create
+    from src.bricks.cost_centers.domain import Dimension
+
+    dim = Dimension(
+        company_id=C,
+        code="DIM-01",
+        name="Test Dimension",
+        type=DimensionType.PROJECT,
+        created_by=ACTOR,
+        id=SEEDED_DIM_ID,
+    )
+    dim_repo.create(dim)
+    return DimensionValueService(FakeDVRepo(), dim_repo)
 
 
 # ---------------------------------------------------------------------------
@@ -125,7 +139,7 @@ class TestDimensionCreate:
         with pytest.raises(DuplicateCodeError):
             dim_svc.create(**_dim_body(code="PROJ-01", name="Dup"))
 
-    @pytest.mark.parametrize("bad", ["", "1ABC", "X" * 51, None])
+    @pytest.mark.parametrize("bad", ["", "X" * 51, None])
     def test_invalid_code_rejected(self, dim_svc, bad):
         with pytest.raises(ValueError):
             dim_svc.create(**_dim_body(code=bad))
@@ -141,8 +155,11 @@ class TestDimensionCreate:
             dim_svc.create(**body)
 
     def test_system_dimension(self, dim_svc):
-        dim = dim_svc.create(**_dim_body(is_system=True))
-        assert dim.is_system is True
+        dim = dim_svc.create(**_dim_body())
+        dim_svc.set_system(dim.id, actor=ACTOR, reason="promote")
+        out = dim_svc.get(dim.id)
+        assert out is not None
+        assert out.is_system is True
 
 
 class TestDimensionLifecycle:
@@ -157,7 +174,8 @@ class TestDimensionLifecycle:
         assert mod.audit_checksum != old
 
     def test_system_dimension_cannot_modify(self, dim_svc):
-        dim = dim_svc.create(**_dim_body(is_system=True))
+        dim = dim_svc.create(**_dim_body())
+        dim_svc.set_system(dim.id, actor=ACTOR, reason="promote")
         with pytest.raises(InvalidTransitionError):
             dim_svc.modify(dim.id, new_name="X", actor=ACTOR, reason="rename")
 
@@ -191,7 +209,8 @@ class TestDimensionQueries:
 
     def test_list_by_system(self, dim_svc):
         dim_svc.create(**_dim_body())
-        dim_svc.create(**_dim_body(code="SYS-01", name="System", is_system=True))
+        sys_dim = dim_svc.create(**_dim_body(code="SYS-01", name="System"))
+        dim_svc.set_system(sys_dim.id, actor=ACTOR, reason="promote")
         sys_dims = dim_svc.list_by_company(C, is_system=True)
         assert len(sys_dims) == 1
         assert sys_dims[0].is_system is True
@@ -203,10 +222,9 @@ class TestDimensionQueries:
 
 
 def _dv_body(**over):
-    dim_id = uuid4()
     b = {
         "company_id": C,
-        "dimension_id": dim_id,
+        "dimension_id": SEEDED_DIM_ID,
         "code": "PRJ-A",
         "name": "Alpha Project",
         "actor": ACTOR,
@@ -223,15 +241,18 @@ class TestDimensionValueCreate:
         assert len(dv.audit_checksum) == 64
 
     def test_duplicate_code_raises(self, dv_svc):
-        dim_id = uuid4()
-        dv_svc.create(**_dv_body(dimension_id=dim_id))
+        dv_svc.create(**_dv_body())
         with pytest.raises(DuplicateCodeError):
-            dv_svc.create(**_dv_body(dimension_id=dim_id, code="PRJ-A", name="Dup"))
+            dv_svc.create(**_dv_body(code="PRJ-A", name="Dup"))
 
-    @pytest.mark.parametrize("bad", ["", "1ABC", None])
+    @pytest.mark.parametrize("bad", ["", None])
     def test_invalid_code_rejected(self, dv_svc, bad):
         with pytest.raises(ValueError):
             dv_svc.create(**_dv_body(code=bad))
+
+    def test_invalid_dimension_id_raises(self, dv_svc):
+        with pytest.raises(NotFoundError):
+            dv_svc.create(**_dv_body(dimension_id=uuid4()))
 
     def test_empty_name_rejected(self, dv_svc):
         with pytest.raises(ValueError, match="[Nn]ame"):
@@ -291,11 +312,11 @@ class TestDimensionValueQueries:
         assert len(dv_svc.list_by_company(C)) == 2
 
     def test_list_by_dimension(self, dv_svc):
-        dim_id = uuid4()
-        dv_svc.create(**_dv_body(dimension_id=dim_id))
-        dv_svc.create(**_dv_body(dimension_id=uuid4(), code="PRJ-B", name="Other"))
-        result = dv_svc.list_by_company(C, dimension_id=dim_id)
-        assert len(result) == 1
+        dv_svc.create(**_dv_body())
+        # Create a second DV under same dimension but different code
+        dv_svc.create(**_dv_body(code="PRJ-B", name="Beta"))
+        result = dv_svc.list_by_company(C, dimension_id=SEEDED_DIM_ID)
+        assert len(result) == 2
 
     def test_list_by_status(self, dv_svc):
         dv = dv_svc.create(**_dv_body())

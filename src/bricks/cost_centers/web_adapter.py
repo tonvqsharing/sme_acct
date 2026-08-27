@@ -60,7 +60,7 @@ def _dv_svc() -> Any:
 
 WRITE_ROLES = ("ACCOUNTANT", "CHIEF_ACCOUNTANT", "ADMIN")
 CLOSE_ROLES = ("CHIEF_ACCOUNTANT", "ADMIN")
-AUTO_SEED_ROLES = ("ACCOUNTANT", "CHIEF_ACCOUNTANT", "ADMIN", "DIRECTOR")
+AUTO_SEED_ROLES = ("ACCOUNTANT", "CHIEF_ACCOUNTANT", "ADMIN")
 FY_ADMIN_ROLES = ("CHIEF_ACCOUNTANT", "ADMIN", "DIRECTOR")
 
 
@@ -106,6 +106,8 @@ def ser_dim(d: Any) -> dict[str, Any]:
         "type": d.type.value,
         "is_system": d.is_system,
         "description": d.description or "",
+        "created_by": str(d.created_by) if d.created_by else None,
+        "created_at": d.created_at.isoformat() if d.created_at else None,
         "checksum": d.audit_checksum,
     }
 
@@ -119,6 +121,8 @@ def ser_dv(dv: Any) -> dict[str, Any]:
         "is_active": dv.is_active,
         "dimension_id": str(dv.dimension_id),
         "description": dv.description or "",
+        "created_by": str(dv.created_by) if dv.created_by else None,
+        "created_at": dv.created_at.isoformat() if dv.created_at else None,
         "checksum": dv.audit_checksum,
     }
 
@@ -161,6 +165,52 @@ def create_cost_center() -> tuple[Any, int]:
     return jsonify({"data": ser_cc(cc)}), 201
 
 
+@cost_centers_bp.get("/api/v1/cost-centers/<cid>")
+@login_required  # type: ignore[untyped-decorator]
+def get_cost_center(cid: str) -> tuple[Any, int]:
+    cc = _svc().get(UUID(cid))
+    if cc is None:
+        abort(404, description="Không tìm thấy")
+    return jsonify({"data": ser_cc(cc)}), 200
+
+
+@cost_centers_bp.patch("/api/v1/cost-centers/<cid>")
+@login_required  # type: ignore[untyped-decorator]
+def modify_cost_center(cid: str) -> tuple[Any, int]:
+    _require_roles(FY_ADMIN_ROLES)
+    body = request.get_json(silent=True) or {}
+    try:
+        out = _svc().modify(
+            UUID(cid),
+            new_name=body.get("name", ""),
+            actor=UUID(str(current_user.id)),
+            reason=body.get("reason") or "modify",
+        )
+    except (InvalidTransitionError, NotFoundError) as exc:
+        return jsonify({"error": str(exc), "code": "INVALID_TRANSITION"}), 409
+    except ValueError as exc:
+        abort(422, description=str(exc))
+    return jsonify({"data": ser_cc(out)}), 200
+
+
+@cost_centers_bp.post("/api/v1/cost-centers/<cid>/reactivate")
+@login_required  # type: ignore[untyped-decorator]
+def reactivate_cost_center(cid: str) -> tuple[Any, int]:
+    _require_roles(CLOSE_ROLES)
+    body = request.get_json(silent=True) or {}
+    try:
+        out = _svc().reactivate(
+            UUID(cid),
+            actor=UUID(str(current_user.id)),
+            reason=body.get("reason") or "reactivate",
+        )
+    except (InvalidTransitionError, NotFoundError) as exc:
+        return jsonify({"error": str(exc), "code": "INVALID_TRANSITION"}), 409
+    except ValueError as exc:
+        abort(422, description=str(exc))
+    return jsonify({"data": ser_cc(out)}), 200
+
+
 @cost_centers_bp.post("/api/v1/cost-centers/<cid>/deactivate")
 @login_required  # type: ignore[untyped-decorator]
 def deactivate_cc(cid: str) -> tuple[Any, int]:
@@ -182,7 +232,7 @@ def deactivate_cc(cid: str) -> tuple[Any, int]:
 @cost_centers_bp.post("/api/v1/cost-centers/<cid>/close")
 @login_required  # type: ignore[untyped-decorator]
 def close_cc(cid: str) -> tuple[Any, int]:
-    _write(close=True)
+    _require_roles(CLOSE_ROLES)  # CHIEF_ACCOUNTANT, ADMIN per spec
     body = request.get_json(silent=True) or {}
     try:
         out = _svc().close(
@@ -218,6 +268,15 @@ def list_dimensions() -> tuple[Any, int]:
     return jsonify({"data": [ser_dim(x) for x in rows]}), 200
 
 
+@cost_centers_bp.get("/api/v1/dimensions/<did>")
+@login_required  # type: ignore[untyped-decorator]
+def get_dimension(did: str) -> tuple[Any, int]:
+    dim = _dim_svc().get(UUID(did))
+    if dim is None:
+        abort(404, description="Không tìm thấy")
+    return jsonify({"data": ser_dim(dim)}), 200
+
+
 @cost_centers_bp.post("/api/v1/dimensions")
 @login_required  # type: ignore[untyped-decorator]
 def create_dimension() -> tuple[Any, int]:
@@ -232,7 +291,6 @@ def create_dimension() -> tuple[Any, int]:
             actor=UUID(str(current_user.id)),
             reason=body.get("reason") or "create",
             description=body.get("description"),
-            is_system=body.get("is_system", False),
         )
     except DuplicateCodeError as exc:
         return jsonify({"error": str(exc), "code": "DUPLICATE_DIMENSION"}), 409
@@ -250,6 +308,7 @@ def modify_dimension(did: str) -> tuple[Any, int]:
         dim = _dim_svc().modify(
             UUID(did),
             new_name=body.get("name", ""),
+            description=body.get("description"),
             actor=UUID(str(current_user.id)),
             reason=body.get("reason") or "modify",
         )
@@ -263,7 +322,7 @@ def modify_dimension(did: str) -> tuple[Any, int]:
 @cost_centers_bp.post("/api/v1/dimensions/<did>/set-system")
 @login_required  # type: ignore[untyped-decorator]
 def set_system_dimension(did: str) -> tuple[Any, int]:
-    _write(close=True)
+    _require_roles(CLOSE_ROLES)  # CHIEF_ACCOUNTANT, ADMIN per spec
     body = request.get_json(silent=True) or {}
     try:
         dim = _dim_svc().set_system(
@@ -328,6 +387,7 @@ def modify_dimension_value(dvid: str) -> tuple[Any, int]:
         dv = _dv_svc().modify(
             UUID(dvid),
             new_name=body.get("name", ""),
+            description=body.get("description"),
             actor=UUID(str(current_user.id)),
             reason=body.get("reason") or "modify",
         )
@@ -341,7 +401,7 @@ def modify_dimension_value(dvid: str) -> tuple[Any, int]:
 @cost_centers_bp.post("/api/v1/dimension-values/<dvid>/deactivate")
 @login_required  # type: ignore[untyped-decorator]
 def deactivate_dimension_value(dvid: str) -> tuple[Any, int]:
-    _require_roles(CLOSE_ROLES)
+    _require_roles(AUTO_SEED_ROLES)
     body = request.get_json(silent=True) or {}
     try:
         dv = _dv_svc().deactivate(
@@ -359,7 +419,7 @@ def deactivate_dimension_value(dvid: str) -> tuple[Any, int]:
 @cost_centers_bp.post("/api/v1/dimension-values/<dvid>/reactivate")
 @login_required  # type: ignore[untyped-decorator]
 def reactivate_dimension_value(dvid: str) -> tuple[Any, int]:
-    _require_roles(CLOSE_ROLES)
+    _require_roles(AUTO_SEED_ROLES)
     body = request.get_json(silent=True) or {}
     try:
         dv = _dv_svc().reactivate(

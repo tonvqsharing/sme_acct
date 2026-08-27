@@ -55,7 +55,7 @@ class CostCenter:
 # Dimension entities — per specs §1.1.2, §1.3.2, §1.3.3
 # ---------------------------------------------------------------------------
 
-DIMENSION_CODE_RE = re.compile(r"^[A-Za-z][A-Za-z0-9\-]{0,49}$")
+DIMENSION_CODE_RE = re.compile(r"^[A-Z0-9-]{2,50}$")
 
 
 class DimensionType(str, Enum):
@@ -84,6 +84,7 @@ class Dimension:
     created_by: UUID | None = None
     id: UUID = field(default_factory=uuid4)
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     audit_checksum: str = ""
 
     def __post_init__(self) -> None:
@@ -96,8 +97,11 @@ class Dimension:
     def can_modify(self) -> bool:
         return not self.is_system
 
-    def compute_checksum(self, prev: str, actor: UUID, action: str, reason: str) -> str:
-        payload = f"{prev}{self.id}{actor}{action}{reason}"
+    def compute_checksum(
+        self, prev: str, actor: UUID, action: str, reason: str, ts: datetime | None = None
+    ) -> str:
+        stamp = ts or datetime.now(UTC)
+        payload = f"{prev}|{self.id}|{action}|{actor}|{reason}|{stamp.isoformat()}"
         return hashlib.sha256(payload.encode()).hexdigest()
 
 
@@ -112,6 +116,7 @@ class DimensionValue:
     created_by: UUID | None = None
     id: UUID = field(default_factory=uuid4)
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     audit_checksum: str = ""
 
     def __post_init__(self) -> None:
@@ -128,6 +133,9 @@ class DimensionValue:
     def can_modify(self) -> bool:
         return self.status == DimensionValueStatus.ACTIVE
 
-    def compute_checksum(self, prev: str, actor: UUID, action: str, reason: str) -> str:
-        payload = f"{prev}{self.id}{actor}{action}{reason}"
+    def compute_checksum(
+        self, prev: str, actor: UUID, action: str, reason: str, ts: datetime | None = None
+    ) -> str:
+        stamp = ts or datetime.now(UTC)
+        payload = f"{prev}|{self.id}|{action}|{actor}|{reason}|{stamp.isoformat()}"
         return hashlib.sha256(payload.encode()).hexdigest()

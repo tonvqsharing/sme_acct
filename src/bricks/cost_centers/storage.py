@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 from decimal import Decimal  # noqa: F401
 from uuid import UUID
 
-from sqlalchemy import DateTime, String, UniqueConstraint
+from sqlalchemy import DateTime, ForeignKey, String, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
 
 from src.bricks.cost_centers.contract import (
@@ -30,6 +30,7 @@ class Base(DeclarativeBase):
 
 class CostCenterModel(Base):
     __tablename__ = "cost_centers"
+    __table_args__ = (UniqueConstraint("code", "company_id", name="uq_cost_centers_code_company"),)
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     company_id: Mapped[str] = mapped_column(String(36), index=True)
@@ -140,6 +141,11 @@ class DimensionModel(Base):
         DateTime(timezone=True),
         default=lambda: datetime.now(UTC),
     )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
+    )
 
 
 class SQLAlchemyDimensionRepository(DimensionRepositoryPort):
@@ -158,6 +164,7 @@ class SQLAlchemyDimensionRepository(DimensionRepositoryPort):
             description=m.description,
             created_by=UUID(m.created_by) if m.created_by else None,
             created_at=m.created_at,
+            updated_at=m.updated_at,
             audit_checksum=m.audit_checksum,
         )
 
@@ -234,7 +241,7 @@ class DimensionValueModel(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     company_id: Mapped[str] = mapped_column(String(36), index=True)
-    dimension_id: Mapped[str] = mapped_column(String(36), index=True)
+    dimension_id: Mapped[str] = mapped_column(String(36), ForeignKey("dimensions.id"), index=True)
     code: Mapped[str] = mapped_column(String(50))
     name: Mapped[str] = mapped_column(String(200))
     status: Mapped[str] = mapped_column(String(20), default="Active", index=True)
@@ -244,6 +251,11 @@ class DimensionValueModel(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(UTC),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
     )
 
 
@@ -263,6 +275,7 @@ class SQLAlchemyDimensionValueRepository(DimensionValueRepositoryPort):
             description=m.description,
             created_by=UUID(m.created_by) if m.created_by else None,
             created_at=m.created_at,
+            updated_at=m.updated_at,
             audit_checksum=m.audit_checksum,
         )
 

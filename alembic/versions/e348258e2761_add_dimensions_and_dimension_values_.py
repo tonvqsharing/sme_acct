@@ -30,6 +30,7 @@ def upgrade() -> None:
         sa.Column('created_by', sa.String(length=36), nullable=True),
         sa.Column('audit_checksum', sa.String(length=64), nullable=False),
         sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
+        sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),
         sa.PrimaryKeyConstraint('id'),
         sa.UniqueConstraint('code', 'company_id', name='uq_dimensions_code_company'),
     )
@@ -42,7 +43,7 @@ def upgrade() -> None:
         'dimension_values',
         sa.Column('id', sa.String(length=36), nullable=False),
         sa.Column('company_id', sa.String(length=36), nullable=False),
-        sa.Column('dimension_id', sa.String(length=36), nullable=False),
+        sa.Column('dimension_id', sa.String(length=36), sa.ForeignKey('dimensions.id'), nullable=False),
         sa.Column('code', sa.String(length=50), nullable=False),
         sa.Column('name', sa.String(length=200), nullable=False),
         sa.Column('status', sa.String(length=20), nullable=False),
@@ -50,6 +51,7 @@ def upgrade() -> None:
         sa.Column('created_by', sa.String(length=36), nullable=True),
         sa.Column('audit_checksum', sa.String(length=64), nullable=False),
         sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
+        sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),
         sa.PrimaryKeyConstraint('id'),
         sa.UniqueConstraint(
             'code', 'dimension_id', 'company_id',
