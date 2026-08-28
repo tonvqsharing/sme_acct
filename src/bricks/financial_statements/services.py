@@ -234,3 +234,29 @@ class BalanceSheetService:
             )
 
         return lines
+
+
+class IncomeStatementService:
+    """Compute Income Statement (B02-DN) from account balances.
+
+    Pure Python — no Flask/SQLAlchemy imports.
+    """
+
+    def __init__(self) -> None:
+        self._engine = ReportEngine()
+
+    def compute(
+        self,
+        template: ReportTemplate,
+        account_balances: dict[str, dict[str, Decimal]],
+    ) -> list[ReportInstanceLine]:
+        """Compute all Income Statement lines.
+
+        Args:
+            template: B02-DN template with lines.
+            account_balances: {account_code: {"debit": Decimal, "credit": Decimal}}
+
+        Returns:
+            List of computed ReportInstanceLine values.
+        """
+        return self._engine.compute(template, account_balances)

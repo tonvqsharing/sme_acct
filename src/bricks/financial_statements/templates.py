@@ -6,17 +6,11 @@ No Flask/SQLAlchemy imports.
 
 from __future__ import annotations
 
-from uuid import uuid4
-
 from src.bricks.financial_statements.domain import (
     LineType,
     ReportTemplate,
     ReportTemplateLine,
 )
-
-
-def _id() -> str:
-    return str(uuid4())
 
 
 def b01_dn_template() -> ReportTemplate:
@@ -307,5 +301,197 @@ def b01_dn_template() -> ReportTemplate:
         code="B01-DN",
         name="Bảng cân đối kế toán",
         description="Statement of Financial Position per TT99 Appendix IV",
+        lines=lines,
+    )
+
+
+def b02_dn_template() -> ReportTemplate:
+    """B02-DN: Statement of Profit or Loss (Income Statement).
+
+    TT99 Appendix IV structure:
+    A. Net Revenue (511 - 521)
+    B. Cost of Goods Sold (632)
+    GROSS PROFIT (A - B)
+    C. Sales Expenses (641)
+    D. Admin Expenses (642)
+    OPERATING PROFIT (A - B - C - D)
+    E. Financial Income (515)
+    F. Financial Expenses (635)
+    NET FINANCIAL (E - F)
+    G. Other Income (711)
+    H. Other Expenses (811)
+    PROFIT BEFORE TAX
+    I. Income Tax Expense (821)
+    NET PROFIT
+    """
+    lines = [
+        # ── A. NET REVENUE ────────────────────────────────────────────
+        ReportTemplateLine(
+            template_id=None,  # type: ignore[arg-type]
+            line_code="A",
+            line_name="Doanh thu bán hàng và cung cấp dịch vụ",
+            line_type=LineType.ACCOUNT_AGGREGATE,
+            account_codes=["511"],
+            level=0,
+            sort_order=1,
+            sign=-1,  # Revenue: credit balance → sign flip
+        ),
+        ReportTemplateLine(
+            template_id=None,  # type: ignore[arg-type]
+            line_code="A_DISC",
+            line_name="Chiết khấu bán hàng",
+            line_type=LineType.ACCOUNT_AGGREGATE,
+            account_codes=["521"],
+            level=0,
+            sort_order=2,
+            sign=1,  # Contra-revenue: debit balance → positive
+        ),
+        ReportTemplateLine(
+            template_id=None,  # type: ignore[arg-type]
+            line_code="A_NET",
+            line_name="Doanh thu thuần",
+            line_type=LineType.FORMULA,
+            formula="A-A_DISC",
+            level=0,
+            sort_order=3,
+        ),
+        # ── B. COST OF GOODS SOLD ─────────────────────────────────────
+        ReportTemplateLine(
+            template_id=None,  # type: ignore[arg-type]
+            line_code="B",
+            line_name="Giá vốn hàng bán",
+            line_type=LineType.ACCOUNT_AGGREGATE,
+            account_codes=["632"],
+            level=0,
+            sort_order=10,
+        ),
+        # ── GROSS PROFIT ──────────────────────────────────────────────
+        ReportTemplateLine(
+            template_id=None,  # type: ignore[arg-type]
+            line_code="GROSS_PROFIT",
+            line_name="Lợi nhuận gộp về bán hàng và cung cấp dịch vụ",
+            line_type=LineType.FORMULA,
+            formula="A_NET-B",
+            level=0,
+            sort_order=15,
+        ),
+        # ── C. SALES EXPENSES ─────────────────────────────────────────
+        ReportTemplateLine(
+            template_id=None,  # type: ignore[arg-type]
+            line_code="C",
+            line_name="Chi phí bán hàng",
+            line_type=LineType.ACCOUNT_AGGREGATE,
+            account_codes=["641"],
+            level=0,
+            sort_order=20,
+        ),
+        # ── D. ADMIN EXPENSES ─────────────────────────────────────────
+        ReportTemplateLine(
+            template_id=None,  # type: ignore[arg-type]
+            line_code="D",
+            line_name="Chi phí quản lý doanh nghiệp",
+            line_type=LineType.ACCOUNT_AGGREGATE,
+            account_codes=["642"],
+            level=0,
+            sort_order=25,
+        ),
+        # ── OPERATING PROFIT ──────────────────────────────────────────
+        ReportTemplateLine(
+            template_id=None,  # type: ignore[arg-type]
+            line_code="OP_PROFIT",
+            line_name="Lợi nhuận từ hoạt động kinh doanh",
+            line_type=LineType.FORMULA,
+            formula="GROSS_PROFIT-C-D",
+            level=0,
+            sort_order=30,
+        ),
+        # ── E. FINANCIAL INCOME ───────────────────────────────────────
+        ReportTemplateLine(
+            template_id=None,  # type: ignore[arg-type]
+            line_code="E",
+            line_name="Thu nhập tài chính",
+            line_type=LineType.ACCOUNT_AGGREGATE,
+            account_codes=["515"],
+            level=0,
+            sort_order=40,
+            sign=-1,  # Revenue: credit balance → sign flip
+        ),
+        # ── F. FINANCIAL EXPENSES ─────────────────────────────────────
+        ReportTemplateLine(
+            template_id=None,  # type: ignore[arg-type]
+            line_code="F",
+            line_name="Chi phí tài chính",
+            line_type=LineType.ACCOUNT_AGGREGATE,
+            account_codes=["635"],
+            level=0,
+            sort_order=45,
+        ),
+        # ── NET FINANCIAL ─────────────────────────────────────────────
+        ReportTemplateLine(
+            template_id=None,  # type: ignore[arg-type]
+            line_code="NET_FIN",
+            line_name="Thu nhập (chi phí) tài chính thuần",
+            line_type=LineType.FORMULA,
+            formula="E-F",
+            level=0,
+            sort_order=50,
+        ),
+        # ── G. OTHER INCOME ───────────────────────────────────────────
+        ReportTemplateLine(
+            template_id=None,  # type: ignore[arg-type]
+            line_code="G",
+            line_name="Thu nhập khác",
+            line_type=LineType.ACCOUNT_AGGREGATE,
+            account_codes=["711"],
+            level=0,
+            sort_order=55,
+            sign=-1,  # Revenue: credit balance → sign flip
+        ),
+        # ── H. OTHER EXPENSES ─────────────────────────────────────────
+        ReportTemplateLine(
+            template_id=None,  # type: ignore[arg-type]
+            line_code="H",
+            line_name="Chi phí khác",
+            line_type=LineType.ACCOUNT_AGGREGATE,
+            account_codes=["811"],
+            level=0,
+            sort_order=60,
+        ),
+        # ── PROFIT BEFORE TAX ─────────────────────────────────────────
+        ReportTemplateLine(
+            template_id=None,  # type: ignore[arg-type]
+            line_code="PROFIT_BT",
+            line_name="Lợi nhuận trước thuế thu nhập doanh nghiệp",
+            line_type=LineType.FORMULA,
+            formula="OP_PROFIT+NET_FIN+G-H",
+            level=0,
+            sort_order=65,
+        ),
+        # ── I. INCOME TAX ─────────────────────────────────────────────
+        ReportTemplateLine(
+            template_id=None,  # type: ignore[arg-type]
+            line_code="I",
+            line_name="Chi phí thuế thu nhập doanh nghiệp",
+            line_type=LineType.ACCOUNT_AGGREGATE,
+            account_codes=["821"],
+            level=0,
+            sort_order=70,
+        ),
+        # ── NET PROFIT ────────────────────────────────────────────────
+        ReportTemplateLine(
+            template_id=None,  # type: ignore[arg-type]
+            line_code="NET_PROFIT",
+            line_name="Lợi nhuận sau thuế thu nhập doanh nghiệp",
+            line_type=LineType.FORMULA,
+            formula="PROFIT_BT-I",
+            level=0,
+            sort_order=99,
+        ),
+    ]
+
+    return ReportTemplate(
+        code="B02-DN",
+        name="Báo cáo kết quả hoạt động kinh doanh",
+        description="Statement of Profit or Loss per TT99 Appendix IV",
         lines=lines,
     )
