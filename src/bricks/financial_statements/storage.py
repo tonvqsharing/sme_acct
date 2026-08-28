@@ -6,7 +6,7 @@ from datetime import date
 from decimal import Decimal
 from uuid import UUID
 
-from sqlalchemy import Date, ForeignKey, String
+from sqlalchemy import Date, ForeignKey, String, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
 from sqlalchemy.types import JSON
 
@@ -89,7 +89,7 @@ class RetainedEarningsModel(Base):
     dividends: Mapped[Decimal] = mapped_column(default=Decimal(0))
     checksum: Mapped[str] = mapped_column(String(64), default="")
 
-    __table_args__ = ({"unique_together": ("company_id", "fiscal_year_id")},)
+    __table_args__ = (UniqueConstraint("company_id", "fiscal_year_id"),)
 
 
 def _template_to_domain(m: ReportTemplateModel) -> ReportTemplate:

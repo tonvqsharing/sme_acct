@@ -74,7 +74,7 @@ class TestClassifyAccount:
             classify_account("abc")
 
     def test_invalid_code_zero_start(self) -> None:
-        with pytest.raises(ValueError, match="must be 1-5"):
+        with pytest.raises(ValueError, match="must be 1-9"):
             classify_account("011")
 
     def test_invalid_code_digit_6_plus(self) -> None:

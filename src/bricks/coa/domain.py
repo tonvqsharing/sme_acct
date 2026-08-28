@@ -103,15 +103,14 @@ _ACCOUNT_TYPE_MAP: dict[int, AccountType] = {
 def classify_account(code: str) -> AccountType:
     """Auto-classify account by first digit of code (TT99 Appendix II).
 
-    Raises ValueError if code does not start with a valid digit (1-5).
+    Digits 1-5 map directly: 1=ASSET, 2=LIABILITY, 3=EQUITY, 4=REVENUE, 5=EXPENSE.
+    Digits 6-9 (TT133 settlement/other accounts) map to EXPENSE (debit-normal).
     """
     if not code or not code[0].isdigit():
         raise ValueError(f"Account code must start with digit, got '{code}'")
     first = int(code[0])
     if first not in _ACCOUNT_TYPE_MAP:
-        raise ValueError(
-            f"Unsupported account type digit {first} — " f"must be 1-5 per TT99 Appendix II"
-        )
+        raise ValueError(f"Unsupported account type digit {first} — must be 1-9")
     return _ACCOUNT_TYPE_MAP[first]
 
 

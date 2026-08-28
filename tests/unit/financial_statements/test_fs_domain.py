@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import date
 from decimal import Decimal
 from uuid import uuid4
 
@@ -142,8 +143,8 @@ class TestReportInstance:
         inst = ReportInstance(
             template_id=uuid4(),
             company_id=uuid4(),
-            period_from=__import__("datetime").date(2026, 1, 1),
-            period_to=__import__("datetime").date(2026, 12, 31),
+            period_from=date(2026, 1, 1),
+            period_to=date(2026, 12, 31),
         )
         assert inst.status == "DRAFT"
         assert inst.lines == []
