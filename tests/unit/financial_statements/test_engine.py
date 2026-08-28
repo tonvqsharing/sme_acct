@@ -25,10 +25,6 @@ def _make_template(lines: list[ReportTemplateLine]) -> ReportTemplate:
     return ReportTemplate(code="TEST", name="Test", lines=lines)
 
 
-def _bal(code: str, debit: str = "0", credit: str = "0") -> tuple[str, dict[str, Decimal]]:
-    return code, {"debit": Decimal(debit), "credit": Decimal(credit)}
-
-
 class TestAccountAggregate:
     """ACCOUNT_AGGREGATE: sum of specified account codes."""
 
