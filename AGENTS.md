@@ -7,7 +7,7 @@ _Flask + SQLAlchemy app for Vietnamese SME accounting. Architecture: Modular Hex
 Package manager is `uv`. Prefix everything with `uv run` — no venv activation needed.
 
 ```bash
-uv run pytest -q                                  # full suite (currently 800 passing)
+uv run pytest -q                                  # full suite (currently 830 passing)
 uv run pytest tests/unit/company/ -k "<name>" -v  # single test / focused run
 uv run ruff check src tests                       # lint
 uv run black --check src tests                    # format check
@@ -127,7 +127,7 @@ Vietnamese compliance rules baked into specs: MST tax-ID format (`^[1-9]\d{2}(-\
 | XML Invoice Ingest | ✅ done — TT91/2026 symbol parser, GDT XML parser (namespace-aware), PurchaseService bridge, single + batch upload endpoints; 51 tests (32 domain + 11 service + 8 integration) | — |
 | Cost Centers | ✅ done — code/name/status lifecycle (Active→Inactive/Closed), checksum chain, duplicate guard, deactivate/reactivate/close endpoints; Dimension + DimensionValue CRUD/lifecycle with spec-correct RBAC, FK validation, updated_at (43 unit tests) | `docs/cost-centers-dimensions/` |
 | System Settings (rest), Multi-company | ✅ System Settings done — period lock/unlock, CONFIG flags (fiscal year, VAT cycle, decimal places), legal review stamp, CONFIG_FLAGS allowlist, domain-level validation; 53 unit + 18 integration tests; multi-company deferred | `docs/system-settings/` |
-| Financial Statements | 🔬 specs done — BRD + SPECS + USE CASES + DATA FLOWS + USER JOURNEYS + TEMPLATES written; implementation pending (next brick) | `docs/financial-statements/` |
+| Financial Statements | 🔬 Phase 1 done — domain + storage + 30 unit tests (Sprint 3: report templates, instances, retained earnings); specs complete | `docs/financial-statements/` |
 
 ## Migrations
 
