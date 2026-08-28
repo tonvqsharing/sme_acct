@@ -127,6 +127,7 @@ Vietnamese compliance rules baked into specs: MST tax-ID format (`^[1-9]\d{2}(-\
 | XML Invoice Ingest | ✅ done — TT91/2026 symbol parser, GDT XML parser (namespace-aware), PurchaseService bridge, single + batch upload endpoints; 51 tests (32 domain + 11 service + 8 integration) | — |
 | Cost Centers | ✅ done — code/name/status lifecycle (Active→Inactive/Closed), checksum chain, duplicate guard, deactivate/reactivate/close endpoints; Dimension + DimensionValue CRUD/lifecycle with spec-correct RBAC, FK validation, updated_at (43 unit tests) | `docs/cost-centers-dimensions/` |
 | System Settings (rest), Multi-company | ✅ System Settings done — period lock/unlock, CONFIG flags (fiscal year, VAT cycle, decimal places), legal review stamp, CONFIG_FLAGS allowlist, domain-level validation; 53 unit + 18 integration tests; multi-company deferred | `docs/system-settings/` |
+| Financial Statements | 🔬 specs done — BRD + SPECS + USE CASES + DATA FLOWS + USER JOURNEYS + TEMPLATES written; implementation pending (next brick) | `docs/financial-statements/` |
 
 ## Migrations
 
