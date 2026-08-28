@@ -333,3 +333,97 @@ class TestPeriodCloseServiceExpenseTransfer:
             assert isinstance(line["account_code"], str)
             assert isinstance(line["debit"], str)
             assert isinstance(line["credit"], str)
+
+
+class TestPeriodCloseServiceCITProvision:
+    """Tests for CIT provision (FS-063)."""
+
+    def setup_method(self):
+        self.svc = PeriodCloseService()
+
+    def test_positive_net_income(self):
+        """Positive net income → CIT provision at 20%."""
+        result = self.svc.calculate_cit_provision(
+            company_id=uuid4(),
+            fiscal_year=2026,
+            period=7,
+            net_income=Decimal(10000000),
+        )
+        assert result is not None
+        assert result.entry_type == ClosingEntryType.CIT_PROVISION
+        assert result.amount == Decimal(2000000)  # 10M × 20%
+        assert len(result.lines) == 2
+        assert result.lines[0]["account_code"] == "8211"
+        assert result.lines[0]["debit"] == "2000000"
+        assert result.lines[1]["account_code"] == "3334"
+        assert result.lines[1]["credit"] == "2000000"
+
+    def test_zero_net_income(self):
+        """Zero net income → no CIT provision."""
+        result = self.svc.calculate_cit_provision(
+            company_id=uuid4(),
+            fiscal_year=2026,
+            period=7,
+            net_income=Decimal(0),
+        )
+        assert result is None
+
+    def test_negative_net_income(self):
+        """Negative net income (loss) → no CIT provision."""
+        result = self.svc.calculate_cit_provision(
+            company_id=uuid4(),
+            fiscal_year=2026,
+            period=7,
+            net_income=Decimal(-5000000),
+        )
+        assert result is None
+
+    def test_custom_cit_rate(self):
+        """Custom CIT rate (e.g., preferential 17%)."""
+        result = self.svc.calculate_cit_provision(
+            company_id=uuid4(),
+            fiscal_year=2026,
+            period=7,
+            net_income=Decimal(10000000),
+            cit_rate=Decimal("0.17"),
+        )
+        assert result is not None
+        assert result.amount == Decimal(1700000)  # 10M × 17%
+
+    def test_cit_rounding(self):
+        """CIT amount rounds to nearest integer."""
+        result = self.svc.calculate_cit_provision(
+            company_id=uuid4(),
+            fiscal_year=2026,
+            period=7,
+            net_income=Decimal("3333333"),
+        )
+        assert result is not None
+        # 3333333 × 0.20 = 666666.6 → rounds to 666667
+        assert result.amount == Decimal("666667")
+
+    def test_description_format(self):
+        """Description includes period and year."""
+        result = self.svc.calculate_cit_provision(
+            company_id=uuid4(),
+            fiscal_year=2026,
+            period=7,
+            net_income=Decimal(5000000),
+        )
+        assert result is not None
+        assert "7/2026" in result.description
+        assert "Thuế TNDN" in result.description
+
+    def test_voucher_lines_are_strings(self):
+        """Voucher lines must have string values for VoucherService."""
+        result = self.svc.calculate_cit_provision(
+            company_id=uuid4(),
+            fiscal_year=2026,
+            period=7,
+            net_income=Decimal(5000000),
+        )
+        assert result is not None
+        for line in result.lines:
+            assert isinstance(line["account_code"], str)
+            assert isinstance(line["debit"], str)
+            assert isinstance(line["credit"], str)

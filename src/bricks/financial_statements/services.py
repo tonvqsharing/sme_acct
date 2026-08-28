@@ -528,3 +528,57 @@ class PeriodCloseService:
             amount=total_expense,
             lines=expense_entries,
         )
+
+    def calculate_cit_provision(
+        self,
+        company_id: object,
+        fiscal_year: int,
+        period: int,
+        net_income: Decimal,
+        cit_rate: Decimal = Decimal("0.20"),
+    ) -> ClosingEntry | None:
+        """Step 5: Calculate CIT provision.
+
+        Vietnamese CIT (Thuế TNDN):
+        - Rate: 20% standard (per Luật thuế TNDN 2008, Art. 13)
+        - Entry: Dr. 8211 (Thuế TNDN hiện hành) / Cr. 3334 (Thuế TNDN phải nộp)
+        - If net_income <= 0, no CIT provision needed (loss carryforward)
+
+        Args:
+            company_id: Company UUID (passed through, not used in calculation).
+            fiscal_year: Fiscal year number.
+            period: Period number (1-12).
+            net_income: Net income from revenue - expense transfer (911 balance).
+            cit_rate: CIT rate (default 20%).
+
+        Returns:
+            ClosingEntry with voucher lines, or None if net_income <= 0.
+        """
+        if net_income <= ZERO:
+            return None
+
+        cit_amount = (net_income * cit_rate).quantize(Decimal(1))
+
+        description = f"Thuế TNDN tháng {period}/{fiscal_year}"
+
+        lines = [
+            {
+                "account_code": CIT_EXPENSE_ACCOUNT,
+                "debit": str(cit_amount),
+                "credit": "0",
+            },
+            {
+                "account_code": CIT_PAYABLE_ACCOUNT,
+                "debit": "0",
+                "credit": str(cit_amount),
+            },
+        ]
+
+        return ClosingEntry(
+            entry_type=ClosingEntryType.CIT_PROVISION,
+            description=description,
+            debit_account=CIT_EXPENSE_ACCOUNT,
+            credit_account=CIT_PAYABLE_ACCOUNT,
+            amount=cit_amount,
+            lines=lines,
+        )
