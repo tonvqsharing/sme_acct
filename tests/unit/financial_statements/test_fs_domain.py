@@ -7,7 +7,10 @@ from decimal import Decimal
 from uuid import uuid4
 
 from src.bricks.financial_statements.domain import (
+    ClosingEntry,
+    ClosingEntryType,
     LineType,
+    PeriodCloseResult,
     ReportInstance,
     ReportInstanceLine,
     ReportTemplate,
@@ -159,3 +162,127 @@ class TestReportInstanceLine:
         )
         assert line.value_current == Decimal(0)
         assert line.value_prior is None
+
+
+# ─── Month-End Close domain tests ──────────────────────────────────────
+
+
+class TestClosingEntryType:
+    def test_revenue_transfer_value(self):
+        assert ClosingEntryType.REVENUE_TRANSFER.value == "revenue_transfer"
+
+    def test_expense_transfer_value(self):
+        assert ClosingEntryType.EXPENSE_TRANSFER.value == "expense_transfer"
+
+    def test_cit_provision_value(self):
+        assert ClosingEntryType.CIT_PROVISION.value == "cit_provision"
+
+
+class TestClosingEntry:
+    def test_revenue_transfer_entry(self):
+        entry = ClosingEntry(
+            entry_type=ClosingEntryType.REVENUE_TRANSFER,
+            description="Transfer revenue to 911",
+            debit_account="911",
+            credit_account="5111",
+            amount=Decimal(5000000),
+        )
+        assert entry.entry_type == ClosingEntryType.REVENUE_TRANSFER
+        assert entry.debit_account == "911"
+        assert entry.credit_account == "5111"
+        assert entry.amount == Decimal(5000000)
+        assert entry.lines == []
+
+    def test_expense_transfer_entry(self):
+        entry = ClosingEntry(
+            entry_type=ClosingEntryType.EXPENSE_TRANSFER,
+            description="Transfer expenses to 911",
+            debit_account="6321",
+            credit_account="911",
+            amount=Decimal(3000000),
+        )
+        assert entry.entry_type == ClosingEntryType.EXPENSE_TRANSFER
+        assert entry.debit_account == "6321"
+        assert entry.credit_account == "911"
+
+    def test_cit_provision_entry(self):
+        entry = ClosingEntry(
+            entry_type=ClosingEntryType.CIT_PROVISION,
+            description="CIT provision",
+            debit_account="8211",
+            credit_account="3334",
+            amount=Decimal(400000),
+        )
+        assert entry.entry_type == ClosingEntryType.CIT_PROVISION
+        assert entry.debit_account == "8211"
+        assert entry.credit_account == "3334"
+
+    def test_entry_with_voucher_lines(self):
+        lines = [
+            {"account_code": "911", "debit": "5000000", "credit": "0"},
+            {"account_code": "5111", "debit": "0", "credit": "5000000"},
+        ]
+        entry = ClosingEntry(
+            entry_type=ClosingEntryType.REVENUE_TRANSFER,
+            description="Transfer revenue to 911",
+            debit_account="911",
+            credit_account="5111",
+            amount=Decimal(5000000),
+            lines=lines,
+        )
+        assert len(entry.lines) == 2
+        assert entry.lines[0]["account_code"] == "911"
+
+
+class TestPeriodCloseResult:
+    def test_success_result(self):
+        entries = [
+            ClosingEntry(
+                entry_type=ClosingEntryType.REVENUE_TRANSFER,
+                description="Transfer revenue",
+                debit_account="911",
+                credit_account="5111",
+                amount=Decimal(5000000),
+            ),
+            ClosingEntry(
+                entry_type=ClosingEntryType.EXPENSE_TRANSFER,
+                description="Transfer expenses",
+                debit_account="6321",
+                credit_account="911",
+                amount=Decimal(3000000),
+            ),
+        ]
+        result = PeriodCloseResult(
+            company_id=uuid4(),
+            fiscal_year=2026,
+            period=7,
+            closing_entries=entries,
+            net_income=Decimal(2000000),
+            success=True,
+        )
+        assert result.success is True
+        assert result.net_income == Decimal(2000000)
+        assert len(result.closing_entries) == 2
+        assert result.error_message is None
+
+    def test_failure_result(self):
+        result = PeriodCloseResult(
+            company_id=uuid4(),
+            fiscal_year=2026,
+            period=7,
+            success=False,
+            error_message="Period already closed",
+        )
+        assert result.success is False
+        assert result.error_message == "Period already closed"
+        assert result.closing_entries == []
+
+    def test_default_values(self):
+        result = PeriodCloseResult(
+            company_id=uuid4(),
+            fiscal_year=2026,
+            period=7,
+        )
+        assert result.success is False
+        assert result.net_income == Decimal(0)
+        assert result.closing_entries == []

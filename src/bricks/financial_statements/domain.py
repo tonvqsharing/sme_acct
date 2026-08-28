@@ -99,3 +99,45 @@ class RetainedEarnings:
     @property
     def closing_balance(self) -> Decimal:
         return self.opening_balance + self.net_income - self.dividends
+
+
+# ─── Month-End Close (Sprint 7) ─────────────────────────────────────────
+
+
+class ClosingEntryType(Enum):
+    """Types of closing journal entries per TT99 §7."""
+
+    REVENUE_TRANSFER = "revenue_transfer"  # Dr. 911 / Cr. 511/515/711
+    EXPENSE_TRANSFER = "expense_transfer"  # Dr. 632/635/641/642/811 / Cr. 911
+    CIT_PROVISION = "cit_provision"  # Dr. 8211 / Cr. 3334
+
+
+@dataclass
+class ClosingEntry:
+    """A journal entry generated during period close.
+
+    Pure Python — no Flask/SQLAlchemy imports.
+    """
+
+    entry_type: ClosingEntryType
+    description: str
+    debit_account: str
+    credit_account: str
+    amount: Decimal
+    lines: list[dict[str, str]] = field(default_factory=list)  # voucher lines for VoucherService
+
+
+@dataclass
+class PeriodCloseResult:
+    """Result of closing a period.
+
+    Pure Python — no Flask/SQLAlchemy imports.
+    """
+
+    company_id: UUID
+    fiscal_year: int
+    period: int
+    closing_entries: list[ClosingEntry] = field(default_factory=list)
+    net_income: Decimal = Decimal(0)
+    success: bool = False
+    error_message: str | None = None
