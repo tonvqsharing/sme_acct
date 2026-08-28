@@ -22,6 +22,10 @@ class UnknownLineReferenceError(Exception):
     """Raised when a FORMULA references a line_code that doesn't exist."""
 
 
+class BalanceSheetImbalanceError(Exception):
+    """Raised when Assets != Liabilities + Equity."""
+
+
 class ReportEngine:
     """Compute report values from template lines + account balances.
 
@@ -47,9 +51,7 @@ class ReportEngine:
         result_lines: list[ReportInstanceLine] = []
 
         for line in template.lines:
-            value = self._compute_line(
-                line, lines_by_code, account_balances, computed, trail=set()
-            )
+            value = self._compute_line(line, lines_by_code, account_balances, computed, trail=set())
             computed[line.line_code] = value
             result_lines.append(
                 ReportInstanceLine(
@@ -78,14 +80,10 @@ class ReportEngine:
             return self._compute_account_aggregate(line, account_balances)
 
         if line.line_type == LineType.TOTAL:
-            return self._compute_total(
-                line, lines_by_code, account_balances, computed, trail
-            )
+            return self._compute_total(line, lines_by_code, account_balances, computed, trail)
 
         if line.line_type == LineType.FORMULA:
-            return self._compute_formula(
-                line, lines_by_code, account_balances, computed, trail
-            )
+            return self._compute_formula(line, lines_by_code, account_balances, computed, trail)
 
         return ZERO
 
@@ -124,7 +122,7 @@ class ReportEngine:
                     computed[child_code] = self._compute_line(
                         child_line, lines_by_code, account_balances, computed, trail
                     )
-                total += computed[child_code] * child_line.sign
+                total += computed[child_code]
         return total
 
     def _compute_formula(
@@ -197,3 +195,42 @@ class ReportEngine:
             tokens.append((current_op, current_code))
 
         return tokens
+
+
+class BalanceSheetService:
+    """Compute Balance Sheet (B01-DN) from account balances.
+
+    Pure Python — no Flask/SQLAlchemy imports.
+    """
+
+    def __init__(self) -> None:
+        self._engine = ReportEngine()
+
+    def compute(
+        self,
+        template: ReportTemplate,
+        account_balances: dict[str, dict[str, Decimal]],
+    ) -> list[ReportInstanceLine]:
+        """Compute all Balance Sheet lines.
+
+        Args:
+            template: B01-DN template with lines.
+            account_balances: {account_code: {"debit": Decimal, "credit": Decimal}}
+
+        Returns:
+            List of computed ReportInstanceLine values.
+
+        Raises:
+            BalanceSheetImbalanceError: If Assets != Liabilities + Equity.
+        """
+        lines = self._engine.compute(template, account_balances)
+
+        # Validate balance check
+        check_line = next((l for l in lines if l.line_code == "CHECK"), None)
+        if check_line is not None and check_line.value_current != ZERO:
+            raise BalanceSheetImbalanceError(
+                f"Balance sheet imbalance: Assets - (Liabilities + Equity) = "
+                f"{check_line.value_current}"
+            )
+
+        return lines

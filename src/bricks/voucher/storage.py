@@ -61,7 +61,7 @@ class SQLAlchemyVoucherRepository:
                     ),
                     **(
                         {"cash_flow_class": l.cash_flow_class.value}
-                        if getattr(l, "cash_flow_class", None)
+                        if l.cash_flow_class is not None
                         else {}
                     ),
                 }
