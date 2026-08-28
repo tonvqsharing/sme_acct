@@ -495,3 +495,210 @@ def b02_dn_template() -> ReportTemplate:
         description="Statement of Profit or Loss per TT99 Appendix IV",
         lines=lines,
     )
+
+
+def b03_dn_template() -> ReportTemplate:
+    """B03-DN: Cash Flow Statement.
+
+    TT99 Appendix IV structure — Direct Method:
+    A. Operating Activities
+    B. Investing Activities
+    C. Financing Activities
+    NET INCREASE/DECREASE
+    Cash at beginning
+    Cash at end = B01 Code 110
+
+    Uses cash_flow_class tags on voucher lines, not account codes.
+    """
+    lines = [
+        # ── A. OPERATING ACTIVITIES ───────────────────────────────────
+        ReportTemplateLine(
+            template_id=None,  # type: ignore[arg-type]
+            line_code="A",
+            line_name="Hoạt động kinh doanh",
+            line_type=LineType.HEADER,
+        ),
+        ReportTemplateLine(
+            template_id=None,  # type: ignore[arg-type]
+            line_code="A1",
+            line_name="Tiền thu từ khách hàng",
+            line_type=LineType.CASH_FLOW_ITEM,
+            cash_flow_class="OPERATING",
+            parent_code="A_TONG",
+            level=1,
+            sort_order=1,
+        ),
+        ReportTemplateLine(
+            template_id=None,  # type: ignore[arg-type]
+            line_code="A2",
+            line_name="Tiền trả cho nhà cung cấp",
+            line_type=LineType.CASH_FLOW_ITEM,
+            cash_flow_class="OPERATING",
+            parent_code="A_TONG",
+            level=1,
+            sort_order=2,
+            sign=-1,
+        ),
+        ReportTemplateLine(
+            template_id=None,  # type: ignore[arg-type]
+            line_code="A3",
+            line_name="Tiền trả cho người lao động",
+            line_type=LineType.CASH_FLOW_ITEM,
+            cash_flow_class="OPERATING",
+            parent_code="A_TONG",
+            level=1,
+            sort_order=3,
+            sign=-1,
+        ),
+        ReportTemplateLine(
+            template_id=None,  # type: ignore[arg-type]
+            line_code="A4",
+            line_name="Tiền nộp thuế thu nhập doanh nghiệp",
+            line_type=LineType.CASH_FLOW_ITEM,
+            cash_flow_class="OPERATING",
+            parent_code="A_TONG",
+            level=1,
+            sort_order=4,
+            sign=-1,
+        ),
+        ReportTemplateLine(
+            template_id=None,  # type: ignore[arg-type]
+            line_code="A_TONG",
+            line_name="Dòng tiền thuần từ hoạt động kinh doanh",
+            line_type=LineType.TOTAL,
+            parent_code=None,
+            level=0,
+            sort_order=10,
+        ),
+        # ── B. INVESTING ACTIVITIES ───────────────────────────────────
+        ReportTemplateLine(
+            template_id=None,  # type: ignore[arg-type]
+            line_code="B",
+            line_name="Hoạt động đầu tư",
+            line_type=LineType.HEADER,
+        ),
+        ReportTemplateLine(
+            template_id=None,  # type: ignore[arg-type]
+            line_code="B1",
+            line_name="Tiền mua tài sản cố định",
+            line_type=LineType.CASH_FLOW_ITEM,
+            cash_flow_class="INVESTING",
+            parent_code="B_TONG",
+            level=1,
+            sort_order=11,
+            sign=-1,
+        ),
+        ReportTemplateLine(
+            template_id=None,  # type: ignore[arg-type]
+            line_code="B2",
+            line_name="Tiền thu từ bán tài sản cố định",
+            line_type=LineType.CASH_FLOW_ITEM,
+            cash_flow_class="INVESTING",
+            parent_code="B_TONG",
+            level=1,
+            sort_order=12,
+        ),
+        ReportTemplateLine(
+            template_id=None,  # type: ignore[arg-type]
+            line_code="B_TONG",
+            line_name="Dòng tiền thuần từ hoạt động đầu tư",
+            line_type=LineType.TOTAL,
+            parent_code=None,
+            level=0,
+            sort_order=20,
+        ),
+        # ── C. FINANCING ACTIVITIES ───────────────────────────────────
+        ReportTemplateLine(
+            template_id=None,  # type: ignore[arg-type]
+            line_code="C",
+            line_name="Hoạt động tài chính",
+            line_type=LineType.HEADER,
+        ),
+        ReportTemplateLine(
+            template_id=None,  # type: ignore[arg-type]
+            line_code="C1",
+            line_name="Tiền vay từ ngân hàng",
+            line_type=LineType.CASH_FLOW_ITEM,
+            cash_flow_class="FINANCING",
+            parent_code="C_TONG",
+            level=1,
+            sort_order=21,
+        ),
+        ReportTemplateLine(
+            template_id=None,  # type: ignore[arg-type]
+            line_code="C2",
+            line_name="Tiền trả nợ vay ngân hàng",
+            line_type=LineType.CASH_FLOW_ITEM,
+            cash_flow_class="FINANCING",
+            parent_code="C_TONG",
+            level=1,
+            sort_order=22,
+            sign=-1,
+        ),
+        ReportTemplateLine(
+            template_id=None,  # type: ignore[arg-type]
+            line_code="C3",
+            line_name="Tiền góp vốn từ chủ sở hữu",
+            line_type=LineType.CASH_FLOW_ITEM,
+            cash_flow_class="FINANCING",
+            parent_code="C_TONG",
+            level=1,
+            sort_order=23,
+        ),
+        ReportTemplateLine(
+            template_id=None,  # type: ignore[arg-type]
+            line_code="C4",
+            line_name="Tiền trả cổ tức",
+            line_type=LineType.CASH_FLOW_ITEM,
+            cash_flow_class="FINANCING",
+            parent_code="C_TONG",
+            level=1,
+            sort_order=24,
+            sign=-1,
+        ),
+        ReportTemplateLine(
+            template_id=None,  # type: ignore[arg-type]
+            line_code="C_TONG",
+            line_name="Dòng tiền thuần từ hoạt động tài chính",
+            line_type=LineType.TOTAL,
+            parent_code=None,
+            level=0,
+            sort_order=30,
+        ),
+        # ── NET INCREASE/DECREASE ─────────────────────────────────────
+        ReportTemplateLine(
+            template_id=None,  # type: ignore[arg-type]
+            line_code="NET_CF",
+            line_name="Thay đổi tiền và tương đương tiền thuần",
+            line_type=LineType.FORMULA,
+            formula="A_TONG+B_TONG+C_TONG",
+            level=0,
+            sort_order=40,
+        ),
+        # ── RECONCILIATION ────────────────────────────────────────────
+        ReportTemplateLine(
+            template_id=None,  # type: ignore[arg-type]
+            line_code="CASH_BEGIN",
+            line_name="Tiền và tương đương tiền đầu kỳ",
+            line_type=LineType.ACCOUNT_AGGREGATE,
+            account_codes=["110"],
+            level=0,
+            sort_order=50,
+        ),
+        ReportTemplateLine(
+            template_id=None,  # type: ignore[arg-type]
+            line_code="CASH_END",
+            line_name="Tiền và tương đương tiền cuối kỳ",
+            line_type=LineType.FORMULA,
+            formula="NET_CF+CASH_BEGIN",
+            level=0,
+            sort_order=60,
+        ),
+    ]
+
+    return ReportTemplate(
+        code="B03-DN",
+        name="Báo cáo lưu chuyển tiền tệ",
+        description="Cash Flow Statement per TT99 Appendix IV (Direct Method)",
+        lines=lines,
+    )

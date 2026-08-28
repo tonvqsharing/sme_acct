@@ -25,6 +25,7 @@ class LineType(Enum):
     ACCOUNT_AGGREGATE = "account_aggregate"
     FORMULA = "formula"
     TOTAL = "total"
+    CASH_FLOW_ITEM = "cash_flow_item"  # For B03-DN Cash Flow Statement
 
 
 @dataclass
@@ -41,6 +42,7 @@ class ReportTemplateLine:
     level: int = 0
     sort_order: int = 0
     sign: int = 1
+    cash_flow_class: str | None = None  # For Cash Flow Statement (B03-DN)
     id: UUID = field(default_factory=uuid4)
 
 
