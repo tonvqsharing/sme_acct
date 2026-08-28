@@ -290,6 +290,46 @@ class SQLAlchemyReportInstanceRepository(ReportInstanceRepositoryPort):
         )
         return [_instance_line_to_domain(r) for r in rows]
 
+    def save_instance(
+        self, instance: ReportInstance, lines: list[ReportInstanceLine]
+    ) -> ReportInstance:
+        """Atomically create/update instance + replace all lines."""
+        existing = self._session.get(ReportInstanceModel, str(instance.id))
+        if existing is None:
+            self._session.add(
+                ReportInstanceModel(
+                    id=str(instance.id),
+                    template_id=str(instance.template_id),
+                    company_id=str(instance.company_id),
+                    period_from=instance.period_from,
+                    period_to=instance.period_to,
+                    status=instance.status,
+                )
+            )
+        else:
+            existing.status = instance.status
+
+        # Delete old lines for idempotent recompute
+        self._session.query(ReportInstanceLineModel).filter(
+            ReportInstanceLineModel.instance_id == str(instance.id)
+        ).delete()
+
+        # Insert new lines
+        for line in lines:
+            self._session.add(
+                ReportInstanceLineModel(
+                    id=str(line.id),
+                    instance_id=str(instance.id),
+                    line_code=line.line_code,
+                    line_name=line.line_name,
+                    value_current=line.value_current,
+                    value_prior=line.value_prior,
+                )
+            )
+
+        self._session.commit()
+        return instance
+
 
 class SQLAlchemyRetainedEarningsRepository(RetainedEarningsRepositoryPort):
     def __init__(self, session: Session) -> None:

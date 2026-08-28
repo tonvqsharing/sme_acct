@@ -13,6 +13,7 @@ from sqlalchemy.orm import sessionmaker
 from src.bricks.financial_statements.domain import (
     LineType,
     ReportInstance,
+    ReportInstanceLine,
     ReportTemplate,
     ReportTemplateLine,
     RetainedEarnings,
@@ -203,3 +204,81 @@ class TestRetainedEarningsRepository:
         re_repo.update(re)
         fetched = re_repo.get_by_fiscal_year(cid, fyid)
         assert fetched.net_income == Decimal(200)
+
+
+class TestSaveInstance:
+    """save_instance: atomic create + line replacement."""
+
+    def test_save_and_retrieve(self, inst_repo, tmpl_repo):
+        tmpl = ReportTemplate(code="B01-DN", name="Balance Sheet")
+        tmpl_repo.create(tmpl)
+        inst = ReportInstance(
+            template_id=tmpl.id,
+            company_id=uuid4(),
+            period_from=date(2026, 1, 1),
+            period_to=date(2026, 12, 31),
+        )
+        lines = [
+            ReportInstanceLine(
+                instance_id=inst.id,
+                line_code="100",
+                line_name="Assets",
+                value_current=Decimal(500),
+            ),
+            ReportInstanceLine(
+                instance_id=inst.id,
+                line_code="200",
+                line_name="Liabilities",
+                value_current=Decimal(300),
+            ),
+        ]
+        inst_repo.save_instance(inst, lines)
+        fetched = inst_repo.get_by_id(inst.id)
+        assert fetched is not None
+        fetched_lines = inst_repo.get_lines(inst.id)
+        assert len(fetched_lines) == 2
+
+    def test_recompute_replaces_lines(self, inst_repo, tmpl_repo):
+        """Second save replaces old lines (idempotent recompute)."""
+        tmpl = ReportTemplate(code="B01-DN", name="Balance Sheet")
+        tmpl_repo.create(tmpl)
+        inst = ReportInstance(
+            template_id=tmpl.id,
+            company_id=uuid4(),
+            period_from=date(2026, 1, 1),
+            period_to=date(2026, 12, 31),
+        )
+        # First save
+        inst_repo.save_instance(
+            inst,
+            [
+                ReportInstanceLine(
+                    instance_id=inst.id,
+                    line_code="100",
+                    line_name="Old",
+                    value_current=Decimal(100),
+                )
+            ],
+        )
+        # Second save with different lines
+        inst_repo.save_instance(
+            inst,
+            [
+                ReportInstanceLine(
+                    instance_id=inst.id,
+                    line_code="100",
+                    line_name="New",
+                    value_current=Decimal(200),
+                ),
+                ReportInstanceLine(
+                    instance_id=inst.id,
+                    line_code="200",
+                    line_name="Added",
+                    value_current=Decimal(300),
+                ),
+            ],
+        )
+        lines = inst_repo.get_lines(inst.id)
+        assert len(lines) == 2
+        assert lines[0].line_name == "New"
+        assert lines[0].value_current == Decimal(200)
