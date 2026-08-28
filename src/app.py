@@ -179,6 +179,16 @@ from src.bricks.voucher.web_adapter import init_voucher_service, voucher_bp
 from src.bricks.xml_ingest.services import XMLIngestService
 from src.bricks.xml_ingest.web_adapter import init_xml_ingest_service, xml_ingest_bp
 
+# Financial Statements brick
+from src.bricks.financial_statements.storage import (
+    Base as FsBase,
+)
+from src.bricks.financial_statements.storage import (
+    SQLAlchemyReportTemplateRepository,
+    SQLAlchemyReportInstanceRepository,
+    SQLAlchemyRetainedEarningsRepository,
+)
+
 
 def create_app(config: dict | None = None) -> Flask:
     """Create and configure the Flask application.
@@ -220,6 +230,7 @@ def create_app(config: dict | None = None) -> Flask:
     UserBase.metadata.create_all(engine)
     TeBase.metadata.reflect(bind=engine)
     TeBase.metadata.create_all(engine)
+    FsBase.metadata.create_all(engine)
     session_factory = sessionmaker(bind=engine)
     app.db_session = session_factory  # type: ignore[attr-defined]
 
@@ -633,6 +644,14 @@ def create_app(config: dict | None = None) -> Flask:
             internal_provider=_BankInternalBalanceProvider(session_factory()),
         ),
     )
+
+    # ── Financial Statements ────────────────────────────────────────────
+    fs_repo = SQLAlchemyReportTemplateRepository(session_factory())
+    fs_inst_repo = SQLAlchemyReportInstanceRepository(session_factory())
+    fs_re_repo = SQLAlchemyRetainedEarningsRepository(session_factory())
+    app.fs_template_repo = fs_repo  # type: ignore[attr-defined]
+    app.fs_instance_repo = fs_inst_repo  # type: ignore[attr-defined]
+    app.fs_re_repo = fs_re_repo  # type: ignore[attr-defined]
 
     # ── Health check ────────────────────────────────────────────────────
     @app.route("/health")
