@@ -163,3 +163,173 @@ class TestPeriodCloseServiceRevenueTransfer:
         )
         # 7111 starts with "711" → Doanh thu tài chính (Financial income)
         assert result.amount == Decimal(500000)
+
+
+class TestPeriodCloseServiceExpenseTransfer:
+    """Tests for expense transfer to 911 (FS-062)."""
+
+    def setup_method(self):
+        self.svc = PeriodCloseService()
+
+    def test_single_expense_account(self):
+        """One expense account with debit balance → Dr. 6321 / Cr. 911."""
+        trial_balance = [
+            {"account_code": "6321", "debit": Decimal(3000000), "credit": Decimal(0)},
+        ]
+        result = self.svc.transfer_expense(
+            company_id=uuid4(),
+            fiscal_year=2026,
+            period=7,
+            trial_balance=trial_balance,
+        )
+        assert result.entry_type == ClosingEntryType.EXPENSE_TRANSFER
+        assert result.amount == Decimal(3000000)
+        assert len(result.lines) == 2
+        assert result.lines[0]["account_code"] == "6321"
+        assert result.lines[0]["debit"] == "3000000"
+        assert result.lines[1]["account_code"] == ACCOUNT_911
+        assert result.lines[1]["credit"] == "3000000"
+
+    def test_multiple_expense_accounts(self):
+        """Multiple expense accounts → aggregated into one entry."""
+        trial_balance = [
+            {"account_code": "6321", "debit": Decimal(2000000), "credit": Decimal(0)},
+            {"account_code": "6351", "debit": Decimal(1000000), "credit": Decimal(0)},
+            {"account_code": "6411", "debit": Decimal(500000), "credit": Decimal(0)},
+        ]
+        result = self.svc.transfer_expense(
+            company_id=uuid4(),
+            fiscal_year=2026,
+            period=7,
+            trial_balance=trial_balance,
+        )
+        assert result.amount == Decimal(3500000)
+        # 3 expense accounts × 2 lines each = 6 lines
+        assert len(result.lines) == 6
+
+    def test_expense_with_credit_balance_ignored(self):
+        """Expense account with credit balance (refund) → ignored."""
+        trial_balance = [
+            {"account_code": "6321", "debit": Decimal(0), "credit": Decimal(1000000)},
+        ]
+        result = self.svc.transfer_expense(
+            company_id=uuid4(),
+            fiscal_year=2026,
+            period=7,
+            trial_balance=trial_balance,
+        )
+        assert result.amount == Decimal(0)
+        assert len(result.lines) == 0
+
+    def test_expense_with_net_debit(self):
+        """Expense account with debit > credit → net amount transferred."""
+        trial_balance = [
+            {"account_code": "6321", "debit": Decimal(3000000), "credit": Decimal(500000)},
+        ]
+        result = self.svc.transfer_expense(
+            company_id=uuid4(),
+            fiscal_year=2026,
+            period=7,
+            trial_balance=trial_balance,
+        )
+        assert result.amount == Decimal(2500000)
+
+    def test_revenue_accounts_ignored(self):
+        """Revenue accounts (5xx) should not appear in expense transfer."""
+        trial_balance = [
+            {"account_code": "5111", "debit": Decimal(0), "credit": Decimal(3000000)},
+            {"account_code": "6321", "debit": Decimal(2000000), "credit": Decimal(0)},
+        ]
+        result = self.svc.transfer_expense(
+            company_id=uuid4(),
+            fiscal_year=2026,
+            period=7,
+            trial_balance=trial_balance,
+        )
+        assert result.amount == Decimal(2000000)
+        # Only 6321 should appear (2 lines), not 5111
+        codes = [l["account_code"] for l in result.lines]
+        assert "5111" not in codes
+
+    def test_financial_expense_711_excluded(self):
+        """Account 711 (Financial income) is revenue, not expense."""
+        trial_balance = [
+            {"account_code": "7111", "debit": Decimal(0), "credit": Decimal(500000)},
+            {"account_code": "6321", "debit": Decimal(2000000), "credit": Decimal(0)},
+        ]
+        result = self.svc.transfer_expense(
+            company_id=uuid4(),
+            fiscal_year=2026,
+            period=7,
+            trial_balance=trial_balance,
+        )
+        assert result.amount == Decimal(2000000)
+        codes = [l["account_code"] for l in result.lines]
+        assert "7111" not in codes
+
+    def test_financial_expense_712_included(self):
+        """Account 712 (Financial expense) is expense type."""
+        trial_balance = [
+            {"account_code": "7121", "debit": Decimal(800000), "credit": Decimal(0)},
+        ]
+        result = self.svc.transfer_expense(
+            company_id=uuid4(),
+            fiscal_year=2026,
+            period=7,
+            trial_balance=trial_balance,
+        )
+        assert result.amount == Decimal(800000)
+
+    def test_cit_expense_8211_included(self):
+        """Account 8211 (CIT expense) is expense type."""
+        trial_balance = [
+            {"account_code": "8211", "debit": Decimal(400000), "credit": Decimal(0)},
+        ]
+        result = self.svc.transfer_expense(
+            company_id=uuid4(),
+            fiscal_year=2026,
+            period=7,
+            trial_balance=trial_balance,
+        )
+        assert result.amount == Decimal(400000)
+
+    def test_empty_trial_balance(self):
+        """No accounts → zero amount, no lines."""
+        result = self.svc.transfer_expense(
+            company_id=uuid4(),
+            fiscal_year=2026,
+            period=7,
+            trial_balance=[],
+        )
+        assert result.amount == Decimal(0)
+        assert len(result.lines) == 0
+
+    def test_description_format(self):
+        """Description includes period and year."""
+        trial_balance = [
+            {"account_code": "6321", "debit": Decimal(1000000), "credit": Decimal(0)},
+        ]
+        result = self.svc.transfer_expense(
+            company_id=uuid4(),
+            fiscal_year=2026,
+            period=7,
+            trial_balance=trial_balance,
+        )
+        assert "7/2026" in result.description
+        assert "Chi phí" in result.description
+
+    def test_voucher_lines_are_strings(self):
+        """Voucher lines must have string values for VoucherService."""
+        trial_balance = [
+            {"account_code": "6321", "debit": Decimal(1000000), "credit": Decimal(0)},
+        ]
+        result = self.svc.transfer_expense(
+            company_id=uuid4(),
+            fiscal_year=2026,
+            period=7,
+            trial_balance=trial_balance,
+        )
+        for line in result.lines:
+            assert isinstance(line["account_code"], str)
+            assert isinstance(line["debit"], str)
+            assert isinstance(line["credit"], str)

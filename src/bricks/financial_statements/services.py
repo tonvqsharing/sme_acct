@@ -455,3 +455,76 @@ class PeriodCloseService:
             amount=total_revenue,
             lines=revenue_entries,
         )
+
+    def transfer_expense(
+        self,
+        company_id: object,
+        fiscal_year: int,
+        period: int,
+        trial_balance: list[dict[str, object]],
+    ) -> ClosingEntry:
+        """Step 4: Transfer expense accounts to 911.
+
+        Vietnamese accounting (TT99):
+        - Group 6 (6xx) = Chi phí hoạt động kinh doanh (Cost of business)
+        - Group 7 (7xx except 711) = Chi phí tài chính (Financial expenses)
+        - Group 8 (8xx) = Thuế TNDN (CIT expense)
+        - Group 9 (9xx) = Kết quả kinh doanh (Settlement)
+        For each expense account with debit balance:
+        Dr. expense account (amount) / Cr. 911 (amount)
+
+        Args:
+            company_id: Company UUID (passed through, not used in calculation).
+            fiscal_year: Fiscal year number.
+            period: Period number (1-12).
+            trial_balance: List of account balances from LedgerService.trial_balance().
+                Each dict has: account_code (str), debit (Decimal), credit (Decimal).
+
+        Returns:
+            ClosingEntry with voucher lines for VoucherService.
+        """
+        expense_entries: list[dict[str, str]] = []
+        total_expense = ZERO
+
+        for row in trial_balance:
+            code = str(row["account_code"])
+            credit = Decimal(str(row.get("credit", 0)))
+            debit = Decimal(str(row.get("debit", 0)))
+
+            # Identify expense accounts by first digit
+            is_expense = _is_expense_account(code)
+            if not is_expense:
+                continue
+
+            # Expense accounts have debit balance (debit > credit)
+            net_debit = debit - credit
+            if net_debit <= ZERO:
+                continue
+
+            # Dr. expense account / Cr. 911
+            expense_entries.append(
+                {
+                    "account_code": code,
+                    "debit": str(net_debit),
+                    "credit": "0",
+                }
+            )
+            expense_entries.append(
+                {
+                    "account_code": ACCOUNT_911,
+                    "debit": "0",
+                    "credit": str(net_debit),
+                }
+            )
+            total_expense += net_debit
+
+        description = f"Kết quả kinh doanh tháng {period}/{fiscal_year} - Chi phí"
+
+        return ClosingEntry(
+            entry_type=ClosingEntryType.EXPENSE_TRANSFER,
+            description=description,
+            debit_account="632/635/641/642/811",
+            credit_account=ACCOUNT_911,
+            amount=total_expense,
+            lines=expense_entries,
+        )
