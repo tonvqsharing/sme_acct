@@ -18,6 +18,19 @@ class VoucherStatus(Enum):
     POSTED = "POSTED"
 
 
+class CashFlowClass(Enum):
+    """Cash flow activity classification per TT99 B03-DN.
+
+    OPERATING: day-to-day business activities
+    INVESTING: buying/selling long-term assets
+    FINANCING: borrowings, equity, dividends
+    """
+
+    OPERATING = "operating"
+    INVESTING = "investing"
+    FINANCING = "financing"
+
+
 @dataclass
 class JournalLine:
     account_code: str
@@ -27,6 +40,7 @@ class JournalLine:
     currency_code: str | None = None
     fx_rate: Decimal | None = None
     amount_original: Decimal | None = None
+    cash_flow_class: CashFlowClass | None = None
 
     def __post_init__(self) -> None:
         if self.debit > 0 and self.credit > 0:

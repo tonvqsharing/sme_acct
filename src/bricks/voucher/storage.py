@@ -10,7 +10,7 @@ from sqlalchemy import Date, String
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
 from sqlalchemy.types import JSON
 
-from src.bricks.voucher.domain import JournalLine, Voucher, VoucherStatus
+from src.bricks.voucher.domain import CashFlowClass, JournalLine, Voucher, VoucherStatus
 
 
 class Base(DeclarativeBase):
@@ -59,6 +59,11 @@ class SQLAlchemyVoucherRepository:
                         if getattr(l, "currency_code", None)
                         else {}
                     ),
+                    **(
+                        {"cash_flow_class": l.cash_flow_class.value}
+                        if getattr(l, "cash_flow_class", None)
+                        else {}
+                    ),
                 }
                 for l in v.lines
             ],
@@ -94,6 +99,9 @@ class SQLAlchemyVoucherRepository:
                     fx_rate=Decimal(l["fx_rate"]) if l.get("fx_rate") else None,
                     amount_original=(
                         Decimal(l["amount_original"]) if l.get("amount_original") else None
+                    ),
+                    cash_flow_class=(
+                        CashFlowClass(l["cash_flow_class"]) if l.get("cash_flow_class") else None
                     ),
                 )
                 for l in m.lines
