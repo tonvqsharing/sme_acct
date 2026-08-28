@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
-from src.bricks.voucher.domain import CashFlowClass
+from decimal import Decimal
+from uuid import uuid4
+
+from src.bricks.voucher.domain import CashFlowClass, JournalLine
 
 
 class TestCashFlowClass:
@@ -20,3 +23,25 @@ class TestCashFlowClass:
     def test_all_types_covered(self) -> None:
         types = {t.value for t in CashFlowClass}
         assert types == {"operating", "investing", "financing"}
+
+
+class TestJournalLineCashFlow:
+    """JournalLine with cash_flow_class field."""
+
+    def test_cash_flow_class_optional(self) -> None:
+        line = JournalLine(account_code="111", debit=Decimal(100))
+        assert line.cash_flow_class is None
+
+    def test_cash_flow_class_set(self) -> None:
+        line = JournalLine(
+            account_code="111",
+            debit=Decimal(100),
+            bank_account_id=uuid4(),
+            cash_flow_class=CashFlowClass.OPERATING,
+        )
+        assert line.cash_flow_class == CashFlowClass.OPERATING
+
+    def test_non_cash_line_no_validation(self) -> None:
+        """Non-cash lines don't need cash_flow_class."""
+        line = JournalLine(account_code="5111", credit=Decimal(100))
+        assert line.cash_flow_class is None
