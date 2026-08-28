@@ -1,10 +1,12 @@
-"""Financial Statements services — ReportEngine computation. Pure Python."""
+"""Financial Statements services — ReportEngine + PeriodCloseService. Pure Python."""
 
 from __future__ import annotations
 
 from decimal import Decimal
 
 from src.bricks.financial_statements.domain import (
+    ClosingEntry,
+    ClosingEntryType,
     LineType,
     ReportInstanceLine,
     ReportTemplate,
@@ -315,3 +317,141 @@ class CashFlowService:
             account_balances["110"] = {"debit": opening_cash, "credit": ZERO}
 
         return self._engine.compute(template, account_balances, cash_flow_values=cash_flow_amounts)
+
+
+# ─── Month-End Close Service (Sprint 7) ────────────────────────────────
+
+# Account 911 — Xác định kết quả kinh doanh (Determining Business Results)
+ACCOUNT_911 = "911"
+
+# CIT provision accounts per TT99
+CIT_EXPENSE_ACCOUNT = "8211"  # Thuế TNDN hiện hành
+CIT_PAYABLE_ACCOUNT = "3334"  # Thuế TNDN phải nộp
+
+
+def _is_revenue_account(code: str) -> bool:
+    """Identify revenue accounts per TT99 Vietnamese accounting.
+
+    Group 5 (5xx) = Doanh thu (Revenue) — credit-normal
+    Account 711 = Doanh thu tài chính (Financial income)
+    """
+    if not code or not code[0].isdigit():
+        return False
+    first = int(code[0])
+    # 5xx = Doanh thu (Revenue)
+    if first == 5:
+        return True
+    # 711 = Doanh thu tài chính (Financial income)
+    return code.startswith("711")
+
+
+def _is_expense_account(code: str) -> bool:
+    """Identify expense accounts per TT99 Vietnamese accounting.
+
+    Group 6 (6xx) = Chi phí hoạt động kinh doanh (Cost of business)
+    Group 7 (7xx except 711) = Chi phí tài chính (Financial expenses)
+    Group 8 (8xx) = Thuế TNDN (CIT expense)
+    Group 9 (9xx) = Kết quả kinh doanh (Settlement)
+    """
+    if not code or not code[0].isdigit():
+        return False
+    first = int(code[0])
+    # 6xx = Chi phí hoạt động kinh doanh
+    if first == 6:
+        return True
+    # 7xx except 711 = Chi phí tài chính
+    if first == 7 and not code.startswith("711"):
+        return True
+    # 8xx = Thuế TNDN
+    if first == 8:
+        return True
+    # 9xx = Kết quả kinh doanh
+    return first == 9
+
+
+class PeriodCloseService:
+    """Execute month-end close procedure.
+
+    Steps per TT99 §7.1:
+    1. Transfer revenue to 911 (Dr. 911 / Cr. revenue accounts)
+    2. Transfer expenses to 911 (Dr. expense accounts / Cr. 911)
+    3. Calculate CIT provision (Dr. 8211 / Cr. 3334)
+
+    Pure Python — no Flask/SQLAlchemy imports. Primitives in/out.
+    """
+
+    def __init__(self) -> None:
+        pass
+
+    def transfer_revenue(
+        self,
+        company_id: object,
+        fiscal_year: int,
+        period: int,
+        trial_balance: list[dict[str, object]],
+    ) -> ClosingEntry:
+        """Step 3: Transfer revenue accounts to 911.
+
+        Vietnamese accounting (TT99):
+        - Group 5 (5xx) = Doanh thu (Revenue) — credit-normal
+        - Group 7 account711 = Doanh thu tài chính (Financial income)
+        For each revenue account with credit balance:
+        Dr. 911 (amount) / Cr. revenue account (amount)
+
+        Args:
+            company_id: Company UUID (passed through, not used in calculation).
+            fiscal_year: Fiscal year number.
+            period: Period number (1-12).
+            trial_balance: List of account balances from LedgerService.trial_balance().
+                Each dict has: account_code (str), debit (Decimal), credit (Decimal).
+
+        Returns:
+            ClosingEntry with voucher lines for VoucherService.
+        """
+        revenue_entries: list[dict[str, str]] = []
+        total_revenue = ZERO
+
+        for row in trial_balance:
+            code = str(row["account_code"])
+            credit = Decimal(str(row.get("credit", 0)))
+            debit = Decimal(str(row.get("debit", 0)))
+
+            # Identify revenue accounts by first digit:
+            # - 5xx = Doanh thu (Revenue) — TT99 group 5
+            # - 711 = Doanh thu tài chính (Financial income)
+            is_revenue = _is_revenue_account(code)
+            if not is_revenue:
+                continue
+
+            # Revenue accounts have credit balance (credit > debit)
+            net_credit = credit - debit
+            if net_credit <= ZERO:
+                continue
+
+            # Dr. 911 / Cr. revenue account
+            revenue_entries.append(
+                {
+                    "account_code": ACCOUNT_911,
+                    "debit": str(net_credit),
+                    "credit": "0",
+                }
+            )
+            revenue_entries.append(
+                {
+                    "account_code": code,
+                    "debit": "0",
+                    "credit": str(net_credit),
+                }
+            )
+            total_revenue += net_credit
+
+        description = f"Kết quả kinh doanh tháng {period}/{fiscal_year} - Doanh thu"
+
+        return ClosingEntry(
+            entry_type=ClosingEntryType.REVENUE_TRANSFER,
+            description=description,
+            debit_account=ACCOUNT_911,
+            credit_account="511/515/711",
+            amount=total_revenue,
+            lines=revenue_entries,
+        )
