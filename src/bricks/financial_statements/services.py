@@ -36,22 +36,27 @@ class ReportEngine:
         self,
         template: ReportTemplate,
         account_balances: dict[str, dict[str, Decimal]],
+        cash_flow_values: dict[str, Decimal] | None = None,
     ) -> list[ReportInstanceLine]:
         """Compute all lines for a report instance.
 
         Args:
             template: Report template with lines.
             account_balances: {account_code: {"debit": Decimal, "credit": Decimal}}
+            cash_flow_values: {line_code: net_amount} — for CASH_FLOW_ITEM lines.
 
         Returns:
             List of computed ReportInstanceLine values.
         """
+        cf_vals = cash_flow_values or {}
         lines_by_code = {line.line_code: line for line in template.lines}
         computed: dict[str, Decimal] = {}
         result_lines: list[ReportInstanceLine] = []
 
         for line in template.lines:
-            value = self._compute_line(line, lines_by_code, account_balances, computed, trail=set())
+            value = self._compute_line(
+                line, lines_by_code, account_balances, cf_vals, computed, trail=set()
+            )
             computed[line.line_code] = value
             result_lines.append(
                 ReportInstanceLine(
@@ -69,6 +74,7 @@ class ReportEngine:
         line: ReportTemplateLine,
         lines_by_code: dict[str, ReportTemplateLine],
         account_balances: dict[str, dict[str, Decimal]],
+        cash_flow_values: dict[str, Decimal],
         computed: dict[str, Decimal],
         trail: set[str],
     ) -> Decimal:
@@ -79,11 +85,18 @@ class ReportEngine:
         if line.line_type == LineType.ACCOUNT_AGGREGATE:
             return self._compute_account_aggregate(line, account_balances)
 
+        if line.line_type == LineType.CASH_FLOW_ITEM:
+            return cash_flow_values.get(line.line_code, ZERO)
+
         if line.line_type == LineType.TOTAL:
-            return self._compute_total(line, lines_by_code, account_balances, computed, trail)
+            return self._compute_total(
+                line, lines_by_code, account_balances, cash_flow_values, computed, trail
+            )
 
         if line.line_type == LineType.FORMULA:
-            return self._compute_formula(line, lines_by_code, account_balances, computed, trail)
+            return self._compute_formula(
+                line, lines_by_code, account_balances, cash_flow_values, computed, trail
+            )
 
         return ZERO
 
@@ -110,6 +123,7 @@ class ReportEngine:
         line: ReportTemplateLine,
         lines_by_code: dict[str, ReportTemplateLine],
         account_balances: dict[str, dict[str, Decimal]],
+        cash_flow_values: dict[str, Decimal],
         computed: dict[str, Decimal],
         trail: set[str],
     ) -> Decimal:
@@ -120,7 +134,12 @@ class ReportEngine:
                 # Recursively compute child if not yet computed
                 if child_code not in computed:
                     computed[child_code] = self._compute_line(
-                        child_line, lines_by_code, account_balances, computed, trail
+                        child_line,
+                        lines_by_code,
+                        account_balances,
+                        cash_flow_values,
+                        computed,
+                        trail,
                     )
                 total += computed[child_code]
         return total
@@ -130,6 +149,7 @@ class ReportEngine:
         line: ReportTemplateLine,
         lines_by_code: dict[str, ReportTemplateLine],
         account_balances: dict[str, dict[str, Decimal]],
+        cash_flow_values: dict[str, Decimal],
         computed: dict[str, Decimal],
         trail: set[str],
     ) -> Decimal:
@@ -162,7 +182,7 @@ class ReportEngine:
             if ref_code not in computed:
                 ref_line = lines_by_code[ref_code]
                 computed[ref_code] = self._compute_line(
-                    ref_line, lines_by_code, account_balances, computed, trail
+                    ref_line, lines_by_code, account_balances, cash_flow_values, computed, trail
                 )
 
             value = computed[ref_code]
@@ -265,7 +285,7 @@ class IncomeStatementService:
 class CashFlowService:
     """Compute Cash Flow Statement (B03-DN) from cash flow data.
 
-    Uses cash_flow_class tags on voucher lines, not account codes.
+    Uses the public ReportEngine API — no private method access.
     Pure Python — no Flask/SQLAlchemy imports.
     """
 
@@ -289,46 +309,9 @@ class CashFlowService:
         Returns:
             List of computed ReportInstanceLine values.
         """
-        lines_by_code = {line.line_code: line for line in template.lines}
-        computed: dict[str, Decimal] = {}
+        # Map opening_cash to account_balances for ACCOUNT_AGGREGATE lines (CASH_BEGIN)
+        account_balances: dict[str, dict[str, Decimal]] = {}
+        if opening_cash != ZERO:
+            account_balances["110"] = {"debit": opening_cash, "credit": ZERO}
 
-        result_lines: list[ReportInstanceLine] = []
-        for line in template.lines:
-            if line.line_type == LineType.CASH_FLOW_ITEM:
-                # Direct mapping from cash_flow_amounts by line_code
-                value = cash_flow_amounts.get(line.line_code, ZERO)
-                computed[line.line_code] = value
-            elif line.line_type == LineType.HEADER:
-                value = ZERO
-                computed[line.line_code] = value
-            elif line.line_type == LineType.TOTAL:
-                value = self._engine._compute_total(line, lines_by_code, {}, computed, trail=set())
-                computed[line.line_code] = value
-            elif line.line_type == LineType.FORMULA:
-                if line.line_code == "CASH_END":
-                    value = computed.get("NET_CF", ZERO) + opening_cash
-                else:
-                    value = self._engine._compute_formula(
-                        line, lines_by_code, {}, computed, trail=set()
-                    )
-                computed[line.line_code] = value
-            elif line.line_type == LineType.ACCOUNT_AGGREGATE:
-                if line.line_code == "CASH_BEGIN":
-                    value = opening_cash
-                else:
-                    value = ZERO
-                computed[line.line_code] = value
-            else:
-                value = ZERO
-                computed[line.line_code] = value
-
-            result_lines.append(
-                ReportInstanceLine(
-                    instance_id=None,  # type: ignore[arg-type]
-                    line_code=line.line_code,
-                    line_name=line.line_name,
-                    value_current=value,
-                )
-            )
-
-        return result_lines
+        return self._engine.compute(template, account_balances, cash_flow_values=cash_flow_amounts)
