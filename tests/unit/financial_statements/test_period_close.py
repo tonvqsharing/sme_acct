@@ -3,10 +3,34 @@
 from __future__ import annotations
 
 from decimal import Decimal
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from src.bricks.financial_statements.domain import ClosingEntryType
-from src.bricks.financial_statements.services import ACCOUNT_911, PeriodCloseService
+from src.bricks.financial_statements.services import (
+    ACCOUNT_911,
+    PeriodAlreadyClosedError,
+    PeriodCloseService,
+)
+
+
+class FakePeriodLock:
+    """Fake period lock port for testing."""
+
+    def __init__(self) -> None:
+        self._locked: dict[tuple[UUID, int, int], bool] = {}
+
+    def is_period_locked(self, company_id: UUID, fiscal_year: int, period: int) -> bool:
+        return self._locked.get((company_id, fiscal_year, period), False)
+
+    def lock_period(
+        self,
+        company_id: UUID,
+        fiscal_year: int,
+        period: int,
+        actor: UUID,
+        notes: str | None = None,
+    ) -> None:
+        self._locked[(company_id, fiscal_year, period)] = True
 
 
 class TestPeriodCloseServiceRevenueTransfer:
@@ -396,11 +420,11 @@ class TestPeriodCloseServiceCITProvision:
             company_id=uuid4(),
             fiscal_year=2026,
             period=7,
-            net_income=Decimal("3333333"),
+            net_income=Decimal(3333333),
         )
         assert result is not None
         # 3333333 × 0.20 = 666666.6 → rounds to 666667
-        assert result.amount == Decimal("666667")
+        assert result.amount == Decimal(666667)
 
     def test_description_format(self):
         """Description includes period and year."""
@@ -427,3 +451,110 @@ class TestPeriodCloseServiceCITProvision:
             assert isinstance(line["account_code"], str)
             assert isinstance(line["debit"], str)
             assert isinstance(line["credit"], str)
+
+
+class TestPeriodCloseServiceClosePeriod:
+    """Tests for close_period orchestrator (FS-064)."""
+
+    def setup_method(self):
+        self.lock = FakePeriodLock()
+        self.svc = PeriodCloseService(period_lock=self.lock)
+
+    def test_close_period_success(self):
+        """Full close: revenue + expense + CIT + lock."""
+        trial_balance = [
+            {"account_code": "5111", "debit": Decimal(0), "credit": Decimal(10000000)},
+            {"account_code": "6321", "debit": Decimal(6000000), "credit": Decimal(0)},
+        ]
+        result = self.svc.close_period(
+            company_id=uuid4(),
+            fiscal_year=2026,
+            period=7,
+            trial_balance=trial_balance,
+            actor=uuid4(),
+        )
+        assert result.success is True
+        assert result.net_income == Decimal(4000000)  # 10M - 6M
+        assert len(result.closing_entries) == 3  # revenue + expense + CIT
+        # CIT = 4M × 20% = 800000
+        cit_entry = result.closing_entries[2]
+        assert cit_entry.entry_type == ClosingEntryType.CIT_PROVISION
+        assert cit_entry.amount == Decimal(800000)
+
+    def test_close_period_locks_period(self):
+        """Close period should lock it."""
+        trial_balance = [
+            {"account_code": "5111", "debit": Decimal(0), "credit": Decimal(5000000)},
+        ]
+        cid = uuid4()
+        self.svc.close_period(
+            company_id=cid,
+            fiscal_year=2026,
+            period=7,
+            trial_balance=trial_balance,
+            actor=uuid4(),
+        )
+        assert self.lock.is_period_locked(cid, 2026, 7) is True
+
+    def test_close_period_already_locked(self):
+        """Close period raises error if already locked."""
+        cid = uuid4()
+        self.lock.lock_period(cid, 2026, 7, actor=uuid4())
+        trial_balance = [
+            {"account_code": "5111", "debit": Decimal(0), "credit": Decimal(5000000)},
+        ]
+        import pytest
+
+        with pytest.raises(PeriodAlreadyClosedError):
+            self.svc.close_period(
+                company_id=cid,
+                fiscal_year=2026,
+                period=7,
+                trial_balance=trial_balance,
+                actor=uuid4(),
+            )
+
+    def test_close_period_no_lock_port(self):
+        """Close period works without lock port (testing mode)."""
+        svc = PeriodCloseService(period_lock=None)
+        trial_balance = [
+            {"account_code": "5111", "debit": Decimal(0), "credit": Decimal(5000000)},
+        ]
+        result = svc.close_period(
+            company_id=uuid4(),
+            fiscal_year=2026,
+            period=7,
+            trial_balance=trial_balance,
+            actor=uuid4(),
+        )
+        assert result.success is True
+
+    def test_close_period_loss_no_cit(self):
+        """Close period with loss → no CIT provision."""
+        trial_balance = [
+            {"account_code": "5111", "debit": Decimal(0), "credit": Decimal(3000000)},
+            {"account_code": "6321", "debit": Decimal(5000000), "credit": Decimal(0)},
+        ]
+        result = self.svc.close_period(
+            company_id=uuid4(),
+            fiscal_year=2026,
+            period=7,
+            trial_balance=trial_balance,
+            actor=uuid4(),
+        )
+        assert result.success is True
+        assert result.net_income == Decimal(-2000000)  # 3M - 5M
+        assert len(result.closing_entries) == 2  # revenue + expense only (no CIT)
+
+    def test_close_period_empty_trial_balance(self):
+        """Close period with empty trial balance → zero amounts."""
+        result = self.svc.close_period(
+            company_id=uuid4(),
+            fiscal_year=2026,
+            period=7,
+            trial_balance=[],
+            actor=uuid4(),
+        )
+        assert result.success is True
+        assert result.net_income == Decimal(0)
+        assert len(result.closing_entries) == 2  # revenue + expense (both zero)

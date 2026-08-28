@@ -61,3 +61,26 @@ class RetainedEarningsRepositoryPort(ABC):
 
     @abstractmethod
     def update(self, re: RetainedEarnings) -> RetainedEarnings: ...
+
+
+# ─── Period Lock Port (cross-brick integration) ─────────────────────────
+
+
+class PeriodLockPort(ABC):
+    """Port for period locking — implemented by system_settings brick.
+
+    Cross-brick calls go through this port with primitives only.
+    """
+
+    @abstractmethod
+    def is_period_locked(self, company_id: UUID, fiscal_year: int, period: int) -> bool: ...
+
+    @abstractmethod
+    def lock_period(
+        self,
+        company_id: UUID,
+        fiscal_year: int,
+        period: int,
+        actor: UUID,
+        notes: str | None = None,
+    ) -> None: ...

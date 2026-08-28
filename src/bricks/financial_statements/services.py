@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 from decimal import Decimal
+from typing import Any
 
 from src.bricks.financial_statements.domain import (
     ClosingEntry,
     ClosingEntryType,
     LineType,
+    PeriodCloseResult,
     ReportInstanceLine,
     ReportTemplate,
     ReportTemplateLine,
@@ -369,6 +371,10 @@ def _is_expense_account(code: str) -> bool:
     return first == 9
 
 
+class PeriodAlreadyClosedError(Exception):
+    """Raised when attempting to close an already-locked period."""
+
+
 class PeriodCloseService:
     """Execute month-end close procedure.
 
@@ -376,12 +382,19 @@ class PeriodCloseService:
     1. Transfer revenue to 911 (Dr. 911 / Cr. revenue accounts)
     2. Transfer expenses to 911 (Dr. expense accounts / Cr. 911)
     3. Calculate CIT provision (Dr. 8211 / Cr. 3334)
+    4. Lock period
 
     Pure Python — no Flask/SQLAlchemy imports. Primitives in/out.
     """
 
-    def __init__(self) -> None:
-        pass
+    def __init__(self, period_lock: Any = None) -> None:
+        """Initialize with optional period lock port.
+
+        Args:
+            period_lock: PeriodLockPort implementation (from system_settings brick).
+                         If None, period locking is skipped (testing mode).
+        """
+        self._period_lock = period_lock
 
     def transfer_revenue(
         self,
@@ -581,4 +594,79 @@ class PeriodCloseService:
             credit_account=CIT_PAYABLE_ACCOUNT,
             amount=cit_amount,
             lines=lines,
+        )
+
+    def close_period(
+        self,
+        company_id: object,
+        fiscal_year: int,
+        period: int,
+        trial_balance: list[dict[str, object]],
+        actor: object,
+        cit_rate: Decimal = Decimal("0.20"),
+    ) -> PeriodCloseResult:
+        """Execute full month-end close procedure.
+
+        Steps per TT99 §7.1:
+        1. Check period not already locked
+        2. Transfer revenue to 911
+        3. Transfer expenses to 911
+        4. Calculate CIT provision (if net income > 0)
+        5. Lock period
+
+        Args:
+            company_id: Company UUID.
+            fiscal_year: Fiscal year number.
+            period: Period number (1-12).
+            trial_balance: Account balances from LedgerService.trial_balance().
+            actor: User UUID performing the close.
+            cit_rate: CIT rate (default 20%).
+
+        Returns:
+            PeriodCloseResult with closing entries and net income.
+
+        Raises:
+            PeriodAlreadyClosedError: If period is already locked.
+        """
+        from uuid import UUID as _UUID
+
+        cid = _UUID(str(company_id))
+        aid = _UUID(str(actor))
+
+        # Step 1: Check period not already locked
+        if self._period_lock is not None and self._period_lock.is_period_locked(
+            cid, fiscal_year, period
+        ):
+            raise PeriodAlreadyClosedError(f"Kỳ {period}/{fiscal_year} đã được khóa")
+
+        # Step 2: Transfer revenue to 911
+        revenue_entry = self.transfer_revenue(cid, fiscal_year, period, trial_balance)
+
+        # Step 3: Transfer expenses to 911
+        expense_entry = self.transfer_expense(cid, fiscal_year, period, trial_balance)
+
+        # Calculate net income (revenue - expenses)
+        net_income = revenue_entry.amount - expense_entry.amount
+
+        # Step 4: Calculate CIT provision
+        cit_entry = self.calculate_cit_provision(cid, fiscal_year, period, net_income, cit_rate)
+
+        # Collect all entries
+        entries = [revenue_entry, expense_entry]
+        if cit_entry is not None:
+            entries.append(cit_entry)
+
+        # Step 5: Lock period
+        if self._period_lock is not None:
+            self._period_lock.lock_period(
+                cid, fiscal_year, period, actor=aid, notes=f"Month-end close {period}/{fiscal_year}"
+            )
+
+        return PeriodCloseResult(
+            company_id=cid,
+            fiscal_year=fiscal_year,
+            period=period,
+            closing_entries=entries,
+            net_income=net_income,
+            success=True,
         )
