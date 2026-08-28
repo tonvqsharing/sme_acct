@@ -47,7 +47,9 @@ class ReportEngine:
         result_lines: list[ReportInstanceLine] = []
 
         for line in template.lines:
-            value = self._compute_line(line, lines_by_code, account_balances, computed)
+            value = self._compute_line(
+                line, lines_by_code, account_balances, computed, trail=set()
+            )
             computed[line.line_code] = value
             result_lines.append(
                 ReportInstanceLine(
@@ -66,6 +68,7 @@ class ReportEngine:
         lines_by_code: dict[str, ReportTemplateLine],
         account_balances: dict[str, dict[str, Decimal]],
         computed: dict[str, Decimal],
+        trail: set[str],
     ) -> Decimal:
         """Compute a single line value."""
         if line.line_type == LineType.HEADER:
@@ -75,10 +78,14 @@ class ReportEngine:
             return self._compute_account_aggregate(line, account_balances)
 
         if line.line_type == LineType.TOTAL:
-            return self._compute_total(line, lines_by_code, account_balances, computed)
+            return self._compute_total(
+                line, lines_by_code, account_balances, computed, trail
+            )
 
         if line.line_type == LineType.FORMULA:
-            return self._compute_formula(line, lines_by_code, account_balances, computed)
+            return self._compute_formula(
+                line, lines_by_code, account_balances, computed, trail
+            )
 
         return ZERO
 
@@ -106,6 +113,7 @@ class ReportEngine:
         lines_by_code: dict[str, ReportTemplateLine],
         account_balances: dict[str, dict[str, Decimal]],
         computed: dict[str, Decimal],
+        trail: set[str],
     ) -> Decimal:
         """Sum of child lines (lines whose parent_code == this line's line_code)."""
         total = ZERO
@@ -114,7 +122,7 @@ class ReportEngine:
                 # Recursively compute child if not yet computed
                 if child_code not in computed:
                     computed[child_code] = self._compute_line(
-                        child_line, lines_by_code, account_balances, computed
+                        child_line, lines_by_code, account_balances, computed, trail
                     )
                 total += computed[child_code] * child_line.sign
         return total
@@ -125,6 +133,7 @@ class ReportEngine:
         lines_by_code: dict[str, ReportTemplateLine],
         account_balances: dict[str, dict[str, Decimal]],
         computed: dict[str, Decimal],
+        trail: set[str],
     ) -> Decimal:
         """Evaluate arithmetic formula on other lines.
 
@@ -133,6 +142,13 @@ class ReportEngine:
         """
         if not line.formula:
             return ZERO
+
+        # Cycle detection
+        if line.line_code in trail:
+            raise CircularFormulaError(
+                f"Circular reference detected involving line '{line.line_code}'"
+            )
+        trail = trail | {line.line_code}
 
         # Parse formula: split by + and - while preserving operators
         tokens = self._parse_formula(line.formula)
@@ -148,7 +164,7 @@ class ReportEngine:
             if ref_code not in computed:
                 ref_line = lines_by_code[ref_code]
                 computed[ref_code] = self._compute_line(
-                    ref_line, lines_by_code, account_balances, computed
+                    ref_line, lines_by_code, account_balances, computed, trail
                 )
 
             value = computed[ref_code]

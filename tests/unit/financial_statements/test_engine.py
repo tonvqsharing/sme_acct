@@ -13,6 +13,7 @@ from src.bricks.financial_statements.domain import (
     ReportTemplateLine,
 )
 from src.bricks.financial_statements.services import (
+    CircularFormulaError,
     ReportEngine,
     UnknownLineReferenceError,
 )
@@ -400,6 +401,47 @@ class TestFormula:
         )
         result = engine.compute(tmpl, {})
         assert result[0].value_current == ZERO
+
+    def test_circular_reference_raises(self) -> None:
+        """Formula A references B, B references A → CircularFormulaError."""
+        engine = ReportEngine()
+        tmpl = _make_template(
+            [
+                ReportTemplateLine(
+                    template_id=uuid4(),
+                    line_code="A",
+                    line_name="A",
+                    line_type=LineType.FORMULA,
+                    formula="B+1",
+                ),
+                ReportTemplateLine(
+                    template_id=uuid4(),
+                    line_code="B",
+                    line_name="B",
+                    line_type=LineType.FORMULA,
+                    formula="A+1",
+                ),
+            ]
+        )
+        with pytest.raises(CircularFormulaError, match="Circular reference"):
+            engine.compute(tmpl, {})
+
+    def test_self_reference_raises(self) -> None:
+        """Formula references itself."""
+        engine = ReportEngine()
+        tmpl = _make_template(
+            [
+                ReportTemplateLine(
+                    template_id=uuid4(),
+                    line_code="X",
+                    line_name="X",
+                    line_type=LineType.FORMULA,
+                    formula="X+1",
+                )
+            ]
+        )
+        with pytest.raises(CircularFormulaError, match="Circular reference"):
+            engine.compute(tmpl, {})
 
 
 class TestIntegration:
