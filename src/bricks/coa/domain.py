@@ -71,6 +71,50 @@ class NormalBalance(Enum):
     CREDIT = "credit"
 
 
+class AccountType(Enum):
+    """TT99 Appendix II — account type by first digit.
+
+    1xx = ASSET, 2xx = LIABILITY, 3xx = EQUITY, 4xx = REVENUE, 5xx = EXPENSE.
+    """
+
+    ASSET = "asset"
+    LIABILITY = "liability"
+    EQUITY = "equity"
+    REVENUE = "revenue"
+    EXPENSE = "expense"
+
+
+# Mapping: first digit → AccountType per TT99 Appendix II.
+# TT133 also uses 6-9 for settlement/other accounts — map them to EXPENSE
+# since they behave like expense accounts in practice (debit-normal).
+_ACCOUNT_TYPE_MAP: dict[int, AccountType] = {
+    1: AccountType.ASSET,
+    2: AccountType.LIABILITY,
+    3: AccountType.EQUITY,
+    4: AccountType.REVENUE,
+    5: AccountType.EXPENSE,
+    6: AccountType.EXPENSE,  # COGS — debit-normal
+    7: AccountType.EXPENSE,  # Other income — treated as expense for grouping
+    8: AccountType.EXPENSE,  # Other expenses
+    9: AccountType.EXPENSE,  # Settlement — treated as expense for grouping
+}
+
+
+def classify_account(code: str) -> AccountType:
+    """Auto-classify account by first digit of code (TT99 Appendix II).
+
+    Raises ValueError if code does not start with a valid digit (1-5).
+    """
+    if not code or not code[0].isdigit():
+        raise ValueError(f"Account code must start with digit, got '{code}'")
+    first = int(code[0])
+    if first not in _ACCOUNT_TYPE_MAP:
+        raise ValueError(
+            f"Unsupported account type digit {first} — " f"must be 1-5 per TT99 Appendix II"
+        )
+    return _ACCOUNT_TYPE_MAP[first]
+
+
 @dataclass
 class Account:
     company_id: UUID
@@ -81,6 +125,7 @@ class Account:
     regime: str = DEFAULT_REGIME
     id: UUID = field(default_factory=__import__("uuid").uuid4)
     status: AccountStatus = AccountStatus.ACTIVE
+    account_type: AccountType | None = None
 
     def _validate_code(self, code: str) -> bool:
         return bool(REGIME_CODE_RES[self.regime].match(code))
@@ -97,6 +142,9 @@ class Account:
             raise ValueError("name is required")
         if self.parent_code is not None and not self._validate_code(self.parent_code):
             raise ValueError("parent_code must be a valid account code")
+        # Auto-classify by first digit if not explicitly set.
+        if self.account_type is None:
+            self.account_type = classify_account(self.code)
 
     @property
     def is_detail(self) -> bool:

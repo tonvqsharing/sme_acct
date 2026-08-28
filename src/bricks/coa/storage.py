@@ -8,7 +8,7 @@ from sqlalchemy import String
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
 
 from src.bricks.coa.contract import AccountRepositoryPort
-from src.bricks.coa.domain import Account, AccountStatus, NormalBalance
+from src.bricks.coa.domain import Account, AccountStatus, AccountType, NormalBalance
 
 
 class Base(DeclarativeBase):
@@ -28,6 +28,8 @@ class AccountModel(Base):
     # Regime governs code pattern + posting rules; persisted so entities
     # survive repo round-trips without silently reverting to tt133.
     regime: Mapped[str] = mapped_column(String(12), default="tt133")
+    # Account type per TT99 Appendix II — auto-classified by first digit.
+    account_type: Mapped[str] = mapped_column(String(10), default="asset")
 
     __table_args__ = None
 
@@ -47,6 +49,7 @@ class SQLAlchemyAccountRepository(AccountRepositoryPort):
             normal_balance=NormalBalance(m.normal_balance),
             status=AccountStatus(m.status),
             regime=m.regime,
+            account_type=AccountType(m.account_type),
         )
 
     def create(self, account: Account) -> Account:
@@ -60,6 +63,7 @@ class SQLAlchemyAccountRepository(AccountRepositoryPort):
                 normal_balance=account.normal_balance.value,
                 status=account.status.value,
                 regime=account.regime,
+                account_type=account.account_type.value if account.account_type else "asset",
             )
         )
         self._session.commit()
