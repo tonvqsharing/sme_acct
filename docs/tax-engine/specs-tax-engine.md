@@ -2,199 +2,141 @@
 
 | | |
 |---|---|
-| Version | 0.1 |
-| Date | 2026-08-19 |
-| Status | DRAFT — awaiting implementation + repository adapter |
+| Version | 0.2 |
+| Date | 2026-09-03 |
+| Status | ✅ DONE — P0+P1 shipped, 951 tests, gate green |
 
 ## 1. Architecture placement
 
-Follows existing Lego Brick Architecture (see AGENTS.md, system-settings module pattern):
+Lego Brick Architecture (see `AGENTS.md`):
 
 ```
-src/bricks/
-  tax_engine/                  ← 🧱 NEW brick
-    contract.py                ← 🔌 Public interface (TaxRate, VATMethod, FlagType, etc.)
-    domain.py                  ← 🎯 TaxRate enum, VATMethod, FlagType, FlagScope, FlagCategory (pure Python)
-    services.py                ← ⚙️ SystemSettingsService with VAT validation, e-invoice series, config updates
-    storage.py                 ← 💾 SQLAlchemy models + repository adapters
-    web_adapter.py             ← 🌐 Flask blueprint + REST endpoints
+src/bricks/system_settings/          ← 🧱 Tax Engine lives here (not separate tax_engine brick)
+  contract.py                ← TaxRate port, SystemSettingsRepositoryPort, ALLOWED_VAT_FRACTIONS
+  domain.py                  ← TaxRate {0,5,8,10,-1}, CompanyConfig, EInvoiceSeries, CONFIG_FLAGS
+  rate_windows.py            ← TaxRateWindow, SEED_TAX_RATE_WINDOWS, VAT_REDUCTION_END, is_8pct_eligible, make_rate_gate
+  services.py                ← SystemSettingsService, TaxRateCatalogService, VatDeclarationService (+ carry + GDT XML)
+  storage.py                 ← SystemSettingsModel, TaxRateWindowModel, VatCarryModel, PeriodLockModel
+  web_adapter.py             ← Flask blueprint `/api/v1/system-settings/*` + `/reports/vat-declaration` + `/tax-rate-windows`
+src/bricks/invoice/          ← gates: FY period → COA → catalog → rate window + 8% category (all lines)
+src/bricks/purchases/        ← gates: FY → COA → duplicate → totals + rate window + 8% category + submit_proof
+src/bricks/voucher/ledger/   ← FY+COA gates, LedgerSourcePort for declaration
 ```
 
 **Brick boundaries:**
-- `domain.py` — pure Python; NO Flask, NO SQLAlchemy, NO flask_login imports
-- `contract.py` — public interface; accepts/returns only `str`, `int`, `float`, `dict`, `Decimal`, `UUID`
-- `storage.py` — SQLAlchemy models + repo adapters (the ONLY file with SQLAlchemy imports)
-- `services.py` — orchestration with injected port; no Flask/SQLAlchemy imports
-- `web_adapter.py` — Flask blueprint; `@login_required` + `current_user.role` checks (no Casbin)
-      models.py        # SystemSettingsModel, CompanyConfigModel + vat_rates column
-    repositories/
-      system_settings_repo.py  # SQLAlchemySystemSettingsRepository (MISSING — causes 500)
-  presentation/
-    api/
-      system_settings_bp.py   # REST endpoints — BROKEN: 500 due to missing repo
-    serializers/
-      tax_serializer.py
-```
+- `domain.py` pure Python; no Flask/SQLAlchemy/flask_login
+- `contract.py` primitives only `str/int/Decimal/UUID/dict`
+- `storage.py` only file with SQLAlchemy; `services.py` via port; `web_adapter.py` only Flask
 
 ## 2. Domain model
 
-### 2.1 TaxRate (entity)
+### 2.1 TaxRate
 
 ```python
 class TaxRate(Enum):
-    """Thuế suất theo quy định Việt Nam."""
     VAT_0 = 0
     VAT_5 = 5
+    VAT_8 = 8  # temporary 01/07/2025→31/12/2026 per NQ204/ND174
     VAT_10 = 10
-    NOT_TAXED = -1
+    NOT_TAXED = -1  # Điều 5 exempt, item-level only
+
+    def to_fraction(self) -> Decimal:
+        return Decimal(0) if self is NOT_TAXED else Decimal(self.value)/Decimal(100)
 ```
 
-Rules:
-- `VAT_0` = 0% — xuất khẩu, dịch vụ quốc tế, không chịu thuế GTGT.
-- `VAT_5` = 5% — hàng hóa và dịch vụ bắt buộc (nước dùng: nước sạch, thuốc y học, sách giáo khoa, phân bón, pesticide).
-- `VAT_10` = 10% — chuẩn mực — hàng hóa và dịch vụ thường (dịch vụ thương mại, bất động sản, nội địa vận chuyển, v.v.).
-- `NOT_TAXED` = -1 — miễn thuế GTGT (các mặt hàng không chịu thuế theo Điều 5 Luật GTGT).
+Rules: `VAT_8` prints "8%" on invoice, deducts at reduced figure; after 31/12/2026 gate rejects → revert to 10%.
 
-Constraints:
-- Code matches enum values {0, 5, 10, -1}.
-- Domain layer: no sqlalchemy/Flask imports (lint-enforced, per AGENTS.md).
-
-### 2.2 CompanyConfig — vat_rates
+### 2.2 CompanyConfig
 
 ```python
 @dataclass
 class CompanyConfig:
-    vat_rates: frozenset[int] = frozenset({0, 5, 10})  # LAW-type, immutable without migration
-    # ... other fields
+    vat_rates: frozenset[int] = {0,5,10}  # LAW-type immutable
+    vat_settlement_cycle: str = "monthly"|"quarterly"  # CONFIG-type, enforce in VatDeclarationService
+    # + fiscal_year_start_month/day, decimal_places, default_currency, cost_center_required
 ```
 
-Rules:
-- `vat_rates` is a **LAW-type flag** — immutable without migration (FlagLockedError).
-- Default `{0, 5, 10}` per Vietnamese VAT Law effective 01/07/2025.
-- Change requires migration patch + documented reason + 2nd approval (CHIEF_ACCOUNTANT).
-- Validation: `validate_vat_rate(rate)` → raises `InvalidRegimeError` if rate ∉ {0, 5, 10}.
+### 2.3 TaxRateWindow + 8% gate
+
+```python
+@dataclass(frozen=True)
+class TaxRateWindow:
+    rate_pct: int; fraction: str; valid_from: date|None; valid_to: date|None; decree_ref: str
+    def covers(self, on: date) -> bool: ...
+
+VAT_REDUCTION_END = date(2026,12,31)
+EXCLUDED_FROM_8PCT = frozenset({"telecom","finance",...,"mining","sst"})
+def is_8pct_eligible(category: str|None) -> bool: ...
+def _frac(pct:int) -> str: return str(TaxRate(pct).to_fraction())
+SEED_TAX_RATE_WINDOWS = (TaxRateWindow(0,_frac(0),...), TaxRateWindow(8,_frac(8),2025-07-01,VAT_REDUCTION_END,...))
+def make_rate_gate(windows): return gate(fraction,on_date) raises ValueError with decree citation
+```
 
 ## 3. Service layer
 
-### 3.1 SystemSettingsService — VAT-related methods
+### 3.1 SystemSettingsService
+
+`validate_vat_rate(rate)` — rejects ∉ {0,5,8,10}; `add_e_invoice_series` max15 SOD actor≠approver; `update_config_flag` with `CONFIG_FLAGS` allowlist + optimistic `config_version`.
+
+### 3.2 VatDeclarationService
 
 ```python
-def validate_vat_rate(self, rate: int) -> None:
-    """Validate VAT rate is in the allowed set."""
-    if rate not in {0, 5, 10}:
-        raise InvalidRegimeError(
-            f"Thuế GTGT {rate} không hợp lệ. Các mức được phép: {{0, 5, 10}}"
-        )
-
-def add_e_invoice_series(
-    self,
-    company_id: UUID,
-    actor: UUID,
-    prefix: str,
-    ca_signer: str | None,
-) -> EInvoiceSeries:
-    """Add a new e-invoice series.
-
-    Max 15 active series per company.
-    Requires CA signer information.
-    CONFIG-type flag; 2nd approval pattern (ADMIN → CHIEF_ACCOUNTANT).
-    """
-    config = self._settings_repo.get_config(company_id)
-    current_series = len(config.e_invoice_series)
-    if current_series >= 15:
-        raise SystemSettingsError(
-            "Đã đạt giới hạn 15 series số hóa đơn điện tử.active"
-        )
-    new_series = EInvoiceSeries(
-        prefix=prefix,
-        next_sequence=1,
-        active=True,
-        ca_signer=ca_signer,
-    )
-    config.e_invoice_series = frozenset(
-        list(config.e_invoice_series) + [new_series]
-    )
-    config.updated_by = actor
-    config.config_version += 1
-    updated = self._settings_repo.update_config(config)
-    return new_series
+class VatDeclarationService:
+    def __init__(self, *, output_source, input_source, carry_repo=None, config_repo=None): ...
+    def _compute(company_id,year,month|quarter) -> dict: # pure calc
+    def declare(...) -> dict: # _compute + save_carry + cycle enforce
+    def export_gdt_xml(...) -> str: # _compute + saxutils.escape → 01/GTGT XML
 ```
 
-### 3.2 Invoice VAT calculation (domain entity, no service needed)
+- Monthly `month` XOR quarterly `quarter`; `InvalidPeriodError` otherwise
+- `config_repo.get_config().vat_settlement_cycle` enforces monthly≠quarter cross →422
+- `carry_repo.get_previous_carry` adds `prev_carry` to `in_ded`; `save_carry` persists `carry_forward = max(0,in_ded-out_vat)`
+- `export_gdt_xml` uses `_compute` (no double persist), `saxutils.escape` safe
 
-```python
-class InvoiceItem:
-    def __init__(self, ..., vat_rate: TaxRate = TaxRate.VAT_10, ...):
-        self.vat_rate = vat_rate
-        line_total = self.quantity * self.unit_price - self.discount
-        self.vat_amount = round(line_total * self.vat_rate.value / 100, 2)
-        self.total_amount = round(line_total + self.vat_amount, 2)
+### 3.3 PurchaseService proof
+
+`submit_proof(iid,actor,reason)` — only `PENDING_PROOF` → `payment_proof=True`, `CASH→BANK` flip if needed, checksum `PROOF`, audit append `reason [was:cash]` + `after_value`.
+
+## 4. Data model (actual)
+
+```sql
+system_settings (id, company_id, vat_rates JSON, e_invoice_series JSON, config_version, updated_by/at, fiscal_year_start_month/day, vat_settlement_cycle, decimal_places, default_currency, cost_center_required, legal_reviewed_at/by)
+tax_rate_windows (id, rate_pct, fraction, valid_from, valid_to, decree_ref)
+vat_carry_forwards (id, company_id, year, month, quarter, carry_amount Numeric(18,2), UNIQUE company_id+year+month+quarter)
+period_locks (id, company_id, fiscal_year, accounting_period, lock_type, locked_at/by, notes)
 ```
 
-## 4. Data model (SQLAlchemy) — proposed
+Alembic `9c1a2b3d4e5f_add_vat_carry_forwards.py` `upgrade head` creates `vat_carry_forwards`.
 
-```python
-class SystemSettingsModel(Base):
-    __tablename__ = "system_settings"
-    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
-    company_id: Mapped[UUID] = mapped_column(ForeignKey("companies.id"), nullable=False, index=True)
-    vat_rates: Mapped[frozenset[int]] = mapped_column(FrozenJSON, nullable=False, default=frozenset({0, 5, 10}))
-    e_invoice_series: Mapped[frozenset[EInvoiceSeries]] = mapped_column(FrozenJSON, nullable=True, default=frozenset())
-    config_version: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    updated_by: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"), nullable=True)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=func.now())
-    # ... other LAW/CONFIG-type flags
-
-class EInvoiceSeriesModel(Base):
-    __tablename__ = "e_invoice_series"
-    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
-    prefix: Mapped[str] = mapped_column(String(20), nullable=False)
-    next_sequence: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
-    active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
-    ca_signer: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    company_id: Mapped[UUID] = mapped_column(ForeignKey("companies.id"), nullable=False, index=True)
-```
-
-## 5. API endpoints (draft)
+## 5. API endpoints
 
 | Method | Path | Role | Purpose |
 |---|---|---|---|
-| GET | /api/v1/system_settings/config | ADMIN, CHIEF_ACCOUNTANT, AUDITOR | list config (first company as example) |
-| GET | /api/v1/system_settings/config/{company_id} | all above | get config by company ID |
-| PATCH | /api/v1/system_settings/config/{company_id} | ADMIN, CHIEF_ACCOUNTANT | update config (LAW-type immutable without migration) |
-| POST | /api/v1/system_settings/e-invoice-series | ADMIN, CHIEF_ACCOUNTANT | add e-invoice series (2nd approval) |
-| GET | /api/v1/system_settings/tax-rates | all above | list TaxRate enum values {0, 5, 10, -1} |
+| GET | `/api/v1/system-settings/tax-rates` | any auth | list TaxRate enum {0,5,8,10,-1} + fractions |
+| GET/POST | `/api/v1/tax-rate-windows[?on=YYYY-MM-DD]` | GET any, POST ADMIN | list windows, add window SOD |
+| GET | `/api/v1/system-settings/config/{cid}` | any auth | get CompanyConfig |
+| PATCH | `/api/v1/system-settings/config/{cid}` | ADMIN,CHIEF | update CONFIG flag with version |
+| POST | `/api/v1/system-settings/e-invoice-series` | ADMIN,CHIEF SOD | add series max15 |
+| POST | `/api/v1/invoices` | ACCOUNTANT+ | create invoice — gates FY→COA→catalog→window→8% category (all lines) |
+| POST | `/api/v1/purchase-invoices` | ACCOUNTANT+ | create purchase — same gates + duplicate guard |
+| POST | `/api/v1/purchase-invoices/<iid>/proof` | ACCOUNTANT+ | submit proof PENDING→DEDUCTIBLE |
+| GET/POST | `/api/v1/reports/vat-declaration?company_id&year&month|quarter[&format=gdt_xml]` | any auth | 01/GTGT JSON or GDT XML, cycle enforce, carry persist |
 
-All routes decorated `@login_required + current_user.role`; AUDITOR read-only backend-enforced; actor UUID required
-for all mutations.
+All `@login_required + role`, AUDITOR 403 on writes, actor UUID required.
 
-## 6. CSV / import format (for e-invoice series or config changes, if needed)
+## 6. Invoice VAT calculation
 
-Not primary; manual API entry preferred. If CSV import needed later, pattern follows
-`exchange_rate_service.py.import_csv()`: atomic all-or-nothing, per-row validation,
-error report `{row: n, error: msg}`.
+`Invoice.vat_amount = (subtotal * vat_rate).quantize(Decimal(1))` VND; `grand_total = subtotal+vat_amount`.
 
 ## 7. Non-functional
 
-- Decimal rounding tol: implied 0.01 (VAT amount in VND).
-- Rate history append-only: new row supersedes old; no in-place edit → audit-friendly.
-- All mutations in single DB transaction; rollback on any failure.
-- No SQLAlchemy/Flask imports in domain entities (lint-enforced).
-- Timezone: all timestamps UTC; business date Asia/Ho_Chi_Minh.
+- Decimal tol 0.01, UTC timestamps, Asia/Ho_Chi_Minh business date
+- `vat_carry_forwards` persists per period; `export_gdt_xml` pure, no double persist via `_compute`
+- 951 tests, `ruff+black+mypy strict+pytest` green on 3.11+3.12
 
 ## 8. Version history
 
 | Ver | Date | Change |
 |---|---|---|
-| 0.1 | 2026-08-19 | Initial spec draft; module broken (missing repo); domain OK |
----
-
-## Addendum 2026-08 — Reduced 8% VAT rate (TEMPORARY)
-
-**Source:** gdt.gov.vn (Bộ Tài chính reform page) · thuvienphapluat.vn · verified 2026-08-24.
-
-- **NQ 204/2025/QH15** + **NĐ 174/2025/NĐ-CP**: reduce 10% → **8%** for deduction-method businesses, **eff 01/07/2025 → 31/12/2026**. Invoice prints "8%"; input-VAT deducts at the reduced figure.
-- **Exclusions while active:** viễn thông; tài chính/ngân hàng/chứng khoán/bảo hiểm; kinh doanh BĐS; kim loại & sản phẩm kim loại đúc sẵn; khai khoáng (trừ than); hàng hóa/dịch vụ chịu TTĐB (**trừ xăng — xăng được giảm**).
-- After 31/12/2026 rates revert to Luật GTGT 2024 — enum must be revisited.
-
-**Implementation delta:** `TaxRate.VAT_8 = 8` added; `LAWFUL_RATES = {0,5,8,10}` for `validate_vat_rate`; `CompanyConfig.vat_rates` default remains `{0,5,10}` per base law — configure 8 explicitly when trading reduced goods.
+| 0.1 | 2026-08-19 | Initial draft; tax_engine NEW brick proposal, repo MISSING |
+| 0.2 | 2026-09-03 | DONE: moved to system_settings brick, added VAT_8 windows+gate, VatCarryModel, cycle enforce, GDT XML, proof workflow, 951 tests, law re-checked 137 sources |

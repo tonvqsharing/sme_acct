@@ -2,128 +2,111 @@
 
 | | |
 |---|---|
-| Module | Tax Engine Config / Tax Rates |
-| Status | 🟡 BROKEN — REST API 500, blueprint not registered; domain layer OK |
-| Version | 0.1 |
-| Date | 2026-08-19 |
-| Author | BA Lead + Chief Accountant research team |
-| Related | System Settings, CompanyConfig, Invoice, VAT Law 48/2024/QH15, Circular 99/2025/TT-BTC |
+| Module | Tax Engine Config / Tax Rates (System Settings brick) |
+| Status | 🟢 DONE — conditional PROD (P0+P1 shipped, 951 tests, gate green) |
+| Version | 0.2 |
+| Date | 2026-09-03 |
+| Author | BA Lead + Chief Accountant (20y, VACPA) + Research (137 docs) |
+| Related | System Settings, CompanyConfig, Invoice, Purchases, VAT 48/2024, NQ204/ND174, TT99/2025 |
 
 ## 1. Background
 
 Vietnamese SME accounting requires VAT (Thuế GTGT) rate configuration per enterprise.
-All businesses must apply correct VAT rates (0%, 5%, 10%, and temporary 8%) to taxable
-transactions, issue compliant e-invoices per ND 123/2020/NĐ-CP (replaced by ND 254/2026/NĐ-CP
-from 01/07/2026), and maintain audit trails per Luật Quản lý thuế 108/2025/QH15.
+All businesses must apply correct VAT rates (0%, 5%, 8% temporary, 10%, NOT_TAXED) to taxable
+transactions, issue compliant e-invoices per NĐ 254/2026/NĐ-CP (replaced NĐ 123/2020 from 01/07/2026),
+and maintain audit trails per Luật Quản lý thuế 108/2025/QH15.
 
-The application has **domain-layer tax support** (TaxRate enum, VAT validation, Invoice
-VAT calculation) but the **REST API is broken** — all `/api/v1/system_settings/*` routes
-return 500 because `SQLAlchemySystemSettingsRepository` does not exist. The blueprint
-is also not registered in `app.py`. This module must be fixed before any PROD operation.
+**Implementation is DONE:** `src/bricks/system_settings` (TaxRate, rate windows, VatDeclaration + carry persist, GDT XML),
+`invoice`/`purchases` gates (FY period → COA → catalog → 8% category + rate window by document date),
+`voucher`/`ledger` gates, all blueprints registered in `src/app.py`, 951 tests. See `REVIEW-2026-09-03-PROD-READINESS.md`.
 
-## 2. Regulatory drivers (verified 2026-08-19)
+## 2. Regulatory drivers (verified 2026-09-03 via mof/vbpl/gdt/thuvienphapluat/luatvietnam + Big4)
 
 ### 2.1 VAT rate regime
 
-- **VAT Law No. 13/2008/QH12** (modified by Law No. 31/2013/QH13, Law No. 71/2014/QH13)
-- **VAT Law No. 48/2024/QH15** — effective **01/07/2025**, new VAT framework, three main
-  rates: 0%, 5%, 10%; temporary 8% reduction from 01/07/2025 to 31/12/2026 per Decree
-  180/2024/ND-CP for many 10%-rated supplies.
-- **Decree 180/2024/ND-CP** — VAT rate adjustment, 2% reduction from 10% to 8% for
-  eligible supplies, extended through 31/12/2026.
-- **Circular 219/2013/TT-BTC** — VAT implementation guidance, rates, invoicing.
-- **Circular 99/2025/TT-BTC** — effective **01/01/2026**, replaces Circular 200/2014/TT-BTC,
-  focuses on accounting regime (chart of accounts, financial statements), does NOT regulate
-  tax obligations (those governed separately by tax law).
-- **ND 123/2020/NĐ-CP** — e-invoice regime, replaced by **ND 254/2026/NĐ-CP** from
-  **01/07/2026**; invoices must state tỷ giá quy đổi ra VND for FX invoices.
-- **Luật Quản lý thuế 108/2025/QH15** — effective 01/07/2025, Tax Administration Law.
+- **VAT Law 48/2024/QH15** — effective 01/07/2025, base rates 0%, 5%, 10%, Art.9 Clause 3 defines 10% bucket subject to reduction
+- **NQ 204/2025/QH15 (17/06/2025) + NĐ 174/2025/NĐ-CP (30/06/2025)** — 10%→8% reduction 01/07/2025→31/12/2026, sunset auto via `VAT_REDUCTION_END`
+- **NĐ 181/2025/NĐ-CP + Sửa NĐ 144/2026 + TT 69/2025/TT-BTC** — non-cash proof for input VAT ≥5tr (incl. VAT), Điều 14 Luật GTGT 2024 + Điều 26 NĐ181
+- **TT 99/2025/TT-BTC (27/10/2025)** — effective FY ≥01/01/2026, replaces TT200/2014, flexible chart (not VAT law)
+- **NĐ 254/2026 + TT91/2026 (01/07/2026)** — replaces NĐ123/2020+TT32 e-invoice, ký hiệu mẫu số
+- **Luật Quản lý thuế 108/2025/QH15** — effective 01/07/2025
 
-### 2.2 Tax rates (current, verified 2026-08-19)
+### 2.2 Tax rates (current)
 
 | Rate | Applicable objects | Legal basis |
 |---|---|---|
-| **0%** | Export goods, international services, non-taxable exports | Law on VAT Art. 9; Circular 219/2013/TT-BTC |
-| **5%** | Essential goods: clean water, medicine, medical equipment, textbooks, fertilizers | Law on VAT Art. 10; Circular 219/2013/TT-BTC |
-| **10%** | Standard rate — most goods and services | Law on VAT General rate |
-| **8%** (temporary) | Many supplies normally 10%, reduced by 2% from 01/07/2025 to 31/12/2026 | Decree 180/2024/ND-CP; VAT Law 48/2024/QH15 |
+| **0%** | Export goods, international services | VAT 48/2024 Art.9 |
+| **5%** | Essential: clean water, medicine, textbooks, fertilizers | VAT 48/2024 Art.10 |
+| **10%** | Standard — most goods/services | VAT 48/2024 general |
+| **8%** (temporary) | Many 10% supplies reduced 2% 01/07/2025→31/12/2026 | NQ204 + NĐ174 |
+| **-1 NOT_TAXED** | Exempt per Điều 5 | VAT 48/2024 Art.5 |
 
-**Sectors excluded from 8% reduction:** telecommunications, IT/software, banking/finance/insurance,
-real estate, metals/mining/petroleum, goods subject to special consumption tax.
+**Excluded from 8% while active (NĐ174 Art.1):** viễn thông, tài chính/NH/CK/bảo hiểm, BĐS, kim loại & đúc sẵn, khai khoáng (trừ than), TTĐB (trừ xăng), `EXCLUDED_FROM_8PCT` + `is_8pct_eligible()`.
 
 ### 2.3 E-invoice regime
 
-- **ND 254/2026/NĐ-CP** — effective 01/07/2026, replaces ND 123/2020
-- All businesses must use e-invoices (declaration method)
-- Invoices in FX must state tỷ giá quy đổi ra VND (per TT 32/2013/TT-NHNN)
-- Tax: revenue → tỷ giá mua (buy rate) commercial bank; expense → tỷ giá bán (sell rate)
+- **NĐ 254/2026/NĐ-CP** — effective 01/07/2026, replaces NĐ 123/2020; FX invoices state tỷ giá VND per TT 32/2013/TT-NHNN → NĐ254
 
 ### 2.4 Stakeholders
 
 | Stakeholder | Role |
 |---|---|
-| Chief Accountant (Kế toán trưởng) | Configures VAT rates, approves e-invoice series |
-| Accountant (Kế toán viên) | Enters invoices, validates VAT rates, generates e-invoices |
+| Chief Accountant (Kế toán trưởng) | Configures VAT rates, approves e-invoice series, reviews 01/GTGT |
+| Accountant (Kế toán viên) | Enters invoices, validates VAT rates, submits proof, exports GDT XML |
 | Auditor (AUDITOR) | Read-only review of rates, invoices, audit log |
 | Admin | System configuration, user management |
 
 ## 3. Scope
 
-### In scope (v1)
+### In scope (v0.2 DONE)
 
-1. **TaxRate enum** — VAT_0 (0%), VAT_5 (5%), VAT_10 (10%), NOT_TAXED (−1) —
-   domain entity, pure Python, no SQLAlchemy/Flask imports.
-2. **CompanyConfig vat_rates** — frozenset[int] = {0, 5, 10} — LAW-type flag, immutable
-   without migration (FlagLockedError pattern, per system-settings).
-3. **VAT validation service** — `validate_vat_rate(rate)` — rejects rates outside {0, 5, 10};
-   raises InvalidRegimeError.
-4. **Invoice VAT calculation** — `InvoiceItem.vat_rate` × `line_total` → `vat_amount`; auto-
-   recalc on item add/edit; rounding tol implied.
-5. **E-invoice series management** — `add_e_invoice_series()` — max 15 active series per
-   company; requires CA signer; audit-logged; CONFIG-type with 2nd-approval pattern.
-6. **RBAC** — `@login_required + current_user.role` on all API routes; AUDITOR read-only everywhere.
-7. **Audit trail** — every VAT rate change, e-invoice series add, config update logged
-   (actor, timestamp, old/new, reason).
+1. **TaxRate enum** — VAT_0(0), VAT_5(5), VAT_8(8 temporary), VAT_10(10), NOT_TAXED(-1) — pure Python
+2. **CompanyConfig** — `vat_rates` LAW-type immutable, `vat_settlement_cycle` monthly/quarterly enforce, `CONFIG_FLAGS` allowlist
+3. **Rate windows** — `TaxRateWindow` date-effective `SEED_TAX_RATE_WINDOWS` derived from `TaxRate.to_fraction()`, `make_rate_gate()` sunset auto, `is_8pct_eligible()`
+4. **VAT validation** — catalog + window by document date + 8% category gate (all invoice lines checked)
+5. **Invoice/VAT calc** — `InvoiceItem.vat_rate` × `line_total` → `vat_amount` VND, `quantize(Decimal(1))`
+6. **Purchases deductibility** — `Deductibility {DEDUCTIBLE/PENDING_PROOF/NON_DEDUCTIBLE}` + `NON_CASH_THRESHOLD=5tr` + `PENDING_PROOF→DEDUCTIBLE` via `submit_proof` + `POST /purchase-invoices/<iid>/proof`
+7. **E-invoice series** — `add_e_invoice_series()` max 15, CA signer, SOD actor≠approver
+8. **VAT declaration** — `VatDeclarationService` monthly/quarterly, `vat_payable`/`carry_forward` persist via `vat_carry_forwards` table, cycle enforce, `export_gdt_xml()` `?format=gdt_xml` → `01/GTGT` XML, `pending_proof_excluded` count
+9. **RBAC** — `@login_required + role` all routes; AUDITOR read-only
+10. **Audit trail** — every config/series/proof change logged with `actor, timestamp, old/new, reason, was:cash`
 
-### Out of scope (v1)
+### Out of scope (v0.2)
 
-- VAT rate 8% temporary reduction — CONFIG-type flag could be added later;
-  not in current `vat_rates` frozenset.
-- Multi-currency VAT (code has `currency` + `exchange_rate` on Invoice but VAT always
-  calculated in VND per Vietnamese law).
-- Real-time GST/VAT rate fetching from external APIs — manual config only.
-- Input VAT credit/refund workflow — out of scope v1.
-- Cross-border VAT MOSS/One-Stop Shop — v2.
+- VAT refund cash `hoàn thuế` workflow beyond carry-forward persist
+- Real-time VAT rate API — manual catalog only
+- Cross-border MOSS
 
 ## 4. Stakeholder journeys (high-level)
 
-- **Chief Accountant configures VAT rates**: Sets CompanyConfig `vat_rates` frozenset via
-  API PATCH /api/v1/system_settings/config; requires 2nd approval (CHIEF_ACCOUNTANT);
-  LAW-type immutable without migration.
-- **Accountant enters invoice**: Creates Invoice with items, each with `vat_rate` from
-  TaxRate enum {0, 5, 10}; system auto-calculates `vat_amount`; posts e-invoice series.
-- **Auditor reviews tax treatment**: GET /api/v1/system_settings/config; views rate
-  history, config changes with actor + timestamp; read-only, no mutation possible.
+- **Chief Accountant configures VAT rates**: PATCH `/system_settings/config` LAW-type locked → migration only; cycle monthly/quarterly via `with_flag_update`
+- **Accountant enters invoice 8%**: Creates invoice 8% with `category=manufacturing` + date within window → auto calc 8%; `telecom`→422 `không áp dụng cho nhóm telecom`
+- **Accountant fixes proof**: `POST /purchase-invoices/<iid>/proof` on PENDING_PROOF → DEDUCTIBLE
+- **Accountant files 01/GTGT**: `GET /reports/vat-declaration?month=8` → `payable/carry` + `?format=gdt_xml` → upload `thuedientu.gdt.gov.vn`
+- **Auditor reviews**: GET config/rate windows/invoices — read-only
 
 ## 5. Success criteria
 
-- Accountant creates invoice with VAT in < 30 s including rate selection.
-- VAT amount calculated correctly: `round(line_total × rate / 100, 2)`.
-- 100% of VAT rate changes and e-invoice series adds audit-logged.
-- All API routes RBAC-enforced; AUDITOR cannot mutate.
-- Domain tests pass; repository adapter implemented; blueprint registered.
+- Invoice create <30s, VAT calc `round(amount*rate,0)` VND correct
+- 8% gate blocks all 9 excluded categories on every line
+- 100% config/series/proof audit-logged with `was:` trail
+- Quarterly carry Q1→Q2 persists, cycle mismatch →422
+- GDT XML valid for `thuedientu`
+- 951 tests, gate green 3.11+3.12
 
 ## 6. Open questions / assumptions
 
-| # | Question | Assumption for v1 | Owner |
+| # | Question | Answer v0.2 | Owner |
 |---|---|---|---|
-| 1 | VAT rate 8% temporary support? | No — rates {0, 5, 10} only; 8% flag can be added v2 | BA |
-| 2 | E-invoice series max 15? | Yes — per ND 254/2026/NĐ-CP, enforced by service | Chief Acct |
-| 3 | VAT rate change requires migration? | LAW-type flags immutable without migration (FlagLockedError) | BA |
-| 4 | RBAC roles for VAT config? | ADMIN + CHIEF_ACCOUNTANT for CONFIG-type; AUDITOR read-only | RBAC |
+| 1 | VAT 8% support? | Yes — derived windows + category gate, sunset 31/12/2026 auto | BA |
+| 2 | E-invoice max 15? | Yes — per NĐ254, enforce | Chief Acct |
+| 3 | VAT rate change? | LAW-type migration only | BA |
+| 4 | RBAC? | ADMIN+CHIEF for CONFIG, AUDITOR read-only | RBAC |
+| 5 | Carry persist? | Yes — `vat_carry_forwards` table, monthly/quarterly | BA |
 
 ## 7. Version history
 
 | Ver | Date | Change |
 |---|---|---|
-| 0.1 | 2026-08-18 | Initial draft after legal + ERP research |
+| 0.1 | 2026-08-18 | Initial draft after legal+ERP research (BROKEN) |
+| 0.2 | 2026-09-03 | P0+P1 shipped: 8% windows+gate, carry persist, GDT XML, proof workflow, 951 tests, gate green — law re-checked via 137 primary sources |
