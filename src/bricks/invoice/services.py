@@ -104,13 +104,14 @@ class InvoiceService:
             raise ValueError(f"vat_rate {rate_str} không thuộc catalog thuế suất")
         if self._rate_gate is not None and issue_date is not None:
             self._rate_gate(rate_str, issue_date)
-        # Gate 0b: 8% category eligibility per NĐ 174/2025 Art.1
+        # Gate 0b: 8% category eligibility per NĐ 174/2025 Art.1 — check all lines
         if rate_str == "0.08":
             from src.bricks.system_settings.rate_windows import is_8pct_eligible
 
-            cat = product_category or (items[0].get("category") if items else None)
-            if not is_8pct_eligible(cat):
-                raise ValueError(f"Thuế suất 8% không áp dụng cho nhóm {cat} theo NĐ174/2025")
+            cats = [product_category] if product_category else [it.get("category") for it in items]
+            for cat in cats:
+                if cat is not None and not is_8pct_eligible(cat):
+                    raise ValueError(f"Thuế suất 8% không áp dụng cho nhóm {cat} theo NĐ174/2025")
         vat_rate = _d(vat_rate)
 
         # Gate 2: every line posts to an ACTIVE posting-level account,

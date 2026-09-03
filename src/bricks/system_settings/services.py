@@ -244,9 +244,15 @@ class VatDeclarationService:
                     raise InvalidPeriodError("Công ty kê khai theo tháng, không được kê theo quý")
                 if cycle == "quarterly" and month is not None:
                     raise InvalidPeriodError("Công ty kê khai theo quý, không được kê theo tháng")
-            except Exception as exc:
-                if isinstance(exc, InvalidPeriodError):
-                    raise
+            except InvalidPeriodError:
+                raise
+            except Exception:  # noqa: BLE001 — config unavailable is non-fatal
+                import logging
+
+                logging.getLogger(__name__).warning(
+                    "vat_settlement_cycle check skipped: config unavailable",
+                    extra={"company_id": str(company_id)},
+                )
 
         # Previous carry (if persisted)
         prev_carry = Decimal(0)
