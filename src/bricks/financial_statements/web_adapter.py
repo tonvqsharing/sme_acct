@@ -10,11 +10,18 @@ from flask_login import current_user, login_required
 
 from src.bricks.financial_statements.services import (
     PeriodAlreadyClosedError,
+    ReportEngine,
+)
+from src.bricks.financial_statements.templates import (
+    b01_dn_template,
+    b02_dn_template,
+    b03_dn_template,
 )
 
 reports_bp = Blueprint("reports", __name__)
 
 _period_close_service: Any = None
+_ledger_source: Any = None
 
 
 def init_period_close_service(svc: Any) -> None:
@@ -22,11 +29,22 @@ def init_period_close_service(svc: Any) -> None:
     _period_close_service = svc
 
 
+def init_reports_ledger(source: Any) -> None:
+    global _ledger_source
+    _ledger_source = source
+
+
 def _close_svc() -> Any:
     s = _period_close_service
     if s is None:
         abort(500, description="PeriodCloseService not initialized")
     return s
+
+
+def _ledger() -> Any:
+    if _ledger_source is None:
+        abort(500, description="Ledger source not initialized")
+    return _ledger_source
 
 
 @reports_bp.post("/api/v1/reports/close-month")
@@ -109,3 +127,69 @@ def close_month() -> tuple[Any, int]:
         ),
         200,
     )
+
+
+def _compute_report(code: str) -> list[dict[str, Any]]:
+    from datetime import date
+
+    from flask import request as _req
+
+    args = _req.args
+    try:
+        company_id = UUID(args.get("company_id", ""))
+    except ValueError:
+        abort(422, description="company_id required")
+    try:
+        y = int(args.get("year", "2026"))
+        m = int(args.get("month", "12"))
+    except ValueError:
+        abort(422, description="invalid year/month")
+    start = date(y, 1, 1)
+    end = date(y, m, 28)
+    # Use ledger source to build account_balances
+    try:
+        account_balances: dict[str, Any] = {}
+        for r in (
+            _ledger().get_posted_lines(company_id, start, end)
+            if hasattr(_ledger(), "get_posted_lines")
+            else []
+        ):
+            acct = r["account_code"]
+            slot = account_balances.setdefault(
+                acct,
+                {
+                    "debit": __import__("decimal").Decimal(0),
+                    "credit": __import__("decimal").Decimal(0),
+                },
+            )
+            slot["debit"] += __import__("decimal").Decimal(str(r["debit"]))
+            slot["credit"] += __import__("decimal").Decimal(str(r["credit"]))
+    except Exception:  # noqa: BLE001 — ledger empty is non-fatal
+        account_balances = {}
+    template = {"B01-DN": b01_dn_template, "B02-DN": b02_dn_template, "B03-DN": b03_dn_template}[
+        code
+    ]()
+    engine = ReportEngine()
+    lines = engine.compute(template, account_balances)
+    return [
+        {"line_code": l.line_code, "line_name": l.line_name, "value": float(l.value_current)}
+        for l in lines
+    ]
+
+
+@reports_bp.get("/api/v1/reports/b01")
+@login_required  # type: ignore[untyped-decorator]
+def report_b01() -> tuple[Any, int]:
+    return jsonify({"data": _compute_report("B01-DN")}), 200
+
+
+@reports_bp.get("/api/v1/reports/b02")
+@login_required  # type: ignore[untyped-decorator]
+def report_b02() -> tuple[Any, int]:
+    return jsonify({"data": _compute_report("B02-DN")}), 200
+
+
+@reports_bp.get("/api/v1/reports/b03")
+@login_required  # type: ignore[untyped-decorator]
+def report_b03() -> tuple[Any, int]:
+    return jsonify({"data": _compute_report("B03-DN")}), 200
