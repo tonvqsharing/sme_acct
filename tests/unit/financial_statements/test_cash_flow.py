@@ -73,10 +73,10 @@ class TestCashFlowComputation:
         svc = CashFlowService()
         # Each line gets its own amount
         cf_amounts = {
-            "A1": Decimal(500),   # Cash received from customers
+            "A1": Decimal(500),  # Cash received from customers
             "A2": Decimal(-300),  # Cash paid to suppliers
             "A3": Decimal(-100),  # Cash paid to employees
-            "A4": Decimal(-50),   # Cash paid for tax
+            "A4": Decimal(-50),  # Cash paid for tax
         }
         lines = svc.compute(tmpl, cf_amounts, opening_cash=ZERO)
 
@@ -96,7 +96,7 @@ class TestCashFlowComputation:
         svc = CashFlowService()
         cf_amounts = {
             "B1": Decimal(-200),  # Purchase of fixed assets
-            "B2": Decimal(80),    # Proceeds from sale
+            "B2": Decimal(80),  # Proceeds from sale
         }
         lines = svc.compute(tmpl, cf_amounts, opening_cash=ZERO)
 
@@ -109,10 +109,10 @@ class TestCashFlowComputation:
         tmpl = b03_dn_template()
         svc = CashFlowService()
         cf_amounts = {
-            "C1": Decimal(300),   # Proceeds from borrowings
+            "C1": Decimal(300),  # Proceeds from borrowings
             "C2": Decimal(-100),  # Repayment of borrowings
-            "C3": Decimal(200),   # Capital contributions
-            "C4": Decimal(-50),   # Dividends paid
+            "C3": Decimal(200),  # Capital contributions
+            "C4": Decimal(-50),  # Dividends paid
         }
         lines = svc.compute(tmpl, cf_amounts, opening_cash=ZERO)
 
@@ -125,9 +125,9 @@ class TestCashFlowComputation:
         tmpl = b03_dn_template()
         svc = CashFlowService()
         cf_amounts = {
-            "A1": Decimal(500),   # Operating: 500
+            "A1": Decimal(500),  # Operating: 500
             "B1": Decimal(-200),  # Investing: -200
-            "C1": Decimal(100),   # Financing: 100
+            "C1": Decimal(100),  # Financing: 100
         }
         lines = svc.compute(tmpl, cf_amounts, opening_cash=ZERO)
 
@@ -136,7 +136,9 @@ class TestCashFlowComputation:
         c_tong = next(l for l in lines if l.line_code == "C_TONG")
 
         net = next(l for l in lines if l.line_code == "NET_CF")
-        assert net.value_current == a_tong.value_current + b_tong.value_current + c_tong.value_current
+        assert (
+            net.value_current == a_tong.value_current + b_tong.value_current + c_tong.value_current
+        )
 
     def test_cash_reconciliation(self) -> None:
         """CASH_END = NET_CF + CASH_BEGIN."""
@@ -166,18 +168,18 @@ class TestCashFlowComputation:
         svc = CashFlowService()
         cf_amounts = {
             # Operating
-            "A1": Decimal(800_000_000),   # Received from customers
+            "A1": Decimal(800_000_000),  # Received from customers
             "A2": Decimal(-400_000_000),  # Paid to suppliers
             "A3": Decimal(-150_000_000),  # Paid to employees
-            "A4": Decimal(-50_000_000),   # Tax
+            "A4": Decimal(-50_000_000),  # Tax
             # Investing
             "B1": Decimal(-300_000_000),  # Buy fixed assets
-            "B2": Decimal(50_000_000),    # Sell fixed assets
+            "B2": Decimal(50_000_000),  # Sell fixed assets
             # Financing
-            "C1": Decimal(200_000_000),   # Borrow
+            "C1": Decimal(200_000_000),  # Borrow
             "C2": Decimal(-100_000_000),  # Repay
-            "C3": Decimal(100_000_000),   # Capital
-            "C4": Decimal(-50_000_000),   # Dividends
+            "C3": Decimal(100_000_000),  # Capital
+            "C4": Decimal(-50_000_000),  # Dividends
         }
         lines = svc.compute(tmpl, cf_amounts, opening_cash=Decimal(100_000_000))
 

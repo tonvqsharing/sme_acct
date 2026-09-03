@@ -74,6 +74,16 @@ from src.bricks.currencies.storage import (
 from src.bricks.currencies.web_adapter import (
     init_currencies_services,
 )
+
+# Financial Statements brick
+from src.bricks.financial_statements.storage import (
+    Base as FsBase,
+)
+from src.bricks.financial_statements.storage import (
+    SQLAlchemyReportInstanceRepository,
+    SQLAlchemyReportTemplateRepository,
+    SQLAlchemyRetainedEarningsRepository,
+)
 from src.bricks.fiscal_year_period.services import FiscalYearService
 from src.bricks.fiscal_year_period.storage import (
     Base as FyBase,
@@ -178,16 +188,6 @@ from src.bricks.voucher.storage import SQLAlchemyVoucherRepository
 from src.bricks.voucher.web_adapter import init_voucher_service, voucher_bp
 from src.bricks.xml_ingest.services import XMLIngestService
 from src.bricks.xml_ingest.web_adapter import init_xml_ingest_service, xml_ingest_bp
-
-# Financial Statements brick
-from src.bricks.financial_statements.storage import (
-    Base as FsBase,
-)
-from src.bricks.financial_statements.storage import (
-    SQLAlchemyReportTemplateRepository,
-    SQLAlchemyReportInstanceRepository,
-    SQLAlchemyRetainedEarningsRepository,
-)
 
 
 def create_app(config: dict | None = None) -> Flask:

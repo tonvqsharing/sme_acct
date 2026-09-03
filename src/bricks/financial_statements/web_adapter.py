@@ -10,7 +10,6 @@ from flask_login import current_user, login_required
 
 from src.bricks.financial_statements.services import (
     PeriodAlreadyClosedError,
-    PeriodCloseService,
 )
 
 reports_bp = Blueprint("reports", __name__)
