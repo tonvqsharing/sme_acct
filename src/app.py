@@ -364,7 +364,6 @@ def create_app(config: dict | None = None) -> Flask:
     init_approval_service(approval_svc)
 
     # ── Tax-rate catalog (master data) + lawful fractions ───────────────
-    from src.bricks.system_settings.domain import TaxRate as _TaxRate
     from src.bricks.system_settings.services import TaxRateCatalogService
     from src.bricks.system_settings.storage import (
         SQLAlchemyTaxRateWindowRepository,
@@ -375,9 +374,9 @@ def create_app(config: dict | None = None) -> Flask:
     catalog_svc.ensure_seeded()
     RATE_GATE = make_rate_gate(tuple(catalog_svc.all_windows()))
 
-    LAWFUL_VAT_FRACTIONS = frozenset(
-        {r.to_fraction() for r in _TaxRate if r.value >= 0}
-    )  # NOT_TAXED(-1) maps to 0; excluded from distinct membership
+    from src.bricks.system_settings.contract import (
+        ALLOWED_VAT_FRACTIONS as LAWFUL_VAT_FRACTIONS,  # str set, mypy clean
+    )
 
     # ── Bank / Cash (balance side-effects for vouchers) ─────────────────
     cash_svc_bc = CashAccountService(SQLAlchemyCashAccountRepository(bc_session))
@@ -443,7 +442,10 @@ def create_app(config: dict | None = None) -> Flask:
         regime_provider=regime_provider,
     )
 
-    # ── Invoice brick (consumes voucher auto-journal) ───────────────────
+    # ── Invoice brick (consumes voucher auto-journal + deduction) ───────
+    from src.bricks.system_settings.storage import SQLAlchemyPeriodLockRepository as _PLR2
+
+    _inv_period_lock = _PLR2(session_factory())
     invoice_svc = InvoiceService(
         fy=_FyGate(),
         coa=_CoaGate(),
@@ -454,8 +456,9 @@ def create_app(config: dict | None = None) -> Flask:
         regime_of=regime_provider,
         allowed_vat_rates=LAWFUL_VAT_FRACTIONS,
         rate_gate=RATE_GATE,
+        period_lock=_inv_period_lock,
     )
-    init_invoice_service(invoice_svc, on_posted=auto_journal.build_for)
+    init_invoice_service(invoice_svc, on_posted=auto_journal.build_for, voucher_service=voucher_svc)
 
     # ── Purchases brick ─────────────────────────────────────────────────
     purchases_repo = SQLAlchemySupplierInvoiceRepository(purchases_session)

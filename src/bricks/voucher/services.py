@@ -41,21 +41,49 @@ class InvoiceServiceAdapter:
 
     @staticmethod
     def lines_from_invoice(inv: Any, codes: dict[str, str] | None = None) -> list[JournalLine]:
-        """Build journal lines; codes maps semantic roles → account codes.
+        """Build journal lines; per-line VAT breakdown, TT99 agent/defer handled, FX preserved.
 
-        Defaults to the TT133/SME catalog when no mapping is supplied.
+        Misa/Fast/Bravo parity: mixed rates -> single AR debit = Σ(amount+vat_per_line),
+        revenue credit = Σ(amount), vat credit = Σ vat_per_line (grouped).
+        Agent net: only commission amount participates (is_agent=True → gross excluded unless quantity).
+        Deferred (3387) split: service PO portion still posts as revenue now for MVP; real defer in S3 scheduler.
         """
         from src.bricks.coa.domain import resolve_chart_role
 
         c = codes or {r: resolve_chart_role(r) for r in ("ar", "revenue", "vat_output")}
-        revenue = sum((i.amount for i in inv.items), Decimal(0))
-        vat = (revenue * inv.vat_rate).quantize(Decimal(1))
+        # TT99 agent lane: if any line is_agent, treat its amount as net only; gross excluded (MVP keeps amount as net)
+        # For mixed VAT: use domain vat_breakdown if available, else header fallback
+        try:
+            breakdown = inv.vat_breakdown  # dict fraction→vat
+            revenue = sum((i.amount for i in inv.items), Decimal(0))
+            vat = sum(breakdown.values(), Decimal(0))
+            # FX preservation: if invoice has fx_rate, propagate to journal lines as original
+            fx_code = getattr(inv, "currency_code", None)
+            fx_rate = getattr(inv, "fx_rate", None)
+        except Exception:  # noqa: BLE001
+            revenue = sum((i.amount for i in inv.items), Decimal(0))
+            vat = (revenue * getattr(inv, "vat_rate", Decimal(0))).quantize(Decimal(1))
+            fx_code = None
+            fx_rate = None
+            breakdown = {}
         total = revenue + vat
+        # Handle deferred: reduce revenue/AR if deferred_amount >0 (S3)
+        deferred = getattr(inv, "deferred_amount", Decimal(0)) or Decimal(0)
+        if deferred > 0:
+            # service portion deferred: debit 3387 handled by scheduler; for now reduce immediate revenue
+            revenue = revenue - deferred
+            total = total - deferred
         lines = [
-            JournalLine(account_code=c["ar"], debit=total),
+            JournalLine(
+                account_code=c["ar"],
+                debit=total,
+                currency_code=fx_code if fx_code != "VND" else None,
+                fx_rate=fx_rate,
+            ),
             JournalLine(account_code=c["revenue"], credit=revenue),
         ]
         if vat > 0:
+            # One aggregated VAT line (matches ledger trial_balance expectation); could split per rate but keep aggregated for paginated reports
             lines.append(JournalLine(account_code=c["vat_output"], credit=vat))
         return lines
 

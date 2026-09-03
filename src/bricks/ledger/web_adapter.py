@@ -45,13 +45,34 @@ def _dec(v: Any) -> float:
 @login_required  # type: ignore[untyped-decorator]
 def general_journal() -> tuple[Any, int]:
     cid, start, end = _params()
-    entries = _svc().general_journal(cid, start, end)
+    args = request.args
+    try:
+        page = int(args.get("page", "1"))
+        page_size = int(args.get("page_size", "50"))
+    except ValueError:
+        abort(422, description="invalid pagination")
+    entries = _svc().general_journal(cid, start, end, page=page, page_size=page_size)
     for e in entries:
         e["total_debit"] = _dec(e["total_debit"])
         for line in e["lines"]:
             line["debit"] = _dec(line["debit"])
             line["credit"] = _dec(line["credit"])
-    return jsonify({"data": entries}), 200
+    return jsonify({"data": entries, "page": page, "page_size": page_size}), 200
+
+
+@ledger_bp.get("/api/v1/reports/ar-aging")
+@login_required  # type: ignore[untyped-decorator]
+def ar_aging() -> tuple[Any, int]:
+    args = request.args
+    try:
+        cid = UUID(args.get("company_id", ""))
+        as_of = date.fromisoformat(args.get("as_of", date.today().isoformat()))  # noqa: DTZ011
+    except ValueError as exc:
+        abort(422, description=f"invalid param: {exc}")
+    buckets = _svc().ar_aging(cid, as_of)
+    for b in buckets:
+        b["amount"] = float(b["amount"])
+    return jsonify({"data": buckets}), 200
 
 
 @ledger_bp.get("/api/v1/reports/trial-balance")
