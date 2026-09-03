@@ -74,6 +74,10 @@ from src.bricks.currencies.storage import (
 from src.bricks.currencies.web_adapter import (
     init_currencies_services,
 )
+from src.bricks.document_conversion.services import DocumentConversionService
+from src.bricks.document_conversion.storage import Base as DocConvBase
+from src.bricks.document_conversion.web_adapter import bp as document_conversion_bp
+from src.bricks.document_conversion.web_adapter import init_document_conversion
 
 # Financial Statements brick
 from src.bricks.financial_statements.storage import (
@@ -231,6 +235,7 @@ def create_app(config: dict | None = None) -> Flask:
     TeBase.metadata.reflect(bind=engine)
     TeBase.metadata.create_all(engine)
     FsBase.metadata.create_all(engine)
+    DocConvBase.metadata.create_all(engine)
     session_factory = sessionmaker(bind=engine)
     app.db_session = session_factory  # type: ignore[attr-defined]
 
@@ -275,6 +280,7 @@ def create_app(config: dict | None = None) -> Flask:
         audit_log_bp,
         tools_equipment_bp,
         xml_ingest_bp,
+        document_conversion_bp,
     ):
         app.register_blueprint(bp)
 
@@ -462,6 +468,10 @@ def create_app(config: dict | None = None) -> Flask:
         rate_gate=RATE_GATE,
     )
     init_purchases_service(purchase_svc)
+
+    # ── Document Conversion brick (MarkItDown) ─────────────────────────
+    doc_conv_svc = DocumentConversionService()
+    init_document_conversion(doc_conv_svc)
 
     # ── XML Ingest brick ─────────────────────────────────────────────────
     xml_ingest_svc = XMLIngestService(purchase_service=purchase_svc)

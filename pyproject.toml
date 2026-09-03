@@ -5,6 +5,7 @@ description = "Vietnamese SME Accounting Application"
 requires-python = ">=3.11"
 dependencies = [
     "alembic>=1.19.1",
+    "markitdown[all]>=0.1.7",
 ]
 
 [tool.pytest.ini_options]
@@ -20,10 +21,18 @@ target-version = ["py311"]
 line-length = 100
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.13"
 strict = true
 
 [[tool.mypy.overrides]]
 module = "src.bricks.tools_equipment.storage"
 # SQLAlchemy storage adapters use complex generics that mypy strict can't resolve
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = "markitdown.*"
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = "numpy.*"
 ignore_errors = true

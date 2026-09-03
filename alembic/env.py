@@ -15,6 +15,8 @@ from src.bricks.coa.storage import Base as CoaBase
 from src.bricks.company.storage import Base as CompanyBase
 from src.bricks.cost_centers.storage import Base as CcBase
 from src.bricks.currencies.storage import Base as CurBase
+from src.bricks.document_conversion.storage import Base as DocConvBase
+from src.bricks.financial_statements.storage import Base as FsBase
 from src.bricks.fiscal_year_period.storage import Base as FyBase
 from src.bricks.fixed_assets.storage import Base as Fabase
 from src.bricks.invoice.storage import Base as InvBase
@@ -24,7 +26,6 @@ from src.bricks.system_settings.storage import Base as SetBase
 from src.bricks.tools_equipment.storage import Base as TeBase
 from src.bricks.user_master_data.storage import Base as UserBase
 from src.bricks.voucher.storage import Base as VchBase
-from src.bricks.financial_statements.storage import Base as FsBase
 
 config = context.config
 import os
@@ -51,6 +52,7 @@ target_metadata = [
     UserBase.metadata,
     TeBase.metadata,
     FsBase.metadata,
+    DocConvBase.metadata,
 ]
 
 

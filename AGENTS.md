@@ -7,12 +7,12 @@ _Flask + SQLAlchemy, Modular Hexagonal ("Lego bricks"), SQLite, Flask-Login RBAC
 `uv` is the package manager. Always `uv run` — no venv activation.
 
 ```bash
-uv run pytest -q                                   # full suite (954 passing)
+uv run pytest -q                                   # full suite (968 passing)
 uv run pytest tests/unit/company/ -k "<name>" -v   # single test / focused
 uv run pytest tests/integration/test_company_api.py -v
 uv run ruff check src tests                        # lint
 uv run black --check src tests                     # format check
-uv run mypy --ignore-missing-imports src/bricks/   # typecheck
+uv run mypy --ignore-missing-imports src/bricks/   # typecheck (python_version 3.13 for numpy stub)
 uv run python -c "from src.app import create_app; create_app().run(port=5000)"
 ```
 
@@ -42,7 +42,7 @@ src/bricks/<name>/
   web_adapter.py  # Flask blueprint — ONLY file that may import Flask
 ```
 
-`src/app.py` is the composition root. Wiring order matters: `coa_service` + `fy_service` before invoice/voucher (they consume `app.coa_service`/`app.fy_service`). Cross-brick calls use thin adapters defined inline in `app.py` (`_NumberingAdapter`, `_TermsAdapter`, `_COAServiceAdapter`) — never import another brick's `storage` into a service. Add `Base.metadata.create_all(engine)` there and `Base` to `alembic/env.py:target_metadata` (16 Bases currently).
+`src/app.py` is the composition root. Wiring order matters: `coa_service` + `fy_service` before invoice/voucher (they consume `app.coa_service`/`app.fy_service`). Cross-brick calls use thin adapters defined inline in `app.py` (`_NumberingAdapter`, `_TermsAdapter`, `_COAServiceAdapter`) — never import another brick's `storage` into a service. Add `Base.metadata.create_all(engine)` there and `Base` to `alembic/env.py:target_metadata` (17 Bases currently: +document_conversion).
 
 Transaction gate order (invoice & voucher services): `fiscal period open` → `COA posting accounts (ACTIVE + detail)` → `balance/invariant`. Ledger reports never touch voucher models — they read via `LedgerSourcePort` (flat primitive rows).
 
@@ -94,11 +94,11 @@ Compliance (as of 2026-08, mof.gov.vn/vbpl.vn): MST `TaxId` family `^[1-9]\d{2}(
 
 | Module | State |
 |---|---|
-| Company, Payment Terms & Numbering (SOD 202), Audit Log (checksum chain), FY & Periods, COA, Invoice/Voucher/Ledger, Bank/Cash (+ reconciliation SOD), Purchases (deductibility R-P4/R-P5, XML ingest v2), Tax Engine ({0,5,8,10,-1}+ windows+SOD), Currencies (ISO4217+gap-fill+revaluation SOD), Auth/User (pbkdf2), Fixed Assets (SL), Tools & Equipment (CCDC), XML Ingest (TT91), Cost Centers+Dimensions, System Settings (period lock/CONFIG_FLAGS), Financial Statements (B01/B02/B03) | ✅ done — all with unit+integration suites |
+| Company, Payment Terms & Numbering (SOD 202), Audit Log (checksum chain), FY & Periods, COA, Invoice/Voucher/Ledger, Bank/Cash (+ reconciliation SOD), Purchases (deductibility R-P4/R-P5, XML ingest v2), Tax Engine ({0,5,8,10,-1}+ windows+SOD), Currencies (ISO4217+gap-fill+revaluation SOD), Auth/User (pbkdf2), Fixed Assets (SL), Tools & Equipment (CCDC), XML Ingest (TT91), Cost Centers+Dimensions, System Settings (period lock/CONFIG_FLAGS), Financial Statements (B01/B02/B03), Document Conversion (MarkItDown PDF/DOCX/XLSX→MD) | ✅ done — all with unit+integration suites |
 
 ## Migrations
 
-`alembic/env.py` aggregates 16 brick Bases.
+`alembic/env.py` aggregates 17 brick Bases.
 
 ```bash
 DATABASE_URL="sqlite:///./sme_acct.db" uv run alembic upgrade head
