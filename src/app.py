@@ -654,12 +654,30 @@ def create_app(config: dict | None = None) -> Flask:
     )
 
     # ── Financial Statements ────────────────────────────────────────────
+    from src.bricks.financial_statements.services import PeriodCloseService
+    from src.bricks.financial_statements.web_adapter import init_period_close_service, reports_bp
+
     fs_repo = SQLAlchemyReportTemplateRepository(session_factory())
     fs_inst_repo = SQLAlchemyReportInstanceRepository(session_factory())
     fs_re_repo = SQLAlchemyRetainedEarningsRepository(session_factory())
     app.fs_template_repo = fs_repo  # type: ignore[attr-defined]
     app.fs_instance_repo = fs_inst_repo  # type: ignore[attr-defined]
     app.fs_re_repo = fs_re_repo  # type: ignore[attr-defined]
+
+    class _PeriodLockAdapter:
+        def __init__(self, repo):
+            self._r = repo
+
+        def is_period_locked(self, company_id, fiscal_year, period):
+            return self._r.is_locked(company_id, fiscal_year, period)
+
+        def lock_period(self, company_id, fiscal_year, period, actor, notes=None):
+            return self._r.lock(company_id, fiscal_year, period, actor, notes=notes)
+
+    _fs_lock_repo = SQLAlchemyPeriodLockRepository(session_factory())
+    _period_close_svc = PeriodCloseService(period_lock=_PeriodLockAdapter(_fs_lock_repo))
+    init_period_close_service(_period_close_svc)
+    app.register_blueprint(reports_bp)
 
     # ── Health check ────────────────────────────────────────────────────
     @app.route("/health")
