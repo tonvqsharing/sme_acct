@@ -7,7 +7,7 @@ _Flask + SQLAlchemy, Modular Hexagonal ("Lego bricks"), SQLite, Flask-Login RBAC
 `uv` is the package manager. Always `uv run` — no venv activation.
 
 ```bash
-uv run pytest -q                                   # full suite (937 passing)
+uv run pytest -q                                   # full suite (954 passing)
 uv run pytest tests/unit/company/ -k "<name>" -v   # single test / focused
 uv run pytest tests/integration/test_company_api.py -v
 uv run ruff check src tests                        # lint
