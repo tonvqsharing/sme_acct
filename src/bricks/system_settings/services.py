@@ -209,14 +209,14 @@ class VatDeclarationService:
         self._carry_repo = carry_repo
         self._config_repo = config_repo
 
-    def declare(
+    def _compute(
         self,
         company_id: UUID,
         year: int,
         month: int | None = None,
         quarter: int | None = None,
     ) -> dict[str, Any]:
-        """Monthly or quarterly VAT declaration (§Addendum — quarterly)."""
+        """Pure calc without side-effects (for export)."""
         import calendar
 
         if month is not None and quarter is not None:
@@ -286,11 +286,6 @@ class VatDeclarationService:
 
         payable = max(Decimal(0), out_vat - in_ded)
         carry = max(Decimal(0), in_ded - out_vat)
-        # Persist carry for next period
-        if self._carry_repo is not None:
-            self._carry_repo.save_carry(
-                company_id, year, month if quarter is None else None, quarter, carry
-            )
 
         period_info: dict[str, Any] = {"year": year}
         if quarter is not None:
@@ -311,21 +306,42 @@ class VatDeclarationService:
             },
         }
 
+    def declare(
+        self,
+        company_id: UUID,
+        year: int,
+        month: int | None = None,
+        quarter: int | None = None,
+    ) -> dict[str, Any]:
+        """Monthly or quarterly VAT declaration (§Addendum — quarterly). Persists carry."""
+        d = self._compute(company_id, year, month=month, quarter=quarter)
+        # Persist carry for next period
+        if self._carry_repo is not None:
+            self._carry_repo.save_carry(
+                company_id,
+                year,
+                d["period"].get("month"),
+                d["period"].get("quarter"),
+                d["carry_forward"],
+            )
+        return d
+
     def export_gdt_xml(
         self, company_id: UUID, year: int, month: int | None = None, quarter: int | None = None
     ) -> str:
         """Export 01/GTGT as GDT-compatible XML for thuedientu.gdt.gov.vn."""
-        d = self.declare(company_id, year, month=month, quarter=quarter)
+        import xml.sax.saxutils as _esc
+
+        d = self._compute(company_id, year, month=month, quarter=quarter)
         period = d["period"]
-        # Minimal GDT schema — expand per TT80/2021 when needed
         tag = f"Q{period['quarter']}" if "quarter" in period else f"M{period['month']}"
         return (
             '<?xml version="1.0" encoding="UTF-8"?>'
-            f'<ToKhai01GTGT nam="{period["year"]}" ky="{tag}">'
-            f"<ThueDauRa>{d['output_vat']}</ThueDauRa>"
-            f"<ThueDauVaoKhauTru>{d['input_vat_deductible']}</ThueDauVaoKhauTru>"
-            f"<ThuePhaiNop>{d['vat_payable']}</ThuePhaiNop>"
-            f"<ThueKhauTruKySau>{d['carry_forward']}</ThueKhauTruKySau>"
+            f'<ToKhai01GTGT nam="{_esc.escape(str(period["year"]))}" ky="{_esc.escape(tag)}">'
+            f"<ThueDauRa>{_esc.escape(str(d['output_vat']))}</ThueDauRa>"
+            f"<ThueDauVaoKhauTru>{_esc.escape(str(d['input_vat_deductible']))}</ThueDauVaoKhauTru>"
+            f"<ThuePhaiNop>{_esc.escape(str(d['vat_payable']))}</ThuePhaiNop>"
+            f"<ThueKhauTruKySau>{_esc.escape(str(d['carry_forward']))}</ThueKhauTruKySau>"
             "</ToKhai01GTGT>"
         )
 

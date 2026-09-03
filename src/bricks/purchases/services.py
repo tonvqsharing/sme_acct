@@ -246,6 +246,7 @@ class PurchaseService:
         inv = self._get_or_404(iid)
         if inv.deductibility.value != "PENDING_PROOF":
             raise ValueError("Chỉ hóa đơn PENDING_PROOF mới cần bổ sung chứng từ")
+        was = inv.payment_method.value
         inv.payment_proof = True
         # flip CASH→BANK if needed to satisfy _non_cash_proof_ok()
         if inv.payment_method.value == "cash":
@@ -253,6 +254,16 @@ class PurchaseService:
         inv.checksum = self._stamp(inv, "PROOF", actor_x, reason_x)
         saved: SupplierInvoice = self._repo.update(inv)
         self._log("PROOF", saved.id, actor_x, reason_x)
+        if self._audit is not None:
+            # keep audit trail of original method for traceability
+            self._audit.append(
+                entity_type="purchase_invoice",
+                entity_id=saved.id,
+                action="PROOF",
+                actor_id=actor_x,
+                reason=f"{reason_x} [was:{was}]",
+                after_value={"payment_method": saved.payment_method.value, "payment_proof": True},
+            )
         return saved
 
     def validate_before_entry(self, company_id: UUID, iid: UUID) -> None:
