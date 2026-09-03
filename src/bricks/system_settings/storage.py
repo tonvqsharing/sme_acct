@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, date, datetime
-from decimal import Decimal  # noqa: F401
+from decimal import Decimal
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -260,6 +260,82 @@ class TaxRateWindowModel(Base):
     valid_from: Mapped[date | None] = mapped_column(Date, nullable=True)
     valid_to: Mapped[date | None] = mapped_column(Date, nullable=True)
     decree_ref: Mapped[str] = mapped_column(String(200))
+
+
+class VatCarryModel(Base):
+    """Persisted VAT carry-forward per company+period (01/GTGT)."""
+
+    __tablename__ = "vat_carry_forwards"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    company_id: Mapped[str] = mapped_column(String(36), index=True)
+    year: Mapped[int] = mapped_column(Integer)
+    month: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    quarter: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    carry_amount: Mapped[Decimal] = mapped_column(sa.Numeric(18, 2), default=Decimal(0))
+    __table_args__ = (
+        sa.UniqueConstraint("company_id", "year", "month", "quarter", name="uq_vat_carry"),
+    )
+
+
+class SQLAlchemyVatCarryRepository:
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def get_carry(
+        self, company_id: UUID, year: int, month: int | None, quarter: int | None
+    ) -> Decimal:
+        m = (
+            self._session.query(VatCarryModel)
+            .filter(
+                VatCarryModel.company_id == str(company_id),
+                VatCarryModel.year == year,
+                VatCarryModel.month == month,
+                VatCarryModel.quarter == quarter,
+            )
+            .first()
+        )
+        return Decimal(m.carry_amount) if m else Decimal(0)
+
+    def get_previous_carry(
+        self, company_id: UUID, year: int, month: int | None, quarter: int | None
+    ) -> Decimal:
+        # Monthly: previous month; Quarterly: previous quarter
+        if quarter is not None:
+            if quarter == 1:
+                return self.get_carry(company_id, year - 1, None, 4)
+            return self.get_carry(company_id, year, None, quarter - 1)
+        if month is not None:
+            if month == 1:
+                return self.get_carry(company_id, year - 1, 12, None)
+            return self.get_carry(company_id, year, month - 1, None)
+        return Decimal(0)
+
+    def save_carry(
+        self, company_id: UUID, year: int, month: int | None, quarter: int | None, amount: Decimal
+    ) -> None:
+        m = (
+            self._session.query(VatCarryModel)
+            .filter(
+                VatCarryModel.company_id == str(company_id),
+                VatCarryModel.year == year,
+                VatCarryModel.month == month,
+                VatCarryModel.quarter == quarter,
+            )
+            .first()
+        )
+        if m is None:
+            m = VatCarryModel(
+                company_id=str(company_id),
+                year=year,
+                month=month,
+                quarter=quarter,
+                carry_amount=amount,
+            )
+            self._session.add(m)
+        else:
+            m.carry_amount = amount
+        self._session.commit()
 
 
 class SQLAlchemyTaxRateWindowRepository:

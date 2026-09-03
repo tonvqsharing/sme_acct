@@ -159,6 +159,13 @@ class PurchaseService:
                 )
             if self._rate_gate is not None:
                 self._rate_gate(rate_str, entry_date)
+            if rate_str == "0.08":
+                from src.bricks.system_settings.rate_windows import is_8pct_eligible
+
+                if not is_8pct_eligible(l.get("category")):
+                    raise ValueError(
+                        f"Thuế suất 8% không áp dụng cho nhóm {l.get('category')} theo NĐ174/2025"
+                    )
             jl.append(
                 SupplierLine(
                     expense_account=l["expense_account"],

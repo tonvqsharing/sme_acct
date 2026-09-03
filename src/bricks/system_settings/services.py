@@ -194,11 +194,20 @@ class InvalidPeriodError(Exception):
 
 
 class VatDeclarationService:
-    """Read-only aggregation feeding tờ khai 01/GTGT. R-V1..R-V5."""
+    """Aggregation feeding tờ khai 01/GTGT. R-V1..R-V5. Persists carry-forward."""
 
-    def __init__(self, *, output_source: Any, input_source: Any) -> None:
+    def __init__(
+        self,
+        *,
+        output_source: Any,
+        input_source: Any,
+        carry_repo: Any | None = None,
+        config_repo: Any | None = None,
+    ) -> None:
         self._output = output_source
         self._input = input_source
+        self._carry_repo = carry_repo
+        self._config_repo = config_repo
 
     def declare(
         self,
@@ -226,8 +235,28 @@ class VatDeclarationService:
                 raise InvalidPeriodError(f"Tháng không hợp lệ: {month}")
             months = [month]
 
+        # Enforce vat_settlement_cycle if config available
+        if self._config_repo is not None:
+            try:
+                cfg = self._config_repo.get_config(company_id)
+                cycle = getattr(cfg, "vat_settlement_cycle", None)
+                if cycle == "monthly" and quarter is not None:
+                    raise InvalidPeriodError("Công ty kê khai theo tháng, không được kê theo quý")
+                if cycle == "quarterly" and month is not None:
+                    raise InvalidPeriodError("Công ty kê khai theo quý, không được kê theo tháng")
+            except Exception as exc:
+                if isinstance(exc, InvalidPeriodError):
+                    raise
+
+        # Previous carry (if persisted)
+        prev_carry = Decimal(0)
+        if self._carry_repo is not None:
+            prev_carry = self._carry_repo.get_previous_carry(
+                company_id, year, month if quarter is None else None, quarter
+            )
+
         out_vat = Decimal(0)
-        in_ded = Decimal(0)
+        in_ded = prev_carry  # carry from previous period is deductible this period
         out_count = 0
         in_count = 0
         pending_excluded = 0
@@ -251,6 +280,11 @@ class VatDeclarationService:
 
         payable = max(Decimal(0), out_vat - in_ded)
         carry = max(Decimal(0), in_ded - out_vat)
+        # Persist carry for next period
+        if self._carry_repo is not None:
+            self._carry_repo.save_carry(
+                company_id, year, month if quarter is None else None, quarter, carry
+            )
 
         period_info: dict[str, Any] = {"year": year}
         if quarter is not None:

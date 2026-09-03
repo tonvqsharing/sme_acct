@@ -81,6 +81,7 @@ def create_invoice() -> tuple[Any, int]:
             issue_date=date.fromisoformat(body["issue_date"]),
             vat_rate=Decimal(str(body.get("vat_rate", "0.1"))),
             items=body.get("items", []),
+            product_category=body.get("product_category"),
             actor=UUID(str(current_user.id)),
             reason=body.get("reason") or "create invoice",
         )

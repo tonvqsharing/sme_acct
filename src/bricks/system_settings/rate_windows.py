@@ -14,6 +14,29 @@ from typing import Any
 
 VAT_REDUCTION_END = date(2026, 12, 31)  # NĐ 174/2025/NĐ-CP sunset
 
+# NĐ 174/2025 Art.1 exclusions — not eligible for 10%→8% reduction
+EXCLUDED_FROM_8PCT: frozenset[str] = frozenset(
+    {
+        "telecom",
+        "finance",
+        "banking",
+        "securities",
+        "insurance",
+        "real_estate",
+        "metal_products",
+        "mining",  # except coal — caller must split
+        "sst",  # special consumption tax goods — except gasoline
+        "it_software",  # excluded in 2024 but re-included 2025; kept for back-compat check
+    }
+)
+
+
+def is_8pct_eligible(category: str | None) -> bool:
+    """Check if product/service category qualifies for 8% per NĐ 174."""
+    if category is None or category == "":
+        return True  # unknown → allow, manual accountant check
+    return category.lower() not in EXCLUDED_FROM_8PCT
+
 
 @dataclass(frozen=True)
 class TaxRateWindow:
@@ -31,13 +54,20 @@ class TaxRateWindow:
         return not (self.valid_to is not None and on > self.valid_to)
 
 
+def _frac(pct: int) -> str:
+    """Derive fraction string from TaxRate enum to avoid literal drift."""
+    from src.bricks.system_settings.domain import TaxRate
+
+    return str(TaxRate(pct).to_fraction()) if pct != -1 else "0"
+
+
 SEED_TAX_RATE_WINDOWS: tuple[TaxRateWindow, ...] = (
-    TaxRateWindow(0, "0", None, None, "Luật Thuế GTGT 2024"),
-    TaxRateWindow(5, "0.05", None, None, "Luật Thuế GTGT 2024"),
-    TaxRateWindow(10, "0.1", None, None, "Luật Thuế GTGT 2024"),
+    TaxRateWindow(0, _frac(0), None, None, "Luật Thuế GTGT 2024"),
+    TaxRateWindow(5, _frac(5), None, None, "Luật Thuế GTGT 2024"),
+    TaxRateWindow(10, _frac(10), None, None, "Luật Thuế GTGT 2024"),
     TaxRateWindow(
         8,
-        "0.08",
+        _frac(8),
         date(2025, 7, 1),
         VAT_REDUCTION_END,
         "NQ 204/2025/QH15 + NĐ 174/2025/NĐ-CP",

@@ -492,10 +492,18 @@ def create_app(config: dict | None = None) -> Flask:
         )
     )
 
+    from src.bricks.system_settings.storage import (
+        SQLAlchemyVatCarryRepository,
+    )
+
+    _vat_carry_repo = SQLAlchemyVatCarryRepository(session_factory())
+    _settings_for_vat = SQLAlchemySystemSettingsRepository(session_factory())
     init_vat_declaration_service(
         VatDeclarationService(
             output_source=ledger_source.get_posted_lines,
             input_source=_decl_input_source,
+            carry_repo=_vat_carry_repo,
+            config_repo=_settings_for_vat,
         )
     )
 
