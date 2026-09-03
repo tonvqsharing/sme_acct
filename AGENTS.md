@@ -1,145 +1,112 @@
 # AGENTS — Vietnamese SME Accounting App
 
-_Flask + SQLAlchemy app for Vietnamese SME accounting. Architecture: Modular Hexagonal ("Lego bricks"). DB: SQLite3. RBAC: Flask-Login built-in._
+_Flask + SQLAlchemy, Modular Hexagonal ("Lego bricks"), SQLite, Flask-Login RBAC._
 
 ## Commands
 
-Package manager is `uv`. Prefix everything with `uv run` — no venv activation needed.
+`uv` is the package manager. Always `uv run` — no venv activation.
 
 ```bash
-uv run pytest -q                                  # full suite (currently 893 passing)
-uv run pytest tests/unit/company/ -k "<name>" -v  # single test / focused run
-uv run ruff check src tests                       # lint
-uv run black --check src tests                    # format check
-uv run mypy --ignore-missing-imports src/bricks/  # typecheck
-uv run python -c "from src.app import create_app; create_app().run(port=5000)"  # dev server
+uv run pytest -q                                   # full suite (937 passing)
+uv run pytest tests/unit/company/ -k "<name>" -v   # single test / focused
+uv run pytest tests/integration/test_company_api.py -v
+uv run ruff check src tests                        # lint
+uv run black --check src tests                     # format check
+uv run mypy --ignore-missing-imports src/bricks/   # typecheck
+uv run python -c "from src.app import create_app; create_app().run(port=5000)"
 ```
 
-**Quality gate order before EVERY commit:** ruff ➔ black ➔ mypy ➔ pytest. All four must pass. CI (`.github/workflows/ci.yml`) runs the same gates on Python 3.11 + 3.12.
+Quality gate order (CI `.github/workflows/ci.yml` on 3.11 + 3.12 enforces same): `ruff` → `black` → `mypy --ignore-missing-imports` → `pytest -q`. `uv sync --frozen` in CI is minimal (lockfile only pins `alembic`/`sqlalchemy`); local `.venv` already has `flask`/`flask-login` — use `uv run` directly, never `uv sync --no-dev` (strips dev tools).
 
-## Toolchain Gotchas (hard-won — don't rediscover)
+`pyproject.toml`: `testpaths=["tests"]`, `pythonpath=["src"]`, `line-length=100` (ruff + black), `mypy strict=true`.
 
-- **`mypy` fails without `--ignore-missing-imports`** — `pyproject.toml` sets `strict = true`, and `flask_login` ships no stubs (`import-untyped`). The flag is mandatory; CI includes it.
-- **Untyped-decorator ignores go on the `@login_required` line**, NOT the `def` line. Mypy attributes the `[untyped-decorator]` error to the decorator line; an ignore on `def` reports as `unused-ignore` while the real error survives.
-- **Route return annotation is `tuple[Any, int]`**, not `tuple[dict, int]` — `jsonify()` returns a Flask `Response`, so `tuple[dict, int]` triggers `[return-value]` errors.
-- **Line length is 100** (ruff + black both configured in `pyproject.toml`), not the 88 default.
-- **Never use `uv sync --no-dev` locally or in CI** — it strips ruff/black/mypy/pytest (they are dev deps).
-- **mypy strict bans bare `dict`** — write `dict[str, Any]` everywhere, including port/contract signatures and JSON-typed SQLAlchemy columns.
-- **ruff C408** forbids `dict(...)` calls (use literals) and **RUF059** flags unused tuple-unpack targets (`_`-prefix them).
-- **SQLAlchemy + `from __future__ import annotations`:** all types referenced in `Mapped[...]` annotations MUST be imported in the module namespace — SQLAlchemy evaluates the stringified annotations at class-definition time. Missing `date`, `Decimal`, `JSON`, or `uuid4` imports cause cryptic `NameError`/`MappedAnnotationError` at import time.
+## Toolchain Gotchas
+
+- `mypy` without `--ignore-missing-imports` fails — `flask_login` has no stubs (`import-untyped`). CI includes the flag.
+- `mypy` override: `src.bricks.tools_equipment.storage` has `ignore_errors = true` (complex SQLAlchemy generics).
+- `@login_required` `# type: ignore[untyped-decorator]` goes on the decorator line, not `def` — mypy attributes error to decorator.
+- Route return: `tuple[Any, int]` not `tuple[dict, int]` (`jsonify()` → `Response`).
+- `strict` bans bare `dict` → `dict[str, Any]` everywhere (port signatures, JSON columns).
+- `ruff` C408: use `{"k": v}` not `dict(k=v)`; RUF059: prefix unused unpack with `_`.
+- `from __future__ import annotations` + `Mapped[...]`: every type in annotation must be imported in module or `NameError`/`MappedAnnotationError` at import time (`date`, `Decimal`, `JSON`, `uuid4`, etc.).
+- `SECRET_KEY` env var required outside `TESTING` — factory raises `RuntimeError` if missing and `TESTING` is falsy. Defaults to `dev-secret-change-in-production` only in testing.
 
 ## Architecture: Lego Bricks
 
-Each module = one self-contained brick under `src/bricks/<name>/`:
-
 ```
 src/bricks/<name>/
-├── contract.py     # PUBLIC interface — ABC ports, primitives only in/out
-├── domain.py       # Pure Python entities/value objects. ZERO Flask/SQLAlchemy imports
-├── services.py     # Business logic, orchestrates repo via port
-├── storage.py      # SQLAlchemy models + repository adapter implementing port
-└── web_adapter.py  # Flask blueprint + routes. ONLY file allowed to import Flask
+  contract.py     # ABC ports, primitives only (str/int/Decimal/UUID/dict)
+  domain.py       # pure Python, ZERO Flask/SQLAlchemy imports
+  services.py     # business logic via port
+  storage.py      # SQLAlchemy models + repo adapter
+  web_adapter.py  # Flask blueprint — ONLY file that may import Flask
 ```
 
-`src/app.py` = composition root. **SECRET_KEY env var is mandatory outside TESTING** (fail-fast at factory). Wiring order matters: COA + FY services must exist before invoice/voucher blocks (they consume `app.coa_service` / `app.fy_service`). Cross-brick needs are met by thin adapters defined inline there (`_NumberingAdapter`, `_TermsAdapter`, `_COAServiceAdapter`) that translate brick contracts to narrow callables — do NOT import one brick's storage into another's service.
+`src/app.py` is the composition root. Wiring order matters: `coa_service` + `fy_service` before invoice/voucher (they consume `app.coa_service`/`app.fy_service`). Cross-brick calls use thin adapters defined inline in `app.py` (`_NumberingAdapter`, `_TermsAdapter`, `_COAServiceAdapter`) — never import another brick's `storage` into a service. Add `Base.metadata.create_all(engine)` there and `Base` to `alembic/env.py:target_metadata` (16 Bases currently).
 
-**Transaction gate order (invoice & voucher services):** fiscal-period open → COA posting accounts (ACTIVE + detail only) → balance/invariant. Keep this order; reports and tests assume it.
+Transaction gate order (invoice & voucher services): `fiscal period open` → `COA posting accounts (ACTIVE + detail)` → `balance/invariant`. Ledger reports never touch voucher models — they read via `LedgerSourcePort` (flat primitive rows).
 
-**Ledger reads:** reports never touch voucher models — they consume a `LedgerSourcePort` returning flat primitive rows. Swap storage behind the port freely.
+Brick boundaries (PR reject if violated):
+- No cross-brick SQLAlchemy joins; go through `contract.py` with primitives.
+- `domain.py` purity is law.
+- Mock target brick's `contract.py` in tests.
+- Config flags need `CONFIG_FLAGS = frozenset({...})` allowlist in domain; `with_flag_update()` validates.
 
-**Brick boundaries (violations = PR reject):**
-- No cross-brick SQLAlchemy joins. Cross-brick calls go through the target's `contract.py`, passing primitives (`str`, `int`, `Decimal`, `UUID`, `dict`) only.
-- Domain layer purity is architectural law: no Flask/SQLAlchemy imports in `domain.py`.
-- When testing cross-brick calls, mock the target brick's `contract.py`.
-- Config-type flags (changeable via API) must have an explicit allowlist (`CONFIG_FLAGS = frozenset({...})`) in domain — `with_flag_update()` validates against this before any mutation.
+Spec-vs-repo: specs mention Casbin/"CASRBAC" and paths like `src/presentation/api/*_bp.py` — ignore both. Use Flask built-in checks and brick layout.
 
-**Known spec-vs-repo conflicts** — specs predate the brick structure:
-1. Specs reference Casbin ("CASRBAC"). **Never import casbin/pycasbin** — translate role matrices to Flask built-in checks.
-2. Some specs give paths like `src/presentation/api/*_bp.py`. Follow the brick layout above instead.
+## RBAC
 
-## RBAC (Flask built-in only)
+`@login_required` on every route + `current_user.role` check:
 
-`@login_required` on every route + explicit role checks on `current_user.role`:
-
-| Action | Allowed roles |
+| Action | Roles |
 |---|---|
 | Create company | ADMIN |
 | Update company | ADMIN, ACCOUNTANT |
 | Suspend company | CHIEF_ACCOUNTANT |
-| Read anything | any authenticated user (incl. AUDITOR) |
-| AUDITOR writes | forbidden — read-only role |
+| Read anything | any authenticated (incl. AUDITOR) |
+| AUDITOR writes | forbidden |
 
 ## Testing
 
-- Unit tests: `tests/unit/<brick>/` — may hand-build a minimal Flask app with fixtures (see `tests/unit/test_company_web_adapter.py`: `FakeUser(UserMixin)` + `_store` dict + `session_transaction` login).
-- Integration tests: `tests/integration/` — MUST go through real `create_app()`.
-- **Shared fixtures live in `tests/integration/conftest.py`**
-- **`tests/__init__.py` must exist** — without it pytest imports conftest as top-level `conftest` while explicit imports create a second module instance; two `_store` dicts → mystery 401s across the suite (`app`, `admin_client`, `accountant_client`, `chief_client`, `auditor_client`, `UUID_*`). Import the UUID *constants* from there — never import the fixture functions themselves (they shadow pytest params → F811).
-- **Auth:** real `user_loader` is wired (looks up users table). Two options for tests:
-  1. **Stub override** (legacy, still works): register test `user_loader` on `app.login_manager` — see `tests/unit/test_company_web_adapter.py`
-  2. **Real login**: create a user via `_user_service.create_user(...)` then POST `/api/v1/auth/login` — see `tests/integration/test_auth_api.py`
-  Unauthorized requests return 401 JSON via permanent `unauthorized_handler` in the factory.
-- Each brick gets its own suite. No `sleep()` in tests.
+- Unit: `tests/unit/<brick>/` — may hand-build minimal Flask app (`FakeUser(UserMixin)` + `_store` dict + `session_transaction`). See `tests/unit/test_company_web_adapter.py`.
+- Integration: `tests/integration/` — MUST go through real `create_app(config={"TESTING": True})`.
+- Shared fixtures: `tests/integration/conftest.py` (`app`, `admin_client`, `accountant_client`, `chief_client`, `auditor_client`, `UUID_*`, `_store`, `FakeUser`). Import `UUID_*`/`FakeUser` from there — never import fixture functions (shadows pytest params → F811). `tests/__init__.py` exists (empty) so `tests` is a package; without it pytest treats `conftest` as top-level and creates a second `_store` → mystery 401s.
+- Auth: real `user_loader` looks up `users` table. Two options: stub `load_user` on `app.login_manager` (legacy) or create user via `UserService` then `POST /api/v1/auth/login` (see `tests/integration/test_auth_api.py`). Unauthorized → `401` JSON via `unauthorized_handler`.
+- No `sleep()` in tests. Each brick has its own suite.
 
-## Adding a New Brick (checklist)
+## Adding a New Brick
 
-When implementing a new brick from specs:
+1. Create `src/bricks/<name>/` with 5-file layout.
+2. `src/app.py`: `Base.metadata.create_all(engine)` + blueprint + `init_*_service()` in dependency order.
+3. `alembic/env.py`: import `Base` and append to `target_metadata`.
+4. `tests/unit/<name>/` + `tests/integration/test_<name>_api.py`.
+5. No cross-brick model imports.
 
-1. Create `src/bricks/<name>/` with the 5-file layout above
-2. Add `Base.metadata.create_all(engine)` in `app.py`
-3. Add the brick's `Base` import + metadata to `alembic/env.py` `target_metadata`
-4. Add blueprint registration + `init_*_service()` wiring in `app.py` **in dependency order**
-5. Create `tests/unit/<name>/` and `tests/integration/test_<name>_api.py`
-6. Bump test count in AGENTS.md Commands section
+## Docs Are Truth
 
-## Docs Are Truth — Read Before Implementing
+Before any code change, read `docs/CODING_CONVENTION.md` + `docs/TESTING_STRATEGY.md`, then `docs/<module>/` (BRD → specs → use cases). Rebuild from specs, not git archaeology.
 
-Mandatory reads before ANY code change:
-1. `docs/CODING_CONVENTION.md`
-2. `docs/TESTING_STRATEGY.md`
+Audit-chain rules (audit_log, payment_terms): `seq` per entity (not timestamps) for deterministic ordering; persist verbatim `ts_iso` string (SQLite round-trip loses microseconds); auto-numbering needs a real UUID actor — `uuid5(NAMESPACE_URL, "system:numbering")`, `None` trips EX-001.
 
-Then read the target module's specs under `docs/<module>/` (BRD → specs → use cases). Rebuild from specs, never from git archaeology.
-
-**Audit-chain data rules (audit_log + payment_terms checksums):**
-- Chain events need deterministic ordering → per-entity `seq` column, NOT timestamps (ties broke chains when uuid tiebreak was used).
-- Any string hashed into a checksum must be persisted verbatim: SQLite datetime round-trip loses microseconds vs `.isoformat()`, so audit rows carry a `ts_iso` string column.
-- Auto-numbering increments require a real UUID actor — use a `uuid5(NAMESPACE_URL, "system:numbering")` system identity, `None` trips EX-001.
-
-Vietnamese compliance rules baked into specs: MST tax-ID format (`^[1-9]\d{2}(-\d{3})?$`-family — see `TaxId` in company domain), accounting codes match `^[1-9]\d{2}$` or `^[1-9]\d{3}$`, regimes per mof.gov.vn/vbpl.vn as of 2026-08: TT99/2025 (replaced TT200), TT58/2026 (replaced TT132/2018), TT133/2016 in force; e-invoice law moved 01/07/2026 - NĐ 254/2026 + TT 91/2026 replace NĐ 123/2020+70/2025 & TT 32/2025; input-VAT >=5tr non-cash proof per Luật GTGT 2024 Đ.14 + NĐ 181/2025 Đ.26 (sửa NĐ 144/2026), VAT 8% reduced rate per NQ 204/2025/QH15 + NĐ 174/2025/NĐ-CP eff →31/12/2026 (date-effective gate in rate_windows.py — sunset auto-enforced by document date) (excl. viễn thông/tài chính/BĐS/kim loại/khai khoáng/TTĐB-trừ-xăng), 10-year retention (Luật Kế toán 2015 Art. 11).
+Compliance (as of 2026-08, mof.gov.vn/vbpl.vn): MST `TaxId` family `^[1-9]\d{2}(-\d{3})?$`, account codes `^[1-9]\d{2}$|^[1-9]\d{3}$`, TT99/2025 replaces TT200, TT58/2026 replaces TT132/2018, NĐ 254/2026+TT91/2026 replace NĐ123/2020+70/2025 & TT32/2025 (e-invoice 01/07/2026), input VAT ≥5tr non-cash per Luật GTGT 2024 Đ.14 + NĐ181/2025 Đ.26 (sửa NĐ144/2026), VAT 8% reduced per NQ204/2025+ NĐ174/2025 →31/12/2026 (date-effective gate in `rate_windows.py`), 10-year retention (Luật Kế toán 2015 Art.11). `CONFIG_FLAGS` allowlist enforced in domain.
 
 ## Module Status
 
-| Module | Code | Specs |
-|---|---|---|
-| Company | ✅ done — unit + integration suites green | `docs/company-module/` |
-| Payment Terms & Doc Numbering | ✅ done incl. SOD two-actor flow (request→202, approve/reject) | `docs/payment-terms/` |
-| Audit Log | ✅ done — append-only checksum chain + full API (POST create, GET query/filter/pagination, GET verify chain integrity) (46 tests incl. 20 integration) | `docs/audit-log/` |
-| Fiscal Year & Periods | ✅ core done — years/monthly periods/posting gate + web create/list (18 tests) | `docs/fiscal-year-period/` |
-| Chart of Accounts | ✅ core done — codes/hierarchy/posting gate + SQLite repo + web CRUD (33 tests) | `docs/coa/` |
-| Invoice + Voucher + Ledger core loop | ✅ invoice/voucher bricks done; ledger reports done (325 total) | — |
-| Bank/Cash Accounts | ✅ core done — bank+cash masters, balances, balances auto-move with vouchers; bank reconciliation w/ SOD resolve done (15 tests) | `docs/bank-cash/` |
-| Purchase Invoices | ✅ core done — supplier invoices, deductibility engine (R-P4/R-P5), duplicate guard, SOD-lite cancel (25 tests); XML ingest v2 | docs/purchases/ |
-| Tax Engine (config + VAT declaration) | ✅ done — TaxRate catalog {0,5,8,10,-1} w/ date-effective windows, LAW-locked vat_rates, e-invoice series w/ SOD, 01/GTGT aggregation endpoint, tax_rate_windows master table w/ date-effective gate + SOD admin API (33 tests) | `docs/tax-engine/` |
-| Currencies | ✅ slices 1-2 done — Currency master (ISO 4217, VND base), ExchangeRate w/ Tryton gap-fill, resolve_booking_rate (Nợ=actual/Có=weighted-avg per TT99), RevaluationRun engine w/ SOD + idempotent reversal (34 tests); multi-currency voucher lines w/ currency_code+fx_rate+amount_original; bank balances auto-move with bank_account_id-tagged lines | `docs/currencies-exchange/` |
-| User Master Data / Auth | ✅ done — User entity w/ pbkdf2 hashing (deviation from spec SHA-256, justified), login/logout/me + user CRUD APIs, real user_loader wired in factory, session-based auth; 22+ tests | `docs/user-master-data/` |
-| Fixed Assets (TSCĐ) | ✅ done — asset master, straight-line depreciation engine, grouped journal by expense account, capped-at-remaining guard, soft deactivate (22 tests incl. 3 integration + deactivate CHIEF+ endpoint; COA re-validation on monthly compute) | `docs/fixed-assets/` |
-| Tools & Equipment (CCDC) | ✅ done — CCDC master, lifecycle (ACTIVE→INACTIVE→WRITTEN_OFF), monthly allocation engine, SOD deactivation/reactivation/write-off; 38 tests (26 unit + 12 integration) | `docs/tools-equipment/` |
-| XML Invoice Ingest | ✅ done — TT91/2026 symbol parser, GDT XML parser (namespace-aware), PurchaseService bridge, single + batch upload endpoints; 51 tests (32 domain + 11 service + 8 integration) | — |
-| Cost Centers | ✅ done — code/name/status lifecycle (Active→Inactive/Closed), checksum chain, duplicate guard, deactivate/reactivate/close endpoints; Dimension + DimensionValue CRUD/lifecycle with spec-correct RBAC, FK validation, updated_at (43 unit tests) | `docs/cost-centers-dimensions/` |
-| System Settings (rest), Multi-company | ✅ System Settings done — period lock/unlock, CONFIG flags (fiscal year, VAT cycle, decimal places), legal review stamp, CONFIG_FLAGS allowlist, domain-level validation; 53 unit + 18 integration tests; multi-company deferred | `docs/system-settings/` |
-| Financial Statements | 🔬 Sprints 1-6 done — domain + storage + ReportEngine + B01-DN/B02-DN/B03-DN + 93 unit tests; specs complete | `docs/financial-statements/` |
+| Module | State |
+|---|---|
+| Company, Payment Terms & Numbering (SOD 202), Audit Log (checksum chain), FY & Periods, COA, Invoice/Voucher/Ledger, Bank/Cash (+ reconciliation SOD), Purchases (deductibility R-P4/R-P5, XML ingest v2), Tax Engine ({0,5,8,10,-1}+ windows+SOD), Currencies (ISO4217+gap-fill+revaluation SOD), Auth/User (pbkdf2), Fixed Assets (SL), Tools & Equipment (CCDC), XML Ingest (TT91), Cost Centers+Dimensions, System Settings (period lock/CONFIG_FLAGS), Financial Statements (B01/B02/B03) | ✅ done — all with unit+integration suites |
 
 ## Migrations
 
-Alembic manages schema. `alembic/env.py` aggregates all 13 brick Bases.
+`alembic/env.py` aggregates 16 brick Bases.
 
 ```bash
-DATABASE_URL="sqlite:///./sme_acct.db" uv run alembic upgrade head    # apply
-DATABASE_URL="sqlite:///./sme_acct.db" uv run alembic revision --autogenerate -m "desc"  # new
+DATABASE_URL="sqlite:///./sme_acct.db" uv run alembic upgrade head
+DATABASE_URL="sqlite:///./sme_acct.db" uv run alembic revision --autogenerate -m "desc"
 ```
 
-After autogenerate: **review the migration file** — replace any `src.bricks.*.*Type()` custom-type references with their underlying sa types (e.g., `sa.Text()` for JSONType).
+Review autogenerated files: replace `src.bricks.*.*Type()` custom types with underlying `sa` types (e.g. `sa.Text()` for `JSONType`).
 
 ## Commits
 
-Conventional Commits required: `type(scope): description` — types: feat/fix/refactor/perf/docs/test/chore/build/ci/style/revert. Scope = brick name when applicable (`fix(company): ...`).
+Conventional Commits: `type(scope): description` — types `feat/fix/refactor/perf/docs/test/chore/build/ci/style/revert`; scope = brick name (`fix(company): ...`).
