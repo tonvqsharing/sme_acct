@@ -158,6 +158,22 @@ def cancel_purchase_invoice(iid: str) -> tuple[Any, int]:
     return jsonify({"data": ser_inv(out)}), 200
 
 
+@purchases_bp.post("/api/v1/purchase-invoices/<iid>/proof")
+@login_required  # type: ignore[untyped-decorator]
+def submit_proof(iid: str) -> tuple[Any, int]:
+    _roles(WRITE_ROLES)
+    body = request.get_json(silent=True) or {}
+    try:
+        out = _svc().submit_proof(
+            UUID(iid), UUID(str(current_user.id)), body.get("reason") or "proof"
+        )
+    except ValueError as exc:
+        return jsonify({"error": str(exc), "code": "NOT_PENDING_PROOF"}), 422
+    except NotFoundError:
+        abort(404)
+    return jsonify({"data": ser_inv(out)}), 200
+
+
 @purchases_bp.get("/api/v1/purchase-invoices/<iid>")
 @login_required  # type: ignore[untyped-decorator]
 def get_purchase_invoice(iid: str) -> tuple[Any, int]:

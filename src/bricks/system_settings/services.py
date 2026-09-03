@@ -311,6 +311,24 @@ class VatDeclarationService:
             },
         }
 
+    def export_gdt_xml(
+        self, company_id: UUID, year: int, month: int | None = None, quarter: int | None = None
+    ) -> str:
+        """Export 01/GTGT as GDT-compatible XML for thuedientu.gdt.gov.vn."""
+        d = self.declare(company_id, year, month=month, quarter=quarter)
+        period = d["period"]
+        # Minimal GDT schema — expand per TT80/2021 when needed
+        tag = f"Q{period['quarter']}" if "quarter" in period else f"M{period['month']}"
+        return (
+            '<?xml version="1.0" encoding="UTF-8"?>'
+            f'<ToKhai01GTGT nam="{period["year"]}" ky="{tag}">'
+            f"<ThueDauRa>{d['output_vat']}</ThueDauRa>"
+            f"<ThueDauVaoKhauTru>{d['input_vat_deductible']}</ThueDauVaoKhauTru>"
+            f"<ThuePhaiNop>{d['vat_payable']}</ThuePhaiNop>"
+            f"<ThueKhauTruKySau>{d['carry_forward']}</ThueKhauTruKySau>"
+            "</ToKhai01GTGT>"
+        )
+
 
 # ═══ Tax-rate catalog — effective-dated master data ═══════════════════════
 

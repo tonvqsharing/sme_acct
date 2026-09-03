@@ -240,6 +240,21 @@ class PurchaseService:
         self._log("CANCEL", saved.id, actor_x, reason_x)
         return saved
 
+    def submit_proof(self, iid: UUID, actor: UUID, reason: str) -> SupplierInvoice:
+        """PENDING_PROOF → DEDUCTIBLE by attaching non-cash proof (NĐ181 Đ.26)."""
+        actor_x, reason_x = _require(actor, reason)
+        inv = self._get_or_404(iid)
+        if inv.deductibility.value != "PENDING_PROOF":
+            raise ValueError("Chỉ hóa đơn PENDING_PROOF mới cần bổ sung chứng từ")
+        inv.payment_proof = True
+        # flip CASH→BANK if needed to satisfy _non_cash_proof_ok()
+        if inv.payment_method.value == "cash":
+            inv.payment_method = PaymentMethod.BANK
+        inv.checksum = self._stamp(inv, "PROOF", actor_x, reason_x)
+        saved: SupplierInvoice = self._repo.update(inv)
+        self._log("PROOF", saved.id, actor_x, reason_x)
+        return saved
+
     def validate_before_entry(self, company_id: UUID, iid: UUID) -> None:
         inv = self._get_or_404(iid)
         if inv.company_id != company_id:

@@ -314,6 +314,12 @@ def vat_declaration() -> tuple[Any, int]:
             d = _vat_decl_service.declare(cid, year, month=month or 0)
     except InvalidPeriodError as exc:
         return jsonify({"error": str(exc), "code": "INVALID_PERIOD"}), 422
+    fmt = args.get("format", "json")
+    if fmt == "gdt_xml":
+        xml = _vat_decl_service.export_gdt_xml(cid, year, month=month, quarter=quarter)
+        from flask import Response
+
+        return Response(xml, mimetype="application/xml"), 200
     payload = {
         "period": d["period"],
         "output_vat": _dec(d["output_vat"]),
