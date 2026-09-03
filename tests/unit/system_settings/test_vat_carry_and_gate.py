@@ -265,3 +265,89 @@ class TestVatCarry:
         )
         with pytest.raises(InvalidPeriodError, match="quý"):
             svc.declare(COMPANY, 2026, month=5)
+
+
+class TestGdtXmlExportAndProof:
+    def test_export_gdt_xml_contains_tags_and_no_double_persist(self):
+        carry = FakeCarry()
+        svc = VatDeclarationService(
+            output_source=lambda cid, s, e: [
+                {"account_code": "3331", "debit": "0", "credit": "1000000"}
+            ],
+            input_source=lambda cid, s, e: [
+                {
+                    "status": "POSTED",
+                    "deductibility": "DEDUCTIBLE",
+                    "vat_deductible": "300000",
+                }
+            ],
+            carry_repo=carry,
+        )
+        xml1 = svc.export_gdt_xml(COMPANY, 2026, month=6)
+        assert "<ToKhai01GTGT" in xml1
+        assert "<ThueDauRa>1000000</ThueDauRa>" in xml1
+        # export must NOT persist carry — only declare persists
+        assert carry.get_carry(COMPANY, 2026, 6, None) == Decimal(0)
+        # declare persists
+        svc.declare(COMPANY, 2026, month=6)
+        assert carry.get_carry(COMPANY, 2026, 6, None) == Decimal(0)  # 1M-300k payable, no carry
+        # carry case
+        svc2 = VatDeclarationService(
+            output_source=lambda cid, s, e: [
+                {"account_code": "3331", "debit": "0", "credit": "100"}
+            ],
+            input_source=lambda cid, s, e: [
+                {"status": "POSTED", "deductibility": "DEDUCTIBLE", "vat_deductible": "1000"}
+            ],
+            carry_repo=carry,
+        )
+        _xml2 = svc2.export_gdt_xml(COMPANY, 2026, month=7)
+        assert carry.get_carry(COMPANY, 2026, 7, None) == Decimal(0)
+        svc2.declare(COMPANY, 2026, month=7)
+        assert carry.get_carry(COMPANY, 2026, 7, None) == Decimal(900)
+
+    def test_submit_proof_flips_pending_to_deductible(self):
+        from datetime import date as _d
+
+        from src.bricks.purchases.domain import PaymentMethod, SupplierInvoice, SupplierLine
+
+        class FakeRepo:
+            def __init__(self, inv):
+                self.inv = inv
+
+            def get_by_id(self, iid):
+                return self.inv
+
+            def update(self, inv):
+                self.inv = inv
+                return inv
+
+            def exists_duplicate(self, *a, **kw):
+                return False
+
+        inv = SupplierInvoice(
+            company_id=COMPANY,
+            supplier_name="NCC",
+            supplier_mst="0123456789",
+            invoice_number="001",
+            invoice_symbol="C25TAA",
+            invoice_date=_d(2026, 8, 10),
+            entry_date=_d(2026, 8, 10),
+            lines=[
+                SupplierLine(
+                    expense_account="6421",
+                    description="x",
+                    amount_pre_vat=Decimal(6000000),
+                    vat_rate=Decimal("0.05"),
+                )
+            ],
+            payment_method=PaymentMethod.BANK,
+            payment_proof=False,
+        )
+        assert inv.deductibility.value == "PENDING_PROOF"
+        repo = FakeRepo(inv)
+        svc = PurchaseService(repo=repo, fy=FakeFY(), coa=FakeCOA(), rate_gate=lambda r, d: True)
+        out = svc.submit_proof(inv.id, uuid4(), "proof")
+        assert out.payment_proof is True
+        assert out.payment_method.value == "bank"
+        assert out.deductibility.value == "DEDUCTIBLE"
