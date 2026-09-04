@@ -15,6 +15,7 @@ from src.bricks.opening_balance.domain import (
     CounterpartyBalance,
     GLBalance,
     OpeningBatch,
+    StockOpening,
 )
 
 
@@ -44,6 +45,7 @@ class OpeningService:
         regime_of: Any | None = None,
         audit: Any | None = None,
         party_lookup: Any | None = None,
+        inventory: Any | None = None,
     ) -> None:
         self._repo = repo
         self._fy_years = fy_years
@@ -51,6 +53,7 @@ class OpeningService:
         self._regime_of = regime_of
         self._audit = audit
         self._party_lookup = party_lookup
+        self._inventory = inventory
 
     # ── helpers ───────────────────────────────────────────────────────
     def _regime(self, company_id: UUID) -> str:
@@ -164,6 +167,72 @@ class OpeningService:
         self._repo.update_batch(b)
         self._log("POST_COUNTERPARTY", b.id, actor, reason)
 
+    def post_stock(
+        self, batch_id: UUID, *, rows: list[dict[str, Any]], actor: UUID, reason: str
+    ) -> None:
+        from datetime import date as _date
+
+        b = self._get_draft(batch_id)
+        if self._inventory is None:
+            raise RuntimeError("inventory port not wired")
+        for r in rows:
+            pid = UUID(str(r["product_id"]))
+            wid = UUID(str(r["warehouse_id"]))
+            qty = _d(r["qty"])
+            value = _d(r["total_value"])
+            if qty <= 0:
+                raise ValueError("qty must be > 0")
+            if value < 0:
+                raise ValueError("total_value must be >= 0")
+            prod = self._inventory.get_product(pid)
+            if prod is None or prod.company_id != b.company_id:
+                raise NotFoundError(f"Không tìm thấy vật tư {r['product_id']}")
+            if not prod.active:
+                raise ValueError(f"Vật tư {prod.code} ngừng hoạt động")
+            loc = self._inventory.get_location(wid)
+            if loc is None or loc.company_id != b.company_id:
+                raise NotFoundError(f"Không tìm thấy kho {r['warehouse_id']}")
+            method = r.get("cost_method") or prod.cost_method.value
+            if method in ("fifo", "specific") and (
+                not r.get("receipt_date") or r.get("unit_cost") is None
+            ):
+                raise ValueError("FIFO/specific rows need receipt_date and unit_cost")
+            unit = (
+                _d(r["unit_cost"])
+                if r.get("unit_cost") is not None
+                else (value / qty if qty != 0 else Decimal(0))
+            )
+            row = StockOpening(
+                batch_id=b.id,
+                product_id=pid,
+                warehouse_id=wid,
+                qty=qty,
+                total_value=value,
+                lot_code=r.get("lot_code"),
+                expiry_date=(
+                    _date.fromisoformat(r["expiry_date"]) if r.get("expiry_date") else None
+                ),
+                receipt_date=(
+                    _date.fromisoformat(r["receipt_date"]) if r.get("receipt_date") else None
+                ),
+                receipt_doc=r.get("receipt_doc"),
+                unit_cost=unit,
+            )
+            self._repo.add_stock(row)
+            self._inventory.post_opening_move(
+                company_id=b.company_id,
+                product_id=pid,
+                location_id=wid,
+                qty=qty,
+                unit_cost=unit,
+                effective_date=r.get("effective_date") or _date.today(),  # noqa: DTZ011
+                actor=actor,
+                reason=reason,
+            )
+        b.checksum = b.compute_checksum(b.checksum or GENESIS_CHECKSUM, actor, reason)
+        self._repo.update_batch(b)
+        self._log("POST_STOCK", b.id, actor, reason)
+
     # ── reconcile + lock ──────────────────────────────────────────────
     def reconcile(self, batch_id: UUID) -> dict[str, Any]:
         b = self._repo.get_batch(batch_id)
@@ -176,6 +245,8 @@ class OpeningService:
         bank_total = sum((r.amount for r in bank), Decimal(0))
         cp = self._repo.list_counterparty(batch_id)
         cp_total = sum((r.amount for r in cp), Decimal(0))
+        stock = self._repo.list_stock(batch_id)
+        stock_total = sum((r.total_value for r in stock), Decimal(0))
         balanced = abs(debit - credit) <= TOLERANCE
         return {
             "balanced": balanced,
@@ -186,6 +257,8 @@ class OpeningService:
                 "gl_lines": len(gl),
                 "counterparty_total": cp_total,
                 "counterparty_lines": len(cp),
+                "stock_total": stock_total,
+                "stock_lines": len(stock),
             },
         }
 
@@ -206,6 +279,30 @@ class OpeningService:
                     }
                 )
         return out
+
+    def _verify_stock_tie(self, batch_id: UUID) -> None:
+        """R-O02: SKU detail must tie to GL per warehouse account."""
+        if self._inventory is None:
+            return
+        gl_net: dict[str, Decimal] = {}
+        for r in self._repo.list_gl(batch_id):
+            gl_net[r.account_code] = gl_net.get(r.account_code, Decimal(0)) + r.debit - r.credit
+        stock_net: dict[str, Decimal] = {}
+        for r in self._repo.list_stock(batch_id):
+            prod = self._inventory.get_product(r.product_id)
+            if prod is None or prod.category_id is None:
+                continue
+            cat = self._inventory.get_category(prod.category_id)
+            if cat is None or not cat.account_code:
+                continue
+            stock_net[cat.account_code] = (
+                stock_net.get(cat.account_code, Decimal(0)) + r.total_value
+            )
+        for acct, total in stock_net.items():
+            if abs(total - gl_net.get(acct, Decimal(0))) > TOLERANCE:
+                raise UnbalancedOpeningError(
+                    f"Tồn kho {acct} {total} ≠ sổ cái {gl_net.get(acct, Decimal(0))}"
+                )
 
     def _verify_counterparty_tie(self, batch_id: UUID) -> None:
         """R-O03: counterparty detail must tie to GL per account."""
@@ -228,6 +325,7 @@ class OpeningService:
         if not rep["balanced"]:
             raise UnbalancedOpeningError(f"Nợ {rep['debit_total']} ≠ Có {rep['credit_total']}")
         self._verify_counterparty_tie(batch_id)
+        self._verify_stock_tie(batch_id)
         b.state = BatchState.LOCKED
         b.checksum = b.compute_checksum(b.checksum or GENESIS_CHECKSUM, actor, reason)
         self._repo.update_batch(b)

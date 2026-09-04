@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 from dataclasses import dataclass, field
+from datetime import date
 from decimal import Decimal
 from enum import Enum
 from uuid import UUID, uuid4
@@ -84,3 +85,24 @@ class CounterpartyBalance:
             raise ValueError("side must be debit or credit")
         if self.amount <= 0:
             raise ValueError("amount must be > 0")
+
+
+@dataclass
+class StockOpening:
+    batch_id: UUID
+    product_id: UUID
+    warehouse_id: UUID
+    qty: Decimal = Decimal(0)
+    total_value: Decimal = Decimal(0)
+    lot_code: str | None = None
+    expiry_date: date | None = None
+    receipt_date: date | None = None
+    receipt_doc: str | None = None
+    unit_cost: Decimal | None = None
+    id: UUID = field(default_factory=uuid4)
+
+    def __post_init__(self) -> None:
+        if self.qty <= 0:
+            raise ValueError("qty must be > 0")
+        if self.total_value < 0:
+            raise ValueError("total_value must be >= 0")

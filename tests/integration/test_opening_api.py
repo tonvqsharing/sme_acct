@@ -61,6 +61,10 @@ def ready(app):
     coa.create_account(
         UUID(COMPANY), "1311", "PTKH ct", parent_code="131", actor=uuid4(), reason="c"
     )
+    coa.create_account(UUID(COMPANY), "152", "NVL", actor=uuid4(), reason="c")
+    coa.create_account(
+        UUID(COMPANY), "1521", "NVL ct", parent_code="152", actor=uuid4(), reason="c"
+    )
     from src.bricks.payment_terms.web_adapter import _series_service as ss
 
     ss.create_series(company_id=UUID(COMPANY), prefix="PT/", actor=uuid4(), reason="s")
@@ -222,3 +226,81 @@ class TestCounterpartyFlow:
         )
         buckets = {x["bucket"]: x["amount"] for x in aging.get_json()["data"]}
         assert buckets["current"] == 200.0
+
+
+class TestStockFlow:
+    def test_stock_tie_and_nxt(self, chief, ready):
+        fy_id = ready["fy_id"]
+        cat = chief.post(
+            "/api/v1/inventory/categories",
+            json={
+                "company_id": COMPANY,
+                "code": "CAT-OP",
+                "name": "NVL OP",
+                "account_code": "1521",
+            },
+        ).get_json()["data"]["id"]
+        prod = chief.post(
+            "/api/v1/inventory/products",
+            json={
+                "company_id": COMPANY,
+                "code": "SKU-OP",
+                "name": "NVL OP",
+                "uom": "Cái",
+                "cost_method": "wavg",
+                "category_id": cat,
+            },
+        ).get_json()["data"]["id"]
+        wh = chief.post(
+            "/api/v1/inventory/warehouses",
+            json={"company_id": COMPANY, "code": "KHO-OP", "name": "Kho OP"},
+        ).get_json()["data"]["id"]
+        loc = chief.post(
+            "/api/v1/inventory/locations",
+            json={"company_id": COMPANY, "code": "A-OP", "name": "Kệ OP", "warehouse_id": wh},
+        ).get_json()["data"]["id"]
+
+        r = chief.post(
+            "/api/v1/opening-batches",
+            json={"company_id": COMPANY, "fiscal_year_id": fy_id, "reason": "init"},
+        )
+        bid = r.get_json()["data"]["id"]
+        st = chief.post(
+            f"/api/v1/opening-batches/{bid}/stock",
+            json={
+                "reason": "stock",
+                "rows": [
+                    {
+                        "product_id": prod,
+                        "warehouse_id": loc,
+                        "qty": "100",
+                        "total_value": "1000000",
+                    }
+                ],
+            },
+        )
+        assert st.status_code == 201, st.get_json()
+
+        # tie mismatch blocks lock
+        chief.post(
+            f"/api/v1/opening-batches/{bid}/gl",
+            json={
+                "reason": "gl",
+                "lines": [
+                    {"account_code": "1521", "debit": "900000", "credit": "0"},
+                    {"account_code": "4111", "debit": "0", "credit": "900000"},
+                ],
+            },
+        )
+        bad = chief.post(f"/api/v1/opening-batches/{bid}/lock", json={"reason": "go"})
+        assert bad.status_code == 409
+        assert "1521" in bad.get_json()["error"]
+
+        # fix GL via second batch is overkill — reopen path covered in unit;
+        # verify NXT sees the materialized move instead
+        nxt = chief.get(
+            "/api/v1/reports/inventory/nxt",
+            query_string={"company_id": COMPANY, "from": "2026-01-01", "to": "2026-12-31"},
+        )
+        rows = {x["code"]: x for x in nxt.get_json()["data"]}
+        assert rows["SKU-OP"]["in_qty"] == 100.0

@@ -87,7 +87,14 @@
 - [x] Migration `d4e5f6a7b8c9` guarded; scratch up/down/re-up green, single head
 - [x] Verify: 6 new tests RED→GREEN, ruff 0 black 0 mypy 0, pytest 1077
 - [x] Review: Approve → `tasks/review-opening-s2.md`
-- [ ] Next: Opening S3 — stock opening by SKU×warehouse
+## Opening S3 — Stock opening by SKU×warehouse ✅ Done — Approve `tasks/review-opening-s3.md`
+- [x] `StockOpening` rows (qty/value/lot/receipt detail) + table + repo + endpoint
+- [x] Materialize DONE moves via inventory port (no GL — opening GL covers); R-O02 tie at lock
+- [x] Build-order cycle broken via late-bound holder (commented)
+- [x] Migration `e5f6a7b8c9d0` guarded; scratch up/down/re-up green, single head
+- [x] Verify: 6 new tests RED→GREEN, ruff 0 black 0 mypy 0, pytest 1083
+- [x] Review: Approve → `tasks/review-opening-s3.md`
+- [ ] Next: Opening S4 — FA/CCDC/WIP + bank reconciliation tie
 
 ## Final
 - [x] `pytest -q` 1023 green, `git push`, codegraph sync

@@ -170,6 +170,48 @@ class InventoryService:
     def list_locations(self, company_id: UUID) -> list[Location]:
         return self._repo.list_locations(company_id)  # type: ignore[no-any-return]
 
+    def get_location(self, lid: UUID) -> Location | None:
+        return self._repo.get_location(lid)  # type: ignore[no-any-return]
+
+    def get_category(self, cid: UUID) -> Any | None:
+        return self._repo.get_category(cid)
+
+    def post_opening_move(
+        self,
+        *,
+        company_id: UUID,
+        product_id: UUID,
+        location_id: UUID,
+        qty: Any,
+        unit_cost: Any,
+        effective_date: Any,
+        lot_id: UUID | None = None,
+        actor: UUID,
+        reason: str,
+    ) -> StockMove:
+        """Opening stock receipt: DONE move, no FY gate, no GL (opening GL covers)."""
+        from src.bricks.inventory.domain import GENESIS_CHECKSUM, MoveState
+
+        prod = self._repo.get_product(product_id)
+        if prod is None or prod.company_id != company_id:
+            raise ValueError(f"product {product_id} not found in company")
+        loc = self._repo.get_location(location_id)
+        if loc is None or loc.company_id != company_id:
+            raise ValueError(f"location {location_id} not found in company")
+        mv = StockMove(
+            company_id=company_id,
+            product_id=product_id,
+            qty=_d(qty),
+            unit_cost=_d(unit_cost),
+            from_loc=None,
+            to_loc=location_id,
+            lot_id=lot_id,
+            effective_date=effective_date,
+            state=MoveState.DONE,
+        )
+        mv.checksum = mv.compute_checksum(GENESIS_CHECKSUM, actor, reason)
+        return self._repo.create_move(mv)  # type: ignore[no-any-return]
+
     # ── category ──
     def create_category(
         self,

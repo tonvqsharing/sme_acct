@@ -80,6 +80,9 @@ class FakeRepo:
     def list_counterparty(self, bid):
         return list(self.cp.get(bid, []))
 
+    def list_stock(self, bid):
+        return []
+
 
 def _parties(pid):
     if pid == PARTY_ID:

@@ -7,6 +7,7 @@ and registers brick blueprints.
 from __future__ import annotations
 
 import os
+from typing import Any
 
 from flask import Flask
 from flask_login import LoginManager
@@ -481,6 +482,12 @@ def create_app(config: dict | None = None) -> Flask:
         svc = getattr(app, "party_service", None)
         return svc.get_party(pid) if svc is not None else None
 
+    class _LateInventory:
+        """Resolves inventory_svc at call time (breaks build-order cycle)."""
+
+        def __getattr__(self, name: str) -> Any:
+            return getattr(app.inventory_service, name)
+
     opening_svc = OpeningService(
         repo=_opening_repo,
         fy_years=_fy_year_repo,
@@ -488,6 +495,7 @@ def create_app(config: dict | None = None) -> Flask:
         regime_of=regime_provider,
         audit=audit_svc,
         party_lookup=_party_lookup,
+        inventory=_LateInventory(),
     )
     init_opening_service(opening_svc)
     app.opening_service = opening_svc  # type: ignore[attr-defined]

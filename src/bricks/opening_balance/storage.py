@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+from datetime import date
 from decimal import Decimal
 from uuid import UUID
 
-from sqlalchemy import Boolean, Numeric, String
+from sqlalchemy import Boolean, Date, Numeric, String
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
 
 from src.bricks.opening_balance.domain import (
@@ -13,6 +14,7 @@ from src.bricks.opening_balance.domain import (
     CounterpartyBalance,
     GLBalance,
     OpeningBatch,
+    StockOpening,
 )
 
 
@@ -57,6 +59,21 @@ class OpeningCounterpartyModel(Base):
     side: Mapped[str] = mapped_column(String(10))
     amount: Mapped[Decimal] = mapped_column(Numeric(18, 2))
     proof: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class OpeningStockModel(Base):
+    __tablename__ = "opening_stock"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    batch_id: Mapped[str] = mapped_column(String(36), index=True)
+    product_id: Mapped[str] = mapped_column(String(36), index=True)
+    warehouse_id: Mapped[str] = mapped_column(String(36))
+    qty: Mapped[Decimal] = mapped_column(Numeric(18, 2))
+    total_value: Mapped[Decimal] = mapped_column(Numeric(18, 2))
+    lot_code: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    expiry_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    receipt_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    receipt_doc: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    unit_cost: Mapped[Decimal | None] = mapped_column(Numeric(18, 2), nullable=True)
 
 
 class SQLAlchemyOpeningBalanceRepository:
@@ -201,6 +218,48 @@ class SQLAlchemyOpeningBalanceRepository:
                 side=r.side,
                 amount=Decimal(str(r.amount)),
                 proof=r.proof,
+            )
+            for r in rows
+        ]
+
+    def add_stock(self, row: StockOpening) -> StockOpening:
+        self._session.add(
+            OpeningStockModel(
+                id=str(row.id),
+                batch_id=str(row.batch_id),
+                product_id=str(row.product_id),
+                warehouse_id=str(row.warehouse_id),
+                qty=row.qty,
+                total_value=row.total_value,
+                lot_code=row.lot_code,
+                expiry_date=row.expiry_date,
+                receipt_date=row.receipt_date,
+                receipt_doc=row.receipt_doc,
+                unit_cost=row.unit_cost,
+            )
+        )
+        self._session.commit()
+        return row
+
+    def list_stock(self, batch_id: UUID) -> list[StockOpening]:
+        rows = (
+            self._session.query(OpeningStockModel)
+            .filter(OpeningStockModel.batch_id == str(batch_id))
+            .all()
+        )
+        return [
+            StockOpening(
+                id=UUID(r.id),
+                batch_id=UUID(r.batch_id),
+                product_id=UUID(r.product_id),
+                warehouse_id=UUID(r.warehouse_id),
+                qty=Decimal(str(r.qty)),
+                total_value=Decimal(str(r.total_value)),
+                lot_code=r.lot_code,
+                expiry_date=r.expiry_date,
+                receipt_date=r.receipt_date,
+                receipt_doc=r.receipt_doc,
+                unit_cost=Decimal(str(r.unit_cost)) if r.unit_cost is not None else None,
             )
             for r in rows
         ]

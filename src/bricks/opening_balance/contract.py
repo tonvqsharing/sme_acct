@@ -10,6 +10,7 @@ from src.bricks.opening_balance.domain import (
     CounterpartyBalance,
     GLBalance,
     OpeningBatch,
+    StockOpening,
 )
 
 
@@ -43,3 +44,9 @@ class OpeningBalanceRepositoryPort(ABC):
 
     @abstractmethod
     def list_counterparty(self, batch_id: UUID) -> list[CounterpartyBalance]: ...
+
+    @abstractmethod
+    def add_stock(self, row: StockOpening) -> StockOpening: ...
+
+    @abstractmethod
+    def list_stock(self, batch_id: UUID) -> list[StockOpening]: ...
