@@ -56,6 +56,8 @@ def create_product() -> tuple[Any, int]:
             uom=body.get("uom", "Cái"),
             cost_method=body.get("cost_method", "wavg"),
             standard_cost=body.get("standard_cost"),
+            uom_id=UUID(body["uom_id"]) if body.get("uom_id") else None,
+            category_id=UUID(body["category_id"]) if body.get("category_id") else None,
             actor=UUID(str(current_user.id)),
             reason=body.get("reason") or "create product",
         )
@@ -71,6 +73,8 @@ def create_product() -> tuple[Any, int]:
                     "code": p.code,
                     "name": p.name,
                     "uom": p.uom,
+                    "uom_id": str(p.uom_id) if p.uom_id else None,
+                    "category_id": str(p.category_id) if p.category_id else None,
                     "cost_method": p.cost_method.value,
                     "standard_cost": str(p.standard_cost) if p.standard_cost else None,
                 }
@@ -98,6 +102,8 @@ def list_products() -> tuple[Any, int]:
                         "code": r.code,
                         "name": r.name,
                         "uom": r.uom,
+                        "uom_id": str(r.uom_id) if r.uom_id else None,
+                        "category_id": str(r.category_id) if r.category_id else None,
                         "cost_method": r.cost_method.value,
                     }
                     for r in rows

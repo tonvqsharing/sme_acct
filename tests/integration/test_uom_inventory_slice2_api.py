@@ -100,3 +100,30 @@ def test_product_with_new_masters(app):
         },
     )
     assert prod.status_code == 201
+
+
+def test_product_links_uom_and_category_ids(app):
+    chief = _chief(app)
+    uom_id = chief.post(
+        "/api/v1/uoms", json={"company_id": COMPANY, "code": "CaiLink", "name": "Cái link"}
+    ).get_json()["data"]["id"]
+    cat_id = chief.post(
+        "/api/v1/inventory/categories",
+        json={"company_id": COMPANY, "code": "CAT-LINK", "name": "Link cat"},
+    ).get_json()["data"]["id"]
+    prod = chief.post(
+        "/api/v1/inventory/products",
+        json={
+            "company_id": COMPANY,
+            "code": "SKU-LINK",
+            "name": "Bút link",
+            "uom": "Cái link",
+            "uom_id": uom_id,
+            "category_id": cat_id,
+            "cost_method": "wavg",
+        },
+    )
+    assert prod.status_code == 201, prod.get_json()
+    data = prod.get_json()["data"]
+    assert data["uom_id"] == uom_id
+    assert data["category_id"] == cat_id

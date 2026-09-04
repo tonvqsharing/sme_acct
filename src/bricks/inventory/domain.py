@@ -56,6 +56,8 @@ class Product:
     uom: str
     cost_method: CostMethod
     standard_cost: Decimal | None = None
+    uom_id: UUID | None = None
+    category_id: UUID | None = None
     id: UUID = field(default_factory=uuid4)
     active: bool = True
     checksum: str = ""

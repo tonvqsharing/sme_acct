@@ -21,5 +21,13 @@
 - [x] Verify: 5 new tests (3 unit + 2 integration), ruff 0 black 0 mypy 0
 - [x] Review: Approve → `tasks/review-slice3.md`
 
+## Slice 4 — Product link FK UOM/Category ✅ Done — Approve `tasks/review-slice4.md`
+- [x] Product `uom_id`/`category_id` optional nullable, legacy `uom` text kept (dual-read)
+- [x] Service validates existence + same-company (422), `uom_repo` injected via `app.py`
+- [x] Web accepts/serializes `uom_id`/`category_id`
+- [x] Verify: 4 new tests (3 unit RED→GREEN + 1 integration), ruff 0 black 0 mypy 0, pytest 1027
+- [x] Review: Approve → `tasks/review-slice4.md`
+- [ ] Follow-up (separate): alembic migration for `uom_id`/`category_id` cols (autogenerate blocked by pre-existing `tools_equipment → cost_centers` FK error)
+
 ## Final
 - [x] `pytest -q` 1023 green, `git push`, codegraph sync

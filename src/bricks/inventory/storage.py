@@ -33,6 +33,8 @@ class ProductModel(Base):
     code: Mapped[str] = mapped_column(String(30), index=True)
     name: Mapped[str] = mapped_column(String(200))
     uom: Mapped[str] = mapped_column(String(20))
+    uom_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    category_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     cost_method: Mapped[str] = mapped_column(String(20))
     standard_cost: Mapped[Decimal | None] = mapped_column(Numeric(18, 2), nullable=True)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
@@ -153,6 +155,8 @@ class SQLAlchemyInventoryRepository:
                 code=p.code,
                 name=p.name,
                 uom=p.uom,
+                uom_id=str(p.uom_id) if p.uom_id else None,
+                category_id=str(p.category_id) if p.category_id else None,
                 cost_method=p.cost_method.value,
                 standard_cost=p.standard_cost,
                 active=p.active,
@@ -190,6 +194,8 @@ class SQLAlchemyInventoryRepository:
             code=m.code,
             name=m.name,
             uom=m.uom,
+            uom_id=UUID(m.uom_id) if m.uom_id else None,
+            category_id=UUID(m.category_id) if m.category_id else None,
             cost_method=CostMethod(m.cost_method),
             standard_cost=Decimal(str(m.standard_cost)) if m.standard_cost is not None else None,
             active=m.active,
@@ -202,6 +208,8 @@ class SQLAlchemyInventoryRepository:
             raise ValueError("not found")
         m.name = p.name
         m.uom = p.uom
+        m.uom_id = str(p.uom_id) if p.uom_id else None
+        m.category_id = str(p.category_id) if p.category_id else None
         m.cost_method = p.cost_method.value
         m.standard_cost = p.standard_cost
         m.active = p.active

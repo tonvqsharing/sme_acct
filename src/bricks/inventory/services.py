@@ -56,6 +56,7 @@ class InventoryService:
         voucher_service: Any | None = None,
         coa: Any | None = None,
         regime_of: Any | None = None,
+        uom_repo: Any | None = None,
     ) -> None:
         self._repo = repo
         self._fy = fy
@@ -64,6 +65,7 @@ class InventoryService:
         self._voucher = voucher_service
         self._coa = coa
         self._regime_of = regime_of
+        self._uom_repo = uom_repo
 
     # ── product ──
     def create_product(
@@ -75,6 +77,8 @@ class InventoryService:
         uom: str,
         cost_method: str,
         standard_cost: Any | None = None,
+        uom_id: UUID | None = None,
+        category_id: UUID | None = None,
         actor: UUID,
         reason: str,
     ) -> Product:
@@ -87,6 +91,18 @@ class InventoryService:
         except ValueError:
             raise ValueError(f"cost_method {cost_method} invalid (specific/wavg/fifo/standard)")
         std = _d(standard_cost) if standard_cost is not None else None
+        if uom_id is not None:
+            uom_lookup = None
+            if self._uom_repo is not None:
+                uom_lookup = self._uom_repo.get_uom(uom_id)
+            elif hasattr(self._repo, "get_uom"):
+                uom_lookup = self._repo.get_uom(uom_id)
+            if uom_lookup is None or uom_lookup.company_id != company_id:
+                raise ValueError(f"uom {uom_id} not found in company")
+        if category_id is not None:
+            cat = self._repo.get_category(category_id)
+            if cat is None or cat.company_id != company_id:
+                raise ValueError(f"category {category_id} not found in company")
         p = Product(
             company_id=company_id,
             code=code,
@@ -94,6 +110,8 @@ class InventoryService:
             uom=uom,
             cost_method=cm,
             standard_cost=std,
+            uom_id=uom_id,
+            category_id=category_id,
         )
         p.checksum = p.compute_checksum(GENESIS_CHECKSUM, actor, reason)
         saved = self._repo.create_product(p)

@@ -501,6 +501,12 @@ def create_app(config: dict | None = None) -> Flask:
             seq = self._dns.increment_sequence(target.id, sys_actor, pfx.rstrip("/"))
             return f"{pfx}{seq:06d}"
 
+    # ── UOM brick (before inventory — product links validate against it) ──
+    uom_repo = SQLAlchemyUOMRepository(uom_session)
+    uom_svc = UOMService(repo=uom_repo, audit=audit_svc)
+    init_uom_service(uom_svc)
+    app.uom_service = uom_svc  # type: ignore[attr-defined]
+
     invty_repo = SQLAlchemyInventoryRepository(invty_session)
     inventory_svc = InventoryService(
         repo=invty_repo,
@@ -510,6 +516,7 @@ def create_app(config: dict | None = None) -> Flask:
         voucher_service=voucher_svc,
         coa=app.coa_service,
         regime_of=regime_provider,
+        uom_repo=uom_repo,
     )
     init_inventory_service(inventory_svc)
     app.inventory_service = inventory_svc  # type: ignore[attr-defined]
@@ -519,12 +526,6 @@ def create_app(config: dict | None = None) -> Flask:
     party_svc = PartyService(repo=party_repo, audit=audit_svc)
     init_party_service(party_svc)
     app.party_service = party_svc  # type: ignore[attr-defined]
-
-    # ── UOM brick ───────────────────────────────────────────────────────
-    uom_repo = SQLAlchemyUOMRepository(uom_session)
-    uom_svc = UOMService(repo=uom_repo, audit=audit_svc)
-    init_uom_service(uom_svc)
-    app.uom_service = uom_svc  # type: ignore[attr-defined]
 
     # ── Purchases brick ─────────────────────────────────────────────────
     purchases_repo = SQLAlchemySupplierInvoiceRepository(purchases_session)
