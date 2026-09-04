@@ -90,6 +90,66 @@ def post_gl(bid: str) -> tuple[Any, int]:
     return jsonify({"data": {"posted": True}}), 201
 
 
+@opening_balance_bp.post("/api/v1/opening-batches/<bid>/gl/import")
+@login_required  # type: ignore[untyped-decorator]
+def import_gl_excel(bid: str) -> tuple[Any, int]:
+    """Upload .xlsx (header account_code/debit/credit[, currency_code]) → post_gl."""
+    _require_write()
+    try:
+        bid_u = UUID(bid)
+    except ValueError:
+        abort(422, description="Invalid UUID")
+    upload = request.files.get("file")
+    if upload is None or not upload.filename.endswith((".xlsx", ".xlsm")):
+        return jsonify({"error": "file .xlsx required", "code": "INVALID_FILE"}), 422
+    try:
+        from openpyxl import load_workbook
+
+        wb = load_workbook(upload, read_only=True, data_only=True)
+        ws = wb.active
+        if ws is None:
+            return jsonify({"error": "empty workbook", "code": "EMPTY_SHEET"}), 422
+        header = [str(c.value or "").strip().lower() for c in next(ws.rows)]
+        required = ["account_code", "debit", "credit"]
+        if header[:3] != required:
+            return jsonify({"error": f"header must be {required}", "code": "BAD_HEADER"}), 422
+        lines = []
+        for row in list(ws.rows)[1:]:
+            code = str(row[0].value or "").strip()
+            if not code:
+                continue
+            lines.append(
+                {
+                    "account_code": code,
+                    "debit": str(row[1].value or 0),
+                    "credit": str(row[2].value or 0),
+                    **(
+                        {"currency_code": str(row[3].value).strip()}
+                        if len(row) > 3 and row[3].value
+                        else {}
+                    ),
+                }
+            )
+    except (KeyError, ValueError) as exc:
+        return jsonify({"error": str(exc), "code": "INVALID_GL"}), 422
+    if not lines:
+        return jsonify({"error": "no data rows", "code": "EMPTY_SHEET"}), 422
+    try:
+        _svc().post_gl(
+            bid_u,
+            lines=lines,
+            actor=UUID(str(current_user.id)),
+            reason=request.form.get("reason") or "excel import gl",
+        )
+    except (KeyError, ValueError) as exc:
+        return jsonify({"error": str(exc), "code": "INVALID_GL"}), 422
+    except BatchLockedError as exc:
+        return jsonify({"error": str(exc), "code": "BATCH_LOCKED"}), 409
+    except NotFoundError as exc:
+        return jsonify({"error": str(exc), "code": "NOT_FOUND"}), 404
+    return jsonify({"data": {"posted": True, "lines": len(lines)}}), 201
+
+
 @opening_balance_bp.post("/api/v1/opening-batches/<bid>/bank")
 @login_required  # type: ignore[untyped-decorator]
 def post_bank(bid: str) -> tuple[Any, int]:

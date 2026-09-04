@@ -389,6 +389,66 @@ class TestAssetFlow:
         assert "211" in bad.get_json()["error"]
 
 
+class TestExcelImport:
+    def _workbook(self, rows):
+        from openpyxl import Workbook
+
+        wb = Workbook()
+        ws = wb.active
+        ws.append(["account_code", "debit", "credit"])
+        for r in rows:
+            ws.append(r)
+        import io
+
+        buf = io.BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+        return buf
+
+    def test_gl_excel_import_posts_and_locks(self, chief, ready):
+        fy_id = ready["fy_id"]
+        r = chief.post(
+            "/api/v1/opening-batches",
+            json={"company_id": COMPANY, "fiscal_year_id": fy_id, "reason": "init"},
+        )
+        bid = r.get_json()["data"]["id"]
+        buf = self._workbook([["1111", 500, 0], ["4111", 0, 500]])
+        imp = chief.post(
+            f"/api/v1/opening-batches/{bid}/gl/import",
+            data={"reason": "excel", "file": (buf, "gl.xlsx")},
+            content_type="multipart/form-data",
+        )
+        assert imp.status_code == 201, imp.get_json()
+        assert imp.get_json()["data"]["lines"] == 2
+        lock = chief.post(f"/api/v1/opening-batches/{bid}/lock", json={"reason": "go"})
+        assert lock.status_code == 200, lock.get_json()
+
+    def test_gl_excel_import_rejects_bad_header(self, chief, ready):
+        fy_id = ready["fy_id"]
+        r = chief.post(
+            "/api/v1/opening-batches",
+            json={"company_id": COMPANY, "fiscal_year_id": fy_id, "reason": "init"},
+        )
+        bid = r.get_json()["data"]["id"]
+        buf = self._workbook([["1111", 500, 0]])
+        # corrupt header
+        from openpyxl import load_workbook
+
+        wb = load_workbook(buf)
+        wb.active["A1"] = "tk"
+        import io
+
+        out = io.BytesIO()
+        wb.save(out)
+        out.seek(0)
+        imp = chief.post(
+            f"/api/v1/opening-batches/{bid}/gl/import",
+            data={"reason": "excel", "file": (out, "gl.xlsx")},
+            content_type="multipart/form-data",
+        )
+        assert imp.status_code == 422
+
+
 class TestCCDCFlow:
     def test_ccdc_posts_backfills_and_ties_242(self, chief, ready):
         fy_id = ready["fy_id"]
