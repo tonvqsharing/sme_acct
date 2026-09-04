@@ -5,10 +5,15 @@ from __future__ import annotations
 from decimal import Decimal
 from uuid import UUID
 
-from sqlalchemy import Numeric, String
+from sqlalchemy import Boolean, Numeric, String
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
 
-from src.bricks.opening_balance.domain import BankOpening, GLBalance, OpeningBatch
+from src.bricks.opening_balance.domain import (
+    BankOpening,
+    CounterpartyBalance,
+    GLBalance,
+    OpeningBatch,
+)
 
 
 class Base(DeclarativeBase):
@@ -41,6 +46,17 @@ class OpeningBankModel(Base):
     batch_id: Mapped[str] = mapped_column(String(36), index=True)
     bank_account_id: Mapped[str] = mapped_column(String(36))
     amount: Mapped[Decimal] = mapped_column(Numeric(18, 2))
+
+
+class OpeningCounterpartyModel(Base):
+    __tablename__ = "opening_counterparty"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    batch_id: Mapped[str] = mapped_column(String(36), index=True)
+    account_code: Mapped[str] = mapped_column(String(20))
+    party_id: Mapped[str] = mapped_column(String(36), index=True)
+    side: Mapped[str] = mapped_column(String(10))
+    amount: Mapped[Decimal] = mapped_column(Numeric(18, 2))
+    proof: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
 class SQLAlchemyOpeningBalanceRepository:
@@ -151,6 +167,40 @@ class SQLAlchemyOpeningBalanceRepository:
                 batch_id=UUID(r.batch_id),
                 bank_account_id=UUID(r.bank_account_id),
                 amount=Decimal(str(r.amount)),
+            )
+            for r in rows
+        ]
+
+    def add_counterparty(self, row: CounterpartyBalance) -> CounterpartyBalance:
+        self._session.add(
+            OpeningCounterpartyModel(
+                id=str(row.id),
+                batch_id=str(row.batch_id),
+                account_code=row.account_code,
+                party_id=str(row.party_id),
+                side=row.side,
+                amount=row.amount,
+                proof=row.proof,
+            )
+        )
+        self._session.commit()
+        return row
+
+    def list_counterparty(self, batch_id: UUID) -> list[CounterpartyBalance]:
+        rows = (
+            self._session.query(OpeningCounterpartyModel)
+            .filter(OpeningCounterpartyModel.batch_id == str(batch_id))
+            .all()
+        )
+        return [
+            CounterpartyBalance(
+                id=UUID(r.id),
+                batch_id=UUID(r.batch_id),
+                account_code=r.account_code,
+                party_id=UUID(r.party_id),
+                side=r.side,
+                amount=Decimal(str(r.amount)),
+                proof=r.proof,
             )
             for r in rows
         ]

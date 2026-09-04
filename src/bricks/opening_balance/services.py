@@ -12,6 +12,7 @@ from src.bricks.opening_balance.domain import (
     BankOpening,
     BatchSource,
     BatchState,
+    CounterpartyBalance,
     GLBalance,
     OpeningBatch,
 )
@@ -42,12 +43,14 @@ class OpeningService:
         coa: Any,
         regime_of: Any | None = None,
         audit: Any | None = None,
+        party_lookup: Any | None = None,
     ) -> None:
         self._repo = repo
         self._fy_years = fy_years
         self._coa = coa
         self._regime_of = regime_of
         self._audit = audit
+        self._party_lookup = party_lookup
 
     # ── helpers ───────────────────────────────────────────────────────
     def _regime(self, company_id: UUID) -> str:
@@ -133,6 +136,34 @@ class OpeningService:
         self._repo.update_batch(b)
         self._log("POST_BANK", b.id, actor, reason)
 
+    def post_counterparty(
+        self, batch_id: UUID, *, rows: list[dict[str, Any]], actor: UUID, reason: str
+    ) -> None:
+        b = self._get_draft(batch_id)
+        regime = self._regime(b.company_id)
+        for r in rows:
+            self._coa.validate_posting_account(b.company_id, r["account_code"], regime)
+            pid = UUID(str(r["party_id"]))
+            party = self._party_lookup(pid) if self._party_lookup is not None else None
+            if party is None:
+                raise NotFoundError(f"Không tìm thấy đối tác {r['party_id']}")
+            if party.company_id != b.company_id:
+                raise ValueError("Đối tác không thuộc công ty")
+            if not party.active:
+                raise ValueError("Đối tác đã ngừng hoạt động")
+            row = CounterpartyBalance(
+                batch_id=b.id,
+                account_code=r["account_code"],
+                party_id=pid,
+                side=r.get("side", "debit"),
+                amount=_d(r["amount"]),
+                proof=bool(r.get("proof", False)),
+            )
+            self._repo.add_counterparty(row)
+        b.checksum = b.compute_checksum(b.checksum or GENESIS_CHECKSUM, actor, reason)
+        self._repo.update_batch(b)
+        self._log("POST_COUNTERPARTY", b.id, actor, reason)
+
     # ── reconcile + lock ──────────────────────────────────────────────
     def reconcile(self, batch_id: UUID) -> dict[str, Any]:
         b = self._repo.get_batch(batch_id)
@@ -143,19 +174,60 @@ class OpeningService:
         credit = sum((r.credit for r in gl), Decimal(0))
         bank = self._repo.list_bank(batch_id)
         bank_total = sum((r.amount for r in bank), Decimal(0))
+        cp = self._repo.list_counterparty(batch_id)
+        cp_total = sum((r.amount for r in cp), Decimal(0))
         balanced = abs(debit - credit) <= TOLERANCE
         return {
             "balanced": balanced,
             "debit_total": debit,
             "credit_total": credit,
-            "checks": {"bank_total": bank_total, "gl_lines": len(gl)},
+            "checks": {
+                "bank_total": bank_total,
+                "gl_lines": len(gl),
+                "counterparty_total": cp_total,
+                "counterparty_lines": len(cp),
+            },
         }
+
+    def ar_opening_lines(self, company_id: UUID) -> list[dict[str, Any]]:
+        """Primitives for ledger AR aging: locked batches' 131 rows as current."""
+        out: list[dict[str, Any]] = []
+        for b in self._repo.list_batches(company_id):
+            if b.state != BatchState.LOCKED:
+                continue
+            for r in self._repo.list_counterparty(b.id):
+                if r.account_code not in ("131", "1311"):
+                    continue
+                out.append(
+                    {
+                        "account_code": r.account_code,
+                        "side": r.side,
+                        "amount": r.amount,
+                    }
+                )
+        return out
+
+    def _verify_counterparty_tie(self, batch_id: UUID) -> None:
+        """R-O03: counterparty detail must tie to GL per account."""
+        gl_net: dict[str, Decimal] = {}
+        for r in self._repo.list_gl(batch_id):
+            gl_net[r.account_code] = gl_net.get(r.account_code, Decimal(0)) + r.debit - r.credit
+        cp_net: dict[str, Decimal] = {}
+        for r in self._repo.list_counterparty(batch_id):
+            signed = r.amount if r.side == "debit" else -r.amount
+            cp_net[r.account_code] = cp_net.get(r.account_code, Decimal(0)) + signed
+        for acct, total in cp_net.items():
+            if abs(total - gl_net.get(acct, Decimal(0))) > TOLERANCE:
+                raise UnbalancedOpeningError(
+                    f"Chi tiết đối tác {acct} {total} ≠ sổ cái {gl_net.get(acct, Decimal(0))}"
+                )
 
     def lock(self, batch_id: UUID, *, actor: UUID, reason: str) -> OpeningBatch:
         b = self._get_draft(batch_id)
         rep = self.reconcile(batch_id)
         if not rep["balanced"]:
             raise UnbalancedOpeningError(f"Nợ {rep['debit_total']} ≠ Có {rep['credit_total']}")
+        self._verify_counterparty_tie(batch_id)
         b.state = BatchState.LOCKED
         b.checksum = b.compute_checksum(b.checksum or GENESIS_CHECKSUM, actor, reason)
         self._repo.update_batch(b)

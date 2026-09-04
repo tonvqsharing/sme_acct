@@ -115,6 +115,31 @@ def post_bank(bid: str) -> tuple[Any, int]:
     return jsonify({"data": {"posted": True}}), 201
 
 
+@opening_balance_bp.post("/api/v1/opening-batches/<bid>/counterparties")
+@login_required  # type: ignore[untyped-decorator]
+def post_counterparty(bid: str) -> tuple[Any, int]:
+    _require_write()
+    body = request.get_json(silent=True) or {}
+    try:
+        bid_u = UUID(bid)
+    except ValueError:
+        abort(422, description="Invalid UUID")
+    try:
+        _svc().post_counterparty(
+            bid_u,
+            rows=body.get("rows", []),
+            actor=UUID(str(current_user.id)),
+            reason=body.get("reason") or "post counterparty opening",
+        )
+    except (KeyError, ValueError) as exc:
+        return jsonify({"error": str(exc), "code": "INVALID_COUNTERPARTY"}), 422
+    except BatchLockedError as exc:
+        return jsonify({"error": str(exc), "code": "BATCH_LOCKED"}), 409
+    except NotFoundError as exc:
+        return jsonify({"error": str(exc), "code": "NOT_FOUND"}), 404
+    return jsonify({"data": {"posted": True}}), 201
+
+
 @opening_balance_bp.get("/api/v1/opening-batches/<bid>/reconcile")
 @login_required  # type: ignore[untyped-decorator]
 def reconcile(bid: str) -> tuple[Any, int]:
@@ -136,6 +161,8 @@ def reconcile(bid: str) -> tuple[Any, int]:
                     "checks": {
                         "bank_total": float(rep["checks"]["bank_total"]),
                         "gl_lines": rep["checks"]["gl_lines"],
+                        "counterparty_total": float(rep["checks"]["counterparty_total"]),
+                        "counterparty_lines": rep["checks"]["counterparty_lines"],
                     },
                 }
             }

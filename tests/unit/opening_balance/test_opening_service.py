@@ -69,6 +69,9 @@ class FakeRepo:
     def list_bank(self, bid):
         return list(self.bank.get(bid, []))
 
+    def list_counterparty(self, bid):
+        return []
+
 
 def _svc(**kw):
     return OpeningService(repo=FakeRepo(), fy_years=FakeFY(), coa=FakeCOA(), audit=None, **kw)

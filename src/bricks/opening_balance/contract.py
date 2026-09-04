@@ -5,7 +5,12 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from uuid import UUID
 
-from src.bricks.opening_balance.domain import BankOpening, GLBalance, OpeningBatch
+from src.bricks.opening_balance.domain import (
+    BankOpening,
+    CounterpartyBalance,
+    GLBalance,
+    OpeningBatch,
+)
 
 
 class OpeningBalanceRepositoryPort(ABC):
@@ -32,3 +37,9 @@ class OpeningBalanceRepositoryPort(ABC):
 
     @abstractmethod
     def list_bank(self, batch_id: UUID) -> list[BankOpening]: ...
+
+    @abstractmethod
+    def add_counterparty(self, row: CounterpartyBalance) -> CounterpartyBalance: ...
+
+    @abstractmethod
+    def list_counterparty(self, batch_id: UUID) -> list[CounterpartyBalance]: ...

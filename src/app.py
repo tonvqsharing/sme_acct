@@ -475,12 +475,19 @@ def create_app(config: dict | None = None) -> Flask:
     OpeningBase.metadata.create_all(engine)
     _opening_repo = SQLAlchemyOpeningBalanceRepository(session_factory())
     _fy_year_repo = _FYR(fy_session)
+
+    def _party_lookup(pid):  # type: ignore[no-untyped-def]
+        # Late-bound: party brick wires below; resolved at call time.
+        svc = getattr(app, "party_service", None)
+        return svc.get_party(pid) if svc is not None else None
+
     opening_svc = OpeningService(
         repo=_opening_repo,
         fy_years=_fy_year_repo,
         coa=_CoaGate(),
         regime_of=regime_provider,
         audit=audit_svc,
+        party_lookup=_party_lookup,
     )
     init_opening_service(opening_svc)
     app.opening_service = opening_svc  # type: ignore[attr-defined]
@@ -601,7 +608,7 @@ def create_app(config: dict | None = None) -> Flask:
 
     # ── Ledger reports + VAT declaration (read-only) ────────────────────
     ledger_source = SQLAlchemyLedgerSource(session_factory())
-    ledger_svc = LedgerService(source=ledger_source)
+    ledger_svc = LedgerService(source=ledger_source, opening_balances=opening_svc.ar_opening_lines)
     init_ledger_service(ledger_svc)
 
     def _decl_input_source(company_id, start, end):

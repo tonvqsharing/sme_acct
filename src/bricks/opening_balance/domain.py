@@ -65,3 +65,22 @@ class BankOpening:
     def __post_init__(self) -> None:
         if self.amount < 0:
             raise ValueError("amount must be non-negative")
+
+
+@dataclass
+class CounterpartyBalance:
+    batch_id: UUID
+    account_code: str
+    party_id: UUID
+    side: str  # "debit" | "credit"
+    amount: Decimal = Decimal(0)
+    proof: bool = False
+    id: UUID = field(default_factory=uuid4)
+
+    def __post_init__(self) -> None:
+        if not self.account_code.strip():
+            raise ValueError("account_code required")
+        if self.side not in ("debit", "credit"):
+            raise ValueError("side must be debit or credit")
+        if self.amount <= 0:
+            raise ValueError("amount must be > 0")

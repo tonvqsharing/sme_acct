@@ -57,6 +57,10 @@ def ready(app):
     coa.create_account(
         UUID(COMPANY), "4111", "Vốn góp", parent_code="411", actor=uuid4(), reason="c"
     )
+    coa.create_account(UUID(COMPANY), "131", "PTKH", actor=uuid4(), reason="c")
+    coa.create_account(
+        UUID(COMPANY), "1311", "PTKH ct", parent_code="131", actor=uuid4(), reason="c"
+    )
     from src.bricks.payment_terms.web_adapter import _series_service as ss
 
     ss.create_series(company_id=UUID(COMPANY), prefix="PT/", actor=uuid4(), reason="s")
@@ -158,3 +162,63 @@ class TestOpeningFlow:
             ).status_code
             == 200
         )
+
+
+class TestCounterpartyFlow:
+    def test_counterparty_tie_and_aging(self, chief, ready):
+        fy_id = ready["fy_id"]
+        p = chief.post(
+            "/api/v1/parties",
+            json={
+                "company_id": COMPANY,
+                "code": "KH-001",
+                "name": "Khách A",
+                "mst": "0101234567",
+                "is_customer": True,
+            },
+        )
+        assert p.status_code == 201, p.get_json()
+        pid = p.get_json()["data"]["id"]
+
+        r = chief.post(
+            "/api/v1/opening-batches",
+            json={"company_id": COMPANY, "fiscal_year_id": fy_id, "reason": "init"},
+        )
+        bid = r.get_json()["data"]["id"]
+        cp = chief.post(
+            f"/api/v1/opening-batches/{bid}/counterparties",
+            json={
+                "reason": "ar",
+                "rows": [
+                    {
+                        "account_code": "1311",
+                        "party_id": pid,
+                        "side": "debit",
+                        "amount": "200",
+                    }
+                ],
+            },
+        )
+        assert cp.status_code == 201, cp.get_json()
+
+        # GL must tie or lock fails
+        chief.post(
+            f"/api/v1/opening-batches/{bid}/gl",
+            json={
+                "reason": "gl",
+                "lines": [
+                    {"account_code": "1311", "debit": "200", "credit": "0"},
+                    {"account_code": "4111", "debit": "0", "credit": "200"},
+                ],
+            },
+        )
+        # need 4111 aggregate? use detail accounts instead
+        lock = chief.post(f"/api/v1/opening-batches/{bid}/lock", json={"reason": "go"})
+        assert lock.status_code == 200, lock.get_json()
+
+        aging = chief.get(
+            "/api/v1/reports/ar-aging",
+            query_string={"company_id": COMPANY, "as_of": "2026-08-31"},
+        )
+        buckets = {x["bucket"]: x["amount"] for x in aging.get_json()["data"]}
+        assert buckets["current"] == 200.0

@@ -15,8 +15,9 @@ ZERO = Decimal(0)
 
 
 class LedgerService:
-    def __init__(self, *, source: Any) -> None:
+    def __init__(self, *, source: Any, opening_balances: Any | None = None) -> None:
         self._source = source
+        self._opening_balances = opening_balances
 
     # ── Sổ nhật ký chung ────────────────────────────────────────────────
     def general_journal(
@@ -89,6 +90,13 @@ class LedgerService:
                 buckets["61-90"] += net
             else:
                 buckets["90+"] += net
+        # opening balances (locked batches) age as current
+        if self._opening_balances is not None:
+            for o in self._opening_balances(company_id):
+                if o["account_code"] not in ("131", "1311"):
+                    continue
+                signed = o["amount"] if o["side"] == "debit" else -o["amount"]
+                buckets["current"] += signed
         return [{"bucket": k, "amount": v} for k, v in buckets.items()]
 
     # ── Bảng cân đối số phát sinh ───────────────────────────────────────
