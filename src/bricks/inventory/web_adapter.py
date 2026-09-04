@@ -262,6 +262,115 @@ def list_warehouses() -> tuple[Any, int]:
     )
 
 
+# ── lots ──
+@inventory_bp.post("/api/v1/inventory/lots")
+@login_required  # type: ignore[untyped-decorator]
+def create_lot() -> tuple[Any, int]:
+    _require_write()
+    body = request.get_json(silent=True) or {}
+    try:
+        lot = _svc().create_lot(
+            company_id=UUID(body["company_id"]),
+            product_id=UUID(body["product_id"]),
+            lot_code=body["lot_code"],
+            expiry_date=(
+                date.fromisoformat(body["expiry_date"]) if body.get("expiry_date") else None
+            ),
+            qty=body.get("qty", "0"),
+            actor=UUID(str(current_user.id)),
+            reason=body.get("reason") or "create lot",
+        )
+    except (KeyError, ValueError) as exc:
+        return jsonify({"error": str(exc), "code": "INVALID_LOT"}), 422
+    return (
+        jsonify({"data": {"id": str(lot.id), "lot_code": lot.lot_code, "qty": str(lot.qty)}}),
+        201,
+    )
+
+
+@inventory_bp.get("/api/v1/inventory/lots")
+@login_required  # type: ignore[untyped-decorator]
+def list_lots() -> tuple[Any, int]:
+    raw = request.args.get("company_id", "")
+    try:
+        cid = UUID(raw)
+    except ValueError:
+        abort(422, description="company_id required")
+    pid = UUID(request.args["product_id"]) if request.args.get("product_id") else None
+    rows = _svc().list_lots(cid, pid)
+    return (
+        jsonify(
+            {
+                "data": [
+                    {
+                        "id": str(r.id),
+                        "lot_code": r.lot_code,
+                        "expiry_date": r.expiry_date.isoformat() if r.expiry_date else None,
+                        "qty": str(r.qty),
+                    }
+                    for r in rows
+                ]
+            }
+        ),
+        200,
+    )
+
+
+# ── price lists ──
+@inventory_bp.post("/api/v1/inventory/price-lists")
+@login_required  # type: ignore[untyped-decorator]
+def create_price() -> tuple[Any, int]:
+    _require_write()
+    body = request.get_json(silent=True) or {}
+    try:
+        pl = _svc().create_price(
+            company_id=UUID(body["company_id"]),
+            product_id=UUID(body["product_id"]),
+            uom_id=UUID(body["uom_id"]) if body.get("uom_id") else None,
+            price=body.get("price", "0"),
+            valid_from=date.fromisoformat(body["valid_from"]) if body.get("valid_from") else None,
+            actor=UUID(str(current_user.id)),
+            reason=body.get("reason") or "create price",
+        )
+    except (KeyError, ValueError) as exc:
+        return jsonify({"error": str(exc), "code": "INVALID_PRICE"}), 422
+    return (
+        jsonify(
+            {
+                "data": {
+                    "id": str(pl.id),
+                    "price": str(pl.price),
+                    "valid_from": pl.valid_from.isoformat(),
+                }
+            }
+        ),
+        201,
+    )
+
+
+@inventory_bp.get("/api/v1/inventory/price-lists")
+@login_required  # type: ignore[untyped-decorator]
+def list_prices() -> tuple[Any, int]:
+    raw = request.args.get("company_id", "")
+    try:
+        cid = UUID(raw)
+    except ValueError:
+        abort(422, description="company_id required")
+    pid = UUID(request.args["product_id"]) if request.args.get("product_id") else None
+    rows = _svc().list_prices(cid, pid)
+    return (
+        jsonify(
+            {
+                "data": [
+                    {"id": str(r.id), "price": str(r.price), "valid_from": r.valid_from.isoformat()}
+                    for r in rows
+                ]
+            }
+        ),
+        200,
+    )
+
+
 # ── shipments ──
 @inventory_bp.post("/api/v1/inventory/shipments")
 @login_required  # type: ignore[untyped-decorator]

@@ -418,3 +418,50 @@ class TaxRateCatalogService:
                 self._repo.remove(w)
                 return self._repo.add(closed)
         raise WindowNotFoundError(f"Không tìm thấy cửa sổ thuế suất {fraction}")
+
+
+class TaxCodeService:
+    def __init__(self, repo: Any, audit: Any | None = None) -> None:
+        self._repo = repo
+        self._audit = audit
+
+    def create_tax_code(
+        self,
+        *,
+        company_id: UUID,
+        code: str,
+        rate: int,
+        type: str,
+        account_code: str,
+        name: str = "",
+        actor: UUID,
+        reason: str,
+    ) -> Any:
+        if not actor or not reason.strip():
+            raise ValueError("actor and reason required")
+        if self._repo.get_by_code(company_id, code) is not None:
+            raise ValueError(f"TaxCode {code} đã tồn tại")
+        from src.bricks.system_settings.domain import TaxCode
+
+        tc = TaxCode(
+            company_id=company_id,
+            code=code,
+            rate=rate,
+            type=type,
+            account_code=account_code,
+            name=name,
+        )
+        saved = self._repo.create_tax_code(tc)
+        if self._audit:
+            self._audit.append(
+                entity_type="tax_code",
+                entity_id=tc.id,
+                action="CREATE",
+                actor_id=actor,
+                reason=reason,
+                after_value={"code": code},
+            )
+        return saved
+
+    def list_tax_codes(self, company_id: UUID) -> list[Any]:
+        return self._repo.list_tax_codes(company_id)  # type: ignore[no-any-return]

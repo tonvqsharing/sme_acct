@@ -21,12 +21,12 @@
 - [ ] Verify: 9 new tests, no 611, Product.uom still text (FK next)
 - [ ] Review: Approve → `tasks/review-slice2.md`
 
-## Slice 3 — TaxCode + Lot + PriceList (P1)
-- [ ] Task 3.1: TaxCode detail (code/rate/type/account)
-- [ ] Task 3.2: Lot/Batch (lot_code/product/expiry/qty) + StockMove.lot_id
-- [ ] Task 3.3: PriceList (product/uom/price/valid_from) → CostRevision history
-- [ ] Verify: 6 new tests
-- [ ] Review: Approve → `tasks/review-slice3.md`
+## Slice 3 — TaxCode + Lot + PriceList (P1) ✅ Done — Approve `tasks/review-slice3.md`
+- [x] Task 3.1: TaxCode detail (code/rate/type/account)
+- [x] Task 3.2: Lot/Batch (lot_code/product/expiry/qty) + StockMove.lot_id
+- [x] Task 3.3: PriceList (product/uom/price/valid_from) → CostRevision history
+- [x] Verify: 5 new tests (3 unit + 2 integration), ruff 0 black 0 mypy 0
+- [x] Review: Approve → `tasks/review-slice3.md`
 
 ## Final
-- [ ] `pytest -q` ~1030 green, `git push`, codegraph sync
+- [x] `pytest -q` 1023 green, `git push`, codegraph sync

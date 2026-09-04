@@ -406,3 +406,83 @@ def add_rate_window() -> tuple[Any, int]:
     except ValueError as exc:
         return jsonify({"error": str(exc), "code": "OVERLAPPING_WINDOW"}), 409
     return jsonify({"data": _ser_window(out)}), 201
+
+
+# ─── Tax codes master detail ───────────────────────────────────────────────
+_tax_code_service: Any = None
+
+
+def init_tax_code_service(svc: Any) -> None:
+    global _tax_code_service
+    _tax_code_service = svc
+
+
+def _tax_codes() -> Any:
+    s = _tax_code_service
+    if s is None:
+        abort(500, description="TaxCodeService not initialized")
+    return s
+
+
+@settings_bp.post("/api/v1/tax-codes")
+@login_required  # type: ignore[untyped-decorator]
+def create_tax_code() -> tuple[Any, int]:
+    role = getattr(current_user, "role", "")
+    if role not in ADMIN_ROLES:
+        abort(403)
+    body = request.get_json(silent=True) or {}
+    try:
+        tc = _tax_codes().create_tax_code(
+            company_id=UUID(body["company_id"]),
+            code=body["code"],
+            rate=int(body["rate"]),
+            type=body["type"],
+            account_code=body["account_code"],
+            name=body.get("name", ""),
+            actor=UUID(str(current_user.id)),
+            reason=body.get("reason") or "create tax_code",
+        )
+    except (KeyError, ValueError) as exc:
+        return jsonify({"error": str(exc), "code": "INVALID_TAX_CODE"}), 422
+    return (
+        jsonify(
+            {
+                "data": {
+                    "id": str(tc.id),
+                    "code": tc.code,
+                    "rate": tc.rate,
+                    "type": tc.type,
+                    "account_code": tc.account_code,
+                }
+            }
+        ),
+        201,
+    )
+
+
+@settings_bp.get("/api/v1/tax-codes")
+@login_required  # type: ignore[untyped-decorator]
+def list_tax_codes() -> tuple[Any, int]:
+    raw = request.args.get("company_id", "")
+    try:
+        cid = UUID(raw)
+    except ValueError:
+        abort(422, description="company_id required")
+    rows = _tax_codes().list_tax_codes(cid)
+    return (
+        jsonify(
+            {
+                "data": [
+                    {
+                        "id": str(r.id),
+                        "code": r.code,
+                        "rate": r.rate,
+                        "type": r.type,
+                        "account_code": r.account_code,
+                    }
+                    for r in rows
+                ]
+            }
+        ),
+        200,
+    )

@@ -586,6 +586,16 @@ def create_app(config: dict | None = None) -> Flask:
         )
     )
 
+    # ── TaxCode master detail ───────────────────────────────────────────
+    from src.bricks.system_settings.services import TaxCodeService
+    from src.bricks.system_settings.storage import SQLAlchemyTaxCodeRepository
+    from src.bricks.system_settings.web_adapter import init_tax_code_service
+
+    tax_code_repo = SQLAlchemyTaxCodeRepository(session_factory())
+    tax_code_svc = TaxCodeService(repo=tax_code_repo, audit=audit_svc)
+    init_tax_code_service(tax_code_svc)
+    app.tax_code_service = tax_code_svc  # type: ignore[attr-defined]
+
     # ── System settings + bank reconciliation ───────────────────────────
     class _FxItemsProvider:
         """v1: FX balances come from bank accounts tagged per currency."""

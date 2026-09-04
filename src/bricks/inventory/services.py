@@ -227,6 +227,82 @@ class InventoryService:
     def list_warehouses(self, company_id: UUID) -> list[Any]:
         return self._repo.list_warehouses(company_id)  # type: ignore[no-any-return]
 
+    # ── lot ──
+    def create_lot(
+        self,
+        *,
+        company_id: UUID,
+        product_id: UUID,
+        lot_code: str,
+        expiry_date: date | None = None,
+        qty: Any = Decimal(0),
+        actor: UUID,
+        reason: str,
+    ) -> Any:
+        if not actor or not reason.strip():
+            raise ValueError("actor and reason required")
+        from src.bricks.inventory.domain import Lot
+
+        lot = Lot(
+            company_id=company_id,
+            product_id=product_id,
+            lot_code=lot_code,
+            expiry_date=expiry_date,
+            qty=_d(qty),
+        )
+        saved = self._repo.create_lot(lot)
+        if self._audit:
+            self._audit.append(
+                entity_type="lot",
+                entity_id=lot.id,
+                action="CREATE",
+                actor_id=actor,
+                reason=reason,
+                after_value={"lot_code": lot_code},
+            )
+        return saved
+
+    def list_lots(self, company_id: UUID, product_id: UUID | None = None) -> list[Any]:
+        return self._repo.list_lots(company_id, product_id)  # type: ignore[no-any-return]
+
+    # ── price list ──
+    def create_price(
+        self,
+        *,
+        company_id: UUID,
+        product_id: UUID,
+        uom_id: UUID | None = None,
+        price: Any = Decimal(0),
+        valid_from: date | None = None,
+        actor: UUID,
+        reason: str,
+    ) -> Any:
+        if not actor or not reason.strip():
+            raise ValueError("actor and reason required")
+        from src.bricks.inventory.domain import PriceList
+
+        pl = PriceList(
+            company_id=company_id,
+            product_id=product_id,
+            uom_id=uom_id,
+            price=_d(price),
+            valid_from=valid_from or date.today(),  # noqa: DTZ011
+        )
+        saved = self._repo.create_price(pl)
+        if self._audit:
+            self._audit.append(
+                entity_type="price_list",
+                entity_id=pl.id,
+                action="CREATE",
+                actor_id=actor,
+                reason=reason,
+                after_value={"price": str(price)},
+            )
+        return saved
+
+    def list_prices(self, company_id: UUID, product_id: UUID | None = None) -> list[Any]:
+        return self._repo.list_prices(company_id, product_id)  # type: ignore[no-any-return]
+
     # ── shipment ──
     def create_shipment(
         self,
@@ -286,6 +362,7 @@ class InventoryService:
             unit_cost = _d(m.get("unit_cost", "0"))
             from_loc = UUID(str(m["from_loc"])) if m.get("from_loc") else None
             to_loc = UUID(str(m["to_loc"])) if m.get("to_loc") else None
+            lot_id = UUID(str(m["lot_id"])) if m.get("lot_id") else None
             # for SUPPLIER_IN, to_loc required; CUSTOMER_OUT from_loc required; INTERNAL both
             if st == ShipmentType.SUPPLIER_IN and to_loc is None:
                 raise ValueError("to_loc required for SUPPLIER_IN")
@@ -300,6 +377,7 @@ class InventoryService:
                 unit_cost=unit_cost,
                 from_loc=from_loc,
                 to_loc=to_loc,
+                lot_id=lot_id,
                 effective_date=ed,
                 shipment_id=saved_ship.id,
                 state=self._import_move_state("DRAFT"),

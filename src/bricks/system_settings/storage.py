@@ -338,6 +338,82 @@ class SQLAlchemyVatCarryRepository:
         self._session.commit()
 
 
+class TaxCodeModel(Base):
+    __tablename__ = "tax_codes"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    company_id: Mapped[str] = mapped_column(String(36), index=True)
+    code: Mapped[str] = mapped_column(String(30), index=True)
+    rate: Mapped[int] = mapped_column(Integer)
+    type: Mapped[str] = mapped_column(String(10))
+    account_code: Mapped[str] = mapped_column(String(10))
+    name: Mapped[str] = mapped_column(String(100), default="")
+    active: Mapped[bool] = mapped_column(default=True)
+
+
+class SQLAlchemyTaxCodeRepository:
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def create_tax_code(self, tc: Any) -> Any:
+        self._session.add(
+            TaxCodeModel(
+                id=str(tc.id),
+                company_id=str(tc.company_id),
+                code=tc.code,
+                rate=tc.rate,
+                type=tc.type,
+                account_code=tc.account_code,
+                name=tc.name,
+                active=tc.active,
+            )
+        )
+        self._session.commit()
+        return tc
+
+    def get_by_code(self, company_id: UUID, code: str) -> Any | None:
+        row = (
+            self._session.query(TaxCodeModel)
+            .filter(TaxCodeModel.company_id == str(company_id), TaxCodeModel.code == code)
+            .first()
+        )
+        if not row:
+            return None
+        from src.bricks.system_settings.domain import TaxCode
+
+        return TaxCode(
+            id=UUID(row.id),
+            company_id=UUID(row.company_id),
+            code=row.code,
+            rate=row.rate,
+            type=row.type,
+            account_code=row.account_code,
+            name=row.name,
+            active=row.active,
+        )
+
+    def list_tax_codes(self, company_id: UUID) -> list[Any]:
+        rows = (
+            self._session.query(TaxCodeModel)
+            .filter(TaxCodeModel.company_id == str(company_id))
+            .all()
+        )
+        from src.bricks.system_settings.domain import TaxCode
+
+        return [
+            TaxCode(
+                id=UUID(r.id),
+                company_id=UUID(r.company_id),
+                code=r.code,
+                rate=r.rate,
+                type=r.type,
+                account_code=r.account_code,
+                name=r.name,
+                active=r.active,
+            )
+            for r in rows
+        ]
+
+
 class SQLAlchemyTaxRateWindowRepository:
     def __init__(self, session: Session) -> None:
         self._session = session

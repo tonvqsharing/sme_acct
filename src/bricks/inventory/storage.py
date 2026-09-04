@@ -59,6 +59,7 @@ class StockMoveModel(Base):
     unit_cost: Mapped[Decimal] = mapped_column(Numeric(18, 2))
     from_loc: Mapped[str | None] = mapped_column(String(36), nullable=True)
     to_loc: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    lot_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     effective_date: Mapped[date] = mapped_column(Date)
     shipment_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     state: Mapped[str] = mapped_column(String(20), default="DRAFT")
@@ -117,6 +118,26 @@ class WarehouseModel(Base):
     address: Mapped[str | None] = mapped_column(String(300), nullable=True)
     manager_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     account_code: Mapped[str | None] = mapped_column(String(10), nullable=True)
+
+
+class LotModel(Base):
+    __tablename__ = "inventory_lots"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    company_id: Mapped[str] = mapped_column(String(36), index=True)
+    product_id: Mapped[str] = mapped_column(String(36), index=True)
+    lot_code: Mapped[str] = mapped_column(String(30), index=True)
+    expiry_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    qty: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=0)
+
+
+class PriceListModel(Base):
+    __tablename__ = "inventory_price_lists"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    company_id: Mapped[str] = mapped_column(String(36), index=True)
+    product_id: Mapped[str] = mapped_column(String(36), index=True)
+    uom_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    price: Mapped[Decimal] = mapped_column(Numeric(18, 2))
+    valid_from: Mapped[date] = mapped_column(Date)
 
 
 class SQLAlchemyInventoryRepository:
@@ -292,6 +313,7 @@ class SQLAlchemyInventoryRepository:
                 unit_cost=m.unit_cost,
                 from_loc=str(m.from_loc) if m.from_loc else None,
                 to_loc=str(m.to_loc) if m.to_loc else None,
+                lot_id=str(m.lot_id) if m.lot_id else None,
                 effective_date=m.effective_date,
                 shipment_id=str(m.shipment_id) if m.shipment_id else None,
                 state=m.state.value,
@@ -354,6 +376,7 @@ class SQLAlchemyInventoryRepository:
             unit_cost=Decimal(str(r.unit_cost)),
             from_loc=UUID(r.from_loc) if r.from_loc else None,
             to_loc=UUID(r.to_loc) if r.to_loc else None,
+            lot_id=UUID(r.lot_id) if r.lot_id else None,
             effective_date=r.effective_date,
             shipment_id=UUID(r.shipment_id) if r.shipment_id else None,
             state=MoveState(r.state),
@@ -540,3 +563,71 @@ class SQLAlchemyInventoryRepository:
             manager_id=UUID(m.manager_id) if m.manager_id else None,
             account_code=m.account_code,
         )
+
+    # ── lots ──
+    def create_lot(self, lot: Any) -> Any:
+        self._session.add(
+            LotModel(
+                id=str(lot.id),
+                company_id=str(lot.company_id),
+                product_id=str(lot.product_id),
+                lot_code=lot.lot_code,
+                expiry_date=lot.expiry_date,
+                qty=lot.qty,
+            )
+        )
+        self._session.commit()
+        return lot
+
+    def list_lots(self, company_id: UUID, product_id: UUID | None = None) -> list[Any]:
+        q = self._session.query(LotModel).filter(LotModel.company_id == str(company_id))
+        if product_id:
+            q = q.filter(LotModel.product_id == str(product_id))
+        rows = q.all()
+        from src.bricks.inventory.domain import Lot
+
+        return [
+            Lot(
+                id=UUID(r.id),
+                company_id=UUID(r.company_id),
+                product_id=UUID(r.product_id),
+                lot_code=r.lot_code,
+                expiry_date=r.expiry_date,
+                qty=Decimal(str(r.qty)),
+            )
+            for r in rows
+        ]
+
+    # ── price lists ──
+    def create_price(self, pl: Any) -> Any:
+        self._session.add(
+            PriceListModel(
+                id=str(pl.id),
+                company_id=str(pl.company_id),
+                product_id=str(pl.product_id),
+                uom_id=str(pl.uom_id) if pl.uom_id else None,
+                price=pl.price,
+                valid_from=pl.valid_from,
+            )
+        )
+        self._session.commit()
+        return pl
+
+    def list_prices(self, company_id: UUID, product_id: UUID | None = None) -> list[Any]:
+        q = self._session.query(PriceListModel).filter(PriceListModel.company_id == str(company_id))
+        if product_id:
+            q = q.filter(PriceListModel.product_id == str(product_id))
+        rows = q.all()
+        from src.bricks.inventory.domain import PriceList
+
+        return [
+            PriceList(
+                id=UUID(r.id),
+                company_id=UUID(r.company_id),
+                product_id=UUID(r.product_id),
+                uom_id=UUID(r.uom_id) if r.uom_id else None,
+                price=Decimal(str(r.price)),
+                valid_from=r.valid_from,
+            )
+            for r in rows
+        ]

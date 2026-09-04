@@ -139,3 +139,27 @@ class CompanyConfig:
             updated_by=actor,
             config_version=self.config_version + 1,
         )
+
+
+@dataclass
+class TaxCode:
+    """Detailed tax code master beyond TaxRate enum. TT99 3331/1331 detail."""
+
+    company_id: UUID
+    code: str  # e.g. VAT-0, VAT-5, VAT-8, VAT-10, KCT, KK
+    rate: int  # -1,0,5,8,10
+    type: str  # input/output/both
+    account_code: str  # 1331/3331
+    name: str = ""
+    active: bool = True
+    id: UUID = field(default_factory=uuid4)
+
+    def __post_init__(self) -> None:
+        if not self.code.strip():
+            raise ValueError("code required")
+        if self.rate not in (-1, 0, 5, 8, 10):
+            raise ValueError(f"rate {self.rate} invalid (-1/0/5/8/10)")
+        if self.type not in ("input", "output", "both"):
+            raise ValueError(f"type {self.type} invalid")
+        if not self.account_code.strip():
+            raise ValueError("account_code required")

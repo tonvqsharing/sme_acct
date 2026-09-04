@@ -103,6 +103,7 @@ class StockMove:
     from_loc: UUID | None
     to_loc: UUID | None
     effective_date: date
+    lot_id: UUID | None = None
     shipment_id: UUID | None = None
     state: MoveState = MoveState.DRAFT
     id: UUID = field(default_factory=uuid4)
@@ -183,3 +184,33 @@ class Warehouse:
             raise ValueError("code required")
         if not self.name.strip():
             raise ValueError("name required")
+
+
+@dataclass
+class Lot:
+    company_id: UUID
+    product_id: UUID
+    lot_code: str
+    expiry_date: date | None = None
+    qty: Decimal = Decimal(0)
+    id: UUID = field(default_factory=uuid4)
+
+    def __post_init__(self) -> None:
+        if not self.lot_code.strip():
+            raise ValueError("lot_code required")
+        if self.qty < 0:
+            raise ValueError("qty must be >=0")
+
+
+@dataclass
+class PriceList:
+    company_id: UUID
+    product_id: UUID
+    uom_id: UUID | None = None
+    price: Decimal = Decimal(0)
+    valid_from: date = field(default_factory=date.today)
+    id: UUID = field(default_factory=uuid4)
+
+    def __post_init__(self) -> None:
+        if self.price < 0:
+            raise ValueError("price must be >=0")
