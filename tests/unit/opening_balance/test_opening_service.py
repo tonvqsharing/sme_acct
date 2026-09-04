@@ -72,6 +72,9 @@ class FakeRepo:
     def list_stock(self, bid):
         return []
 
+    def list_assets(self, bid):
+        return []
+
     def list_counterparty(self, bid):
         return []
 

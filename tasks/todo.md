@@ -94,7 +94,14 @@
 - [x] Migration `e5f6a7b8c9d0` guarded; scratch up/down/re-up green, single head
 - [x] Verify: 6 new tests RED→GREEN, ruff 0 black 0 mypy 0, pytest 1083
 - [x] Review: Approve → `tasks/review-opening-s3.md`
-- [ ] Next: Opening S4 — FA/CCDC/WIP + bank reconciliation tie
+## Opening S4a — FA + bank tie ✅ Done — Approve `tasks/review-opening-s4a.md`
+- [x] `AssetOpening` rows + table + endpoint; materialize FA with carried accumulated
+- [x] Lock ties: bank↔112x, FA GTCL↔211−214 (R-O04)
+- [x] `create_asset` optional accumulated (backward compat)
+- [x] Migration `f6a7b8c9d0e1` guarded; scratch up/down/re-up green, single head
+- [x] Verify: 5 new tests RED→GREEN, ruff 0 black 0 mypy 0, pytest 1088
+- [x] Review: Approve → `tasks/review-opening-s4a.md`
+- [ ] Next: Opening S4b — CCDC opening via elapsed-allocation backfill + 242 tie
 
 ## Final
 - [x] `pytest -q` 1023 green, `git push`, codegraph sync

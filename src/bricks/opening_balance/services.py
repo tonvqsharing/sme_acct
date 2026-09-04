@@ -9,6 +9,7 @@ from uuid import UUID
 from src.bricks.opening_balance.domain import (
     GENESIS_CHECKSUM,
     TOLERANCE,
+    AssetOpening,
     BankOpening,
     BatchSource,
     BatchState,
@@ -46,6 +47,7 @@ class OpeningService:
         audit: Any | None = None,
         party_lookup: Any | None = None,
         inventory: Any | None = None,
+        fixed_assets: Any | None = None,
     ) -> None:
         self._repo = repo
         self._fy_years = fy_years
@@ -54,6 +56,7 @@ class OpeningService:
         self._audit = audit
         self._party_lookup = party_lookup
         self._inventory = inventory
+        self._fixed_assets = fixed_assets
 
     # ── helpers ───────────────────────────────────────────────────────
     def _regime(self, company_id: UUID) -> str:
@@ -233,6 +236,58 @@ class OpeningService:
         self._repo.update_batch(b)
         self._log("POST_STOCK", b.id, actor, reason)
 
+    def post_assets(
+        self, batch_id: UUID, *, rows: list[dict[str, Any]], actor: UUID, reason: str
+    ) -> None:
+        from datetime import date as _date
+
+        b = self._get_draft(batch_id)
+        if self._fixed_assets is None:
+            raise RuntimeError("fixed_assets port not wired")
+        for r in rows:
+            if r.get("kind", "fixed_asset") != "fixed_asset":
+                raise ValueError("S4a supports kind=fixed_asset only (ccdc arrives S4b)")
+            original = _d(r["original_cost"])
+            remaining = _d(r["remaining_value"])
+            months_left = int(r["months_left"])
+            regime = self._regime(b.company_id)
+            self._coa.validate_posting_account(b.company_id, r["expense_account"], regime)
+            row = AssetOpening(
+                batch_id=b.id,
+                kind="fixed_asset",
+                code=str(r["code"]).strip(),
+                name=str(r["name"]).strip(),
+                original_cost=original,
+                remaining_value=remaining,
+                months_left=months_left,
+                expense_account=r["expense_account"],
+            )
+            self._repo.add_asset(row)
+            # Materialize asset at go-live with prior depreciation carried over.
+            # Useful life unknown from book state alone: effective life =
+            # max(declared useful_life, months_left) so SL never over-charges.
+            life = max(int(r.get("useful_life_months", months_left)), months_left)
+            self._fixed_assets.create_asset(
+                company_id=b.company_id,
+                asset_code=row.code,
+                name=row.name,
+                category=r.get("category", "huu_hinh"),
+                original_cost=original,
+                acquisition_date=(
+                    _date.fromisoformat(r["acquisition_date"])
+                    if r.get("acquisition_date")
+                    else _date.today()  # noqa: DTZ011
+                ),
+                useful_life_months=life,
+                depreciation_account=row.expense_account,
+                actor=actor,
+                reason=reason,
+                accumulated_depreciation=original - remaining,
+            )
+        b.checksum = b.compute_checksum(b.checksum or GENESIS_CHECKSUM, actor, reason)
+        self._repo.update_batch(b)
+        self._log("POST_ASSETS", b.id, actor, reason)
+
     # ── reconcile + lock ──────────────────────────────────────────────
     def reconcile(self, batch_id: UUID) -> dict[str, Any]:
         b = self._repo.get_batch(batch_id)
@@ -247,6 +302,16 @@ class OpeningService:
         cp_total = sum((r.amount for r in cp), Decimal(0))
         stock = self._repo.list_stock(batch_id)
         stock_total = sum((r.total_value for r in stock), Decimal(0))
+        assets = self._repo.list_assets(batch_id)
+        assets_total = sum((r.remaining_value for r in assets), Decimal(0))
+        gl_112 = sum(
+            (r.debit - r.credit for r in gl if r.account_code.startswith("112")),
+            Decimal(0),
+        )
+        gl_fa_net = sum(
+            (r.debit - r.credit for r in gl if r.account_code.startswith(("211", "214"))),
+            Decimal(0),
+        )
         balanced = abs(debit - credit) <= TOLERANCE
         return {
             "balanced": balanced,
@@ -254,11 +319,15 @@ class OpeningService:
             "credit_total": credit,
             "checks": {
                 "bank_total": bank_total,
+                "bank_gl_112": gl_112,
                 "gl_lines": len(gl),
                 "counterparty_total": cp_total,
                 "counterparty_lines": len(cp),
                 "stock_total": stock_total,
                 "stock_lines": len(stock),
+                "assets_total": assets_total,
+                "assets_lines": len(assets),
+                "fa_gl_net": gl_fa_net,
             },
         }
 
@@ -319,6 +388,36 @@ class OpeningService:
                     f"Chi tiết đối tác {acct} {total} ≠ sổ cái {gl_net.get(acct, Decimal(0))}"
                 )
 
+    def _verify_bank_tie(self, batch_id: UUID) -> None:
+        """Bank detail must tie to GL 112x debit."""
+        gl_112 = sum(
+            (
+                r.debit - r.credit
+                for r in self._repo.list_gl(batch_id)
+                if r.account_code.startswith("112")
+            ),
+            Decimal(0),
+        )
+        bank_total = sum((r.amount for r in self._repo.list_bank(batch_id)), Decimal(0))
+        if abs(bank_total - gl_112) > TOLERANCE:
+            raise UnbalancedOpeningError(f"Chi tiết ngân hàng 112 {bank_total} ≠ sổ cái {gl_112}")
+
+    def _verify_asset_tie(self, batch_id: UUID) -> None:
+        """R-O04: FA remaining ( NG − HK) must tie to GL 211−214 net."""
+        gl_net = sum(
+            (
+                r.debit - r.credit
+                for r in self._repo.list_gl(batch_id)
+                if r.account_code.startswith(("211", "214"))
+            ),
+            Decimal(0),
+        )
+        assets_total = sum(
+            (r.remaining_value for r in self._repo.list_assets(batch_id)), Decimal(0)
+        )
+        if abs(assets_total - gl_net) > TOLERANCE:
+            raise UnbalancedOpeningError(f"GTCL TSCĐ 211 {assets_total} ≠ sổ cái {gl_net}")
+
     def lock(self, batch_id: UUID, *, actor: UUID, reason: str) -> OpeningBatch:
         b = self._get_draft(batch_id)
         rep = self.reconcile(batch_id)
@@ -326,6 +425,8 @@ class OpeningService:
             raise UnbalancedOpeningError(f"Nợ {rep['debit_total']} ≠ Có {rep['credit_total']}")
         self._verify_counterparty_tie(batch_id)
         self._verify_stock_tie(batch_id)
+        self._verify_bank_tie(batch_id)
+        self._verify_asset_tie(batch_id)
         b.state = BatchState.LOCKED
         b.checksum = b.compute_checksum(b.checksum or GENESIS_CHECKSUM, actor, reason)
         self._repo.update_batch(b)

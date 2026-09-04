@@ -167,6 +167,33 @@ def post_stock(bid: str) -> tuple[Any, int]:
     return jsonify({"data": {"posted": True}}), 201
 
 
+@opening_balance_bp.post("/api/v1/opening-batches/<bid>/assets")
+@login_required  # type: ignore[untyped-decorator]
+def post_assets(bid: str) -> tuple[Any, int]:
+    _require_write()
+    body = request.get_json(silent=True) or {}
+    try:
+        bid_u = UUID(bid)
+    except ValueError:
+        abort(422, description="Invalid UUID")
+    try:
+        _svc().post_assets(
+            bid_u,
+            rows=body.get("rows", []),
+            actor=UUID(str(current_user.id)),
+            reason=body.get("reason") or "post asset opening",
+        )
+    except (KeyError, ValueError) as exc:
+        return jsonify({"error": str(exc), "code": "INVALID_ASSET"}), 422
+    except BatchLockedError as exc:
+        return jsonify({"error": str(exc), "code": "BATCH_LOCKED"}), 409
+    except NotFoundError as exc:
+        return jsonify({"error": str(exc), "code": "NOT_FOUND"}), 404
+    except RuntimeError as exc:
+        return jsonify({"error": str(exc), "code": "NOT_WIRED"}), 500
+    return jsonify({"data": {"posted": True}}), 201
+
+
 @opening_balance_bp.get("/api/v1/opening-batches/<bid>/reconcile")
 @login_required  # type: ignore[untyped-decorator]
 def reconcile(bid: str) -> tuple[Any, int]:

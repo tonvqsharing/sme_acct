@@ -65,6 +65,22 @@ def ready(app):
     coa.create_account(
         UUID(COMPANY), "1521", "NVL ct", parent_code="152", actor=uuid4(), reason="c"
     )
+    coa.create_account(UUID(COMPANY), "112", "TGNH", actor=uuid4(), reason="c")
+    coa.create_account(
+        UUID(COMPANY), "1121", "TGNH VNĐ", parent_code="112", actor=uuid4(), reason="c"
+    )
+    coa.create_account(UUID(COMPANY), "211", "TSCĐ", actor=uuid4(), reason="c")
+    coa.create_account(
+        UUID(COMPANY), "2111", "TSCĐ HH", parent_code="211", actor=uuid4(), reason="c"
+    )
+    coa.create_account(UUID(COMPANY), "214", "Hao mòn", actor=uuid4(), reason="c")
+    coa.create_account(
+        UUID(COMPANY), "2141", "HM TSCĐ HH", parent_code="214", actor=uuid4(), reason="c"
+    )
+    coa.create_account(UUID(COMPANY), "642", "QLDN", actor=uuid4(), reason="c")
+    coa.create_account(
+        UUID(COMPANY), "6421", "QLDN ct", parent_code="642", actor=uuid4(), reason="c"
+    )
     from src.bricks.payment_terms.web_adapter import _series_service as ss
 
     ss.create_series(company_id=UUID(COMPANY), prefix="PT/", actor=uuid4(), reason="s")
@@ -124,7 +140,7 @@ class TestOpeningFlow:
             json={
                 "reason": "gl",
                 "lines": [
-                    {"account_code": "1111", "debit": "500", "credit": "0"},
+                    {"account_code": "1121", "debit": "500", "credit": "0"},
                     {"account_code": "4111", "debit": "0", "credit": "500"},
                 ],
             },
@@ -304,3 +320,53 @@ class TestStockFlow:
         )
         rows = {x["code"]: x for x in nxt.get_json()["data"]}
         assert rows["SKU-OP"]["in_qty"] == 100.0
+
+
+class TestAssetFlow:
+    def test_asset_posts_and_materializes_fa(self, chief, ready):
+        fy_id = ready["fy_id"]
+        r = chief.post(
+            "/api/v1/opening-batches",
+            json={"company_id": COMPANY, "fiscal_year_id": fy_id, "reason": "init"},
+        )
+        bid = r.get_json()["data"]["id"]
+        st = chief.post(
+            f"/api/v1/opening-batches/{bid}/assets",
+            json={
+                "reason": "fa",
+                "rows": [
+                    {
+                        "kind": "fixed_asset",
+                        "code": "TSCD-OP",
+                        "name": "Máy CNC",
+                        "original_cost": "1200000000",
+                        "remaining_value": "800000000",
+                        "months_left": 80,
+                        "expense_account": "6421",
+                    }
+                ],
+            },
+        )
+        assert st.status_code == 201, st.get_json()
+
+        fa = chief.get("/api/v1/fixed-assets", query_string={"company_id": COMPANY}).get_json()[
+            "data"
+        ]
+        mine = next(x for x in fa if x["asset_code"] == "TSCD-OP")
+        assert mine["accumulated_depreciation"] == 400000000.0
+        assert mine["book_value"] == 800000000.0
+
+        # FA tie mismatch blocks lock (211 net 1.2B vs ... here GL missing 214)
+        chief.post(
+            f"/api/v1/opening-batches/{bid}/gl",
+            json={
+                "reason": "gl",
+                "lines": [
+                    {"account_code": "2111", "debit": "1200000000", "credit": "0"},
+                    {"account_code": "4111", "debit": "0", "credit": "1200000000"},
+                ],
+            },
+        )
+        bad = chief.post(f"/api/v1/opening-batches/{bid}/lock", json={"reason": "go"})
+        assert bad.status_code == 409
+        assert "211" in bad.get_json()["error"]

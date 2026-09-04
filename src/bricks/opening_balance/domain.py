@@ -88,6 +88,31 @@ class CounterpartyBalance:
 
 
 @dataclass
+class AssetOpening:
+    """TSCĐ/CCDC opening row: book state at go-live (kind=fixed_asset)."""
+
+    batch_id: UUID
+    kind: str  # fixed_asset (ccdc arrives S4b)
+    code: str
+    name: str
+    original_cost: Decimal
+    remaining_value: Decimal
+    months_left: int
+    expense_account: str
+    id: UUID = field(default_factory=uuid4)
+
+    def __post_init__(self) -> None:
+        if self.original_cost <= 0:
+            raise ValueError(f"original_cost must be > 0, got {self.original_cost}")
+        if not 0 <= self.remaining_value <= self.original_cost:
+            raise ValueError(
+                f"remaining_value must be within [0, original_cost], got {self.remaining_value}"
+            )
+        if self.months_left < 1:
+            raise ValueError(f"months_left must be >= 1, got {self.months_left}")
+
+
+@dataclass
 class StockOpening:
     batch_id: UUID
     product_id: UUID

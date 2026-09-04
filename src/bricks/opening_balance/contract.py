@@ -6,6 +6,7 @@ from abc import ABC, abstractmethod
 from uuid import UUID
 
 from src.bricks.opening_balance.domain import (
+    AssetOpening,
     BankOpening,
     CounterpartyBalance,
     GLBalance,
@@ -50,3 +51,9 @@ class OpeningBalanceRepositoryPort(ABC):
 
     @abstractmethod
     def list_stock(self, batch_id: UUID) -> list[StockOpening]: ...
+
+    @abstractmethod
+    def add_asset(self, row: AssetOpening) -> AssetOpening: ...
+
+    @abstractmethod
+    def list_assets(self, batch_id: UUID) -> list[AssetOpening]: ...

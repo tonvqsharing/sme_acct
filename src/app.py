@@ -488,6 +488,16 @@ def create_app(config: dict | None = None) -> Flask:
         def __getattr__(self, name: str) -> Any:
             return getattr(app.inventory_service, name)
 
+    class _LateFixedAssets:
+        """Resolves fixed-asset svc at call time (wired below opening)."""
+
+        def __getattr__(self, name: str) -> Any:
+            from src.bricks.fixed_assets.web_adapter import _fa_service
+
+            if _fa_service is None:
+                raise RuntimeError("fixed_assets port not wired")
+            return getattr(_fa_service, name)
+
     opening_svc = OpeningService(
         repo=_opening_repo,
         fy_years=_fy_year_repo,
@@ -496,6 +506,7 @@ def create_app(config: dict | None = None) -> Flask:
         audit=audit_svc,
         party_lookup=_party_lookup,
         inventory=_LateInventory(),
+        fixed_assets=_LateFixedAssets(),
     )
     init_opening_service(opening_svc)
     app.opening_service = opening_svc  # type: ignore[attr-defined]

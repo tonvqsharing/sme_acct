@@ -121,6 +121,9 @@ class FakeRepo:
     def list_stock(self, bid):
         return list(self.stock.get(bid, []))
 
+    def list_assets(self, bid):
+        return []
+
 
 def _svc(**kw):
     return OpeningService(

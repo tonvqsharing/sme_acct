@@ -66,8 +66,15 @@ class FixedAssetService:
         depreciation_account: str = "6421",
         actor: UUID | None = None,
         reason: str = "",
+        accumulated_depreciation: Decimal | str = Decimal(0),
     ) -> FixedAsset:
         actor_u: UUID = _require(actor)
+        acc = _d(accumulated_depreciation)
+        original = _d(original_cost)
+        if acc < 0 or acc > original:
+            raise ValueError(
+                f"accumulated_depreciation must be within [0, original_cost], got {acc}"
+            )
         if self._repo.exists_duplicate(company_id, asset_code):
             raise DuplicateAssetCodeError(f"Trùng mã TSCĐ: {asset_code}")
         if self._coa_gate is not None:
@@ -82,6 +89,7 @@ class FixedAssetService:
             acquisition_date=acquisition_date,
             useful_life_months=int(useful_life_months),
             depreciation_account=depreciation_account,
+            accumulated_depreciation=acc,
         )
         fa.checksum = _stamp(fa, "CREATE", actor_u)
         created: FixedAsset = self._repo.create(fa)

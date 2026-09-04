@@ -10,6 +10,7 @@ from sqlalchemy import Boolean, Date, Numeric, String
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
 
 from src.bricks.opening_balance.domain import (
+    AssetOpening,
     BankOpening,
     CounterpartyBalance,
     GLBalance,
@@ -74,6 +75,19 @@ class OpeningStockModel(Base):
     receipt_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     receipt_doc: Mapped[str | None] = mapped_column(String(50), nullable=True)
     unit_cost: Mapped[Decimal | None] = mapped_column(Numeric(18, 2), nullable=True)
+
+
+class OpeningAssetModel(Base):
+    __tablename__ = "opening_assets"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    batch_id: Mapped[str] = mapped_column(String(36), index=True)
+    kind: Mapped[str] = mapped_column(String(20))
+    code: Mapped[str] = mapped_column(String(30))
+    name: Mapped[str] = mapped_column(String(200))
+    original_cost: Mapped[Decimal] = mapped_column(Numeric(18, 2))
+    remaining_value: Mapped[Decimal] = mapped_column(Numeric(18, 2))
+    months_left: Mapped[int] = mapped_column()
+    expense_account: Mapped[str] = mapped_column(String(20))
 
 
 class SQLAlchemyOpeningBalanceRepository:
@@ -260,6 +274,44 @@ class SQLAlchemyOpeningBalanceRepository:
                 receipt_date=r.receipt_date,
                 receipt_doc=r.receipt_doc,
                 unit_cost=Decimal(str(r.unit_cost)) if r.unit_cost is not None else None,
+            )
+            for r in rows
+        ]
+
+    def add_asset(self, row: AssetOpening) -> AssetOpening:
+        self._session.add(
+            OpeningAssetModel(
+                id=str(row.id),
+                batch_id=str(row.batch_id),
+                kind=row.kind,
+                code=row.code,
+                name=row.name,
+                original_cost=row.original_cost,
+                remaining_value=row.remaining_value,
+                months_left=row.months_left,
+                expense_account=row.expense_account,
+            )
+        )
+        self._session.commit()
+        return row
+
+    def list_assets(self, batch_id: UUID) -> list[AssetOpening]:
+        rows = (
+            self._session.query(OpeningAssetModel)
+            .filter(OpeningAssetModel.batch_id == str(batch_id))
+            .all()
+        )
+        return [
+            AssetOpening(
+                id=UUID(r.id),
+                batch_id=UUID(r.batch_id),
+                kind=r.kind,
+                code=r.code,
+                name=r.name,
+                original_cost=Decimal(str(r.original_cost)),
+                remaining_value=Decimal(str(r.remaining_value)),
+                months_left=r.months_left,
+                expense_account=r.expense_account,
             )
             for r in rows
         ]
