@@ -449,6 +449,63 @@ class TestExcelImport:
         assert imp.status_code == 422
 
 
+class TestRollover:
+    def test_rollover_locked_to_new_year(self, chief, ready):
+        fy27 = chief.post(
+            "/api/v1/fiscal-years",
+            json={
+                "company_id": COMPANY,
+                "name": "2027",
+                "start_date": "2027-01-01",
+                "end_date": "2027-12-31",
+                "period_frequency": "MONTHLY",
+                "reason": "fy27",
+            },
+        ).get_json()["data"]["id"]
+        r = chief.post(
+            "/api/v1/opening-batches",
+            json={"company_id": COMPANY, "fiscal_year_id": ready["fy_id"], "reason": "init"},
+        )
+        bid = r.get_json()["data"]["id"]
+        chief.post(
+            f"/api/v1/opening-batches/{bid}/gl",
+            json={
+                "reason": "gl",
+                "lines": [
+                    {"account_code": "1111", "debit": "500", "credit": "0"},
+                    {"account_code": "4111", "debit": "0", "credit": "500"},
+                ],
+            },
+        )
+        assert (
+            chief.post(f"/api/v1/opening-batches/{bid}/lock", json={"reason": "go"}).status_code
+            == 200
+        )
+        # draft source rolls over → 409
+        r2 = chief.post(
+            "/api/v1/opening-batches",
+            json={"company_id": COMPANY, "fiscal_year_id": ready["fy_id"], "reason": "draft"},
+        )
+        bid2 = r2.get_json()["data"]["id"]
+        assert (
+            chief.post(
+                f"/api/v1/opening-batches/{bid2}/rollover",
+                json={"fiscal_year_id": fy27, "reason": "y27"},
+            ).status_code
+            == 409
+        )
+        rolled = chief.post(
+            f"/api/v1/opening-batches/{bid}/rollover",
+            json={"fiscal_year_id": fy27, "reason": "y27"},
+        )
+        assert rolled.status_code == 201, rolled.get_json()
+        rep = chief.get(
+            f"/api/v1/opening-batches/{rolled.get_json()['data']['id']}/reconcile"
+        ).get_json()["data"]
+        assert rep["balanced"] is True
+        assert rep["checks"]["gl_lines"] == 2
+
+
 class TestCCDCFlow:
     def test_ccdc_posts_backfills_and_ties_242(self, chief, ready):
         fy_id = ready["fy_id"]

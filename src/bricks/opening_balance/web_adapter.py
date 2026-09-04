@@ -100,7 +100,7 @@ def import_gl_excel(bid: str) -> tuple[Any, int]:
     except ValueError:
         abort(422, description="Invalid UUID")
     upload = request.files.get("file")
-    if upload is None or not upload.filename.endswith((".xlsx", ".xlsm")):
+    if upload is None or not (upload.filename or "").endswith((".xlsx", ".xlsm")):
         return jsonify({"error": "file .xlsx required", "code": "INVALID_FILE"}), 422
     try:
         from openpyxl import load_workbook
@@ -305,6 +305,27 @@ def lock(bid: str) -> tuple[Any, int]:
     except NotFoundError as exc:
         return jsonify({"error": str(exc), "code": "NOT_FOUND"}), 404
     return jsonify({"data": {"id": str(b.id), "state": b.state.value}}), 200
+
+
+@opening_balance_bp.post("/api/v1/opening-batches/<bid>/rollover")
+@login_required  # type: ignore[untyped-decorator]
+def rollover(bid: str) -> tuple[Any, int]:
+    _require_chief()
+    body = request.get_json(silent=True) or {}
+    try:
+        b = _svc().rollover(
+            UUID(bid),
+            new_fiscal_year_id=UUID(str(body["fiscal_year_id"])),
+            actor=UUID(str(current_user.id)),
+            reason=body.get("reason") or "year roll",
+        )
+    except (KeyError, ValueError) as exc:
+        return jsonify({"error": str(exc), "code": "INVALID_ROLLOVER"}), 422
+    except BatchLockedError as exc:
+        return jsonify({"error": str(exc), "code": "BATCH_LOCKED"}), 409
+    except NotFoundError as exc:
+        return jsonify({"error": str(exc), "code": "NOT_FOUND"}), 404
+    return jsonify({"data": {"id": str(b.id), "state": b.state.value}}), 201
 
 
 @opening_balance_bp.post("/api/v1/opening-batches/<bid>/reopen")

@@ -106,7 +106,13 @@
 - [x] Lock tie split: FA↔211−214, CCDC↔242 (R-O04); no migration (same table)
 - [x] Verify: 6 new tests RED→GREEN, ruff 0 black 0 mypy 0, pytest 1094
 - [x] Review: Approve → `tasks/review-opening-s4b.md`
-- [ ] Next: Opening S5 — Excel import + voucher go-live gate hardening + year-roll
+## Opening S5 — gate + Excel + year-roll ✅ Done — Approve `tasks/review-opening-s5.md`
+- [x] S5a gate hardening (every-batch-locked + post re-check) `6295b51`
+- [x] S5b Excel GL import via openpyxl → post_gl `4adbe18`
+- [x] S5c year-roll (LOCKED rows → new DRAFT, no re-materialize) + endpoint
+- [x] Verify: 10 new tests RED→GREEN, ruff 0 black 0 mypy 0, pytest 1104
+- [x] Review: Approve → `tasks/review-opening-s5.md`
+- [ ] Next: Opening PROD readiness re-review (docs vs repo after S1–S5)
 
 ## Final
 - [x] `pytest -q` 1023 green, `git push`, codegraph sync

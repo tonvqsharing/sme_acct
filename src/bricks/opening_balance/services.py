@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from src.bricks.opening_balance.domain import (
     GENESIS_CHECKSUM,
@@ -485,6 +485,92 @@ class OpeningService:
         self._repo.update_batch(b)
         self._log("REOPEN", b.id, actor, reason)
         return b
+
+    def rollover(
+        self, batch_id: UUID, *, new_fiscal_year_id: UUID, actor: UUID, reason: str
+    ) -> OpeningBatch:
+        """Year-roll: copy a LOCKED batch's rows into a fresh DRAFT batch.
+
+        Row data only — masters (FA/CCDC/products) already went live, so no
+        materialization re-runs. New row IDs to keep audit chains distinct.
+        """
+        src = self._repo.get_batch(batch_id)
+        if src is None:
+            raise NotFoundError("Không tìm thấy batch số dư đầu kỳ")
+        assert isinstance(src, OpeningBatch)
+        if src.state != BatchState.LOCKED:
+            raise BatchLockedError("Only LOCKED batches roll over")
+        fy = self._fy_years.get_by_id(new_fiscal_year_id)
+        if fy is None or fy.company_id != src.company_id:
+            raise NotFoundError("Năm tài chính mới không thuộc công ty")
+        dest = self.create_batch(
+            company_id=src.company_id,
+            fiscal_year_id=new_fiscal_year_id,
+            source=src.source.value,
+            actor=actor,
+            reason=reason,
+        )
+        for r in self._repo.list_gl(batch_id):
+            self._repo.add_gl(
+                GLBalance(
+                    id=uuid4(),
+                    batch_id=dest.id,
+                    account_code=r.account_code,
+                    debit=r.debit,
+                    credit=r.credit,
+                    currency_code=r.currency_code,
+                )
+            )
+        for r in self._repo.list_bank(batch_id):
+            self._repo.add_bank(
+                BankOpening(
+                    id=uuid4(), batch_id=dest.id, bank_account_id=r.bank_account_id, amount=r.amount
+                )
+            )
+        for r in self._repo.list_counterparty(batch_id):
+            self._repo.add_counterparty(
+                CounterpartyBalance(
+                    id=uuid4(),
+                    batch_id=dest.id,
+                    account_code=r.account_code,
+                    party_id=r.party_id,
+                    side=r.side,
+                    amount=r.amount,
+                    proof=r.proof,
+                )
+            )
+        for r in self._repo.list_stock(batch_id):
+            self._repo.add_stock(
+                StockOpening(
+                    id=uuid4(),
+                    batch_id=dest.id,
+                    product_id=r.product_id,
+                    warehouse_id=r.warehouse_id,
+                    qty=r.qty,
+                    total_value=r.total_value,
+                    lot_code=r.lot_code,
+                    expiry_date=r.expiry_date,
+                    receipt_date=r.receipt_date,
+                    receipt_doc=r.receipt_doc,
+                    unit_cost=r.unit_cost,
+                )
+            )
+        for r in self._repo.list_assets(batch_id):
+            self._repo.add_asset(
+                AssetOpening(
+                    id=uuid4(),
+                    batch_id=dest.id,
+                    kind=r.kind,
+                    code=r.code,
+                    name=r.name,
+                    original_cost=r.original_cost,
+                    remaining_value=r.remaining_value,
+                    months_left=r.months_left,
+                    expense_account=r.expense_account,
+                )
+            )
+        self._log("ROLLOVER", dest.id, actor, reason)
+        return dest
 
     def is_locked(self, company_id: UUID) -> bool | None:
         """Voucher gate: None = no batches (skip); True only when every batch LOCKED."""
