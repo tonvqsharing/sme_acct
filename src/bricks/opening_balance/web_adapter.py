@@ -328,6 +328,40 @@ def rollover(bid: str) -> tuple[Any, int]:
     return jsonify({"data": {"id": str(b.id), "state": b.state.value}}), 201
 
 
+@opening_balance_bp.get("/api/v1/opening-batches/templates/<kind>")
+@login_required  # type: ignore[untyped-decorator]
+def download_template(kind: str) -> Any:
+    from io import BytesIO
+    from flask import send_file
+    from openpyxl import Workbook
+
+    kind = kind.lower()
+    wb = Workbook()
+    ws = wb.active
+    if kind == "gl":
+        ws.append(["account_code", "debit", "credit", "currency_code"])
+        ws.append(["1111", 0, 500, "VND"])
+    elif kind == "bank":
+        ws.append(["bank_account_id", "amount"])
+        ws.append(["", 0])
+    elif kind == "counterparty":
+        ws.append(["account_code", "party_id", "side", "amount", "proof"])
+        ws.append(["1311", "", "debit", 0, False])
+    elif kind == "stock":
+        ws.append(["product_id", "warehouse_id", "qty", "total_value", "lot_code", "expiry_date", "receipt_date", "receipt_doc", "unit_cost"])
+        ws.append(["", "", 0, 0, "", "", "", "", ""])
+    elif kind == "assets":
+        ws.append(["kind", "code", "name", "original_cost", "remaining_value", "months_left", "expense_account"])
+        ws.append(["fixed_asset", "", "", 0, 0, 12, ""])
+    else:
+        return jsonify({"error": "unknown template", "code": "INVALID_KIND"}), 422
+
+    bio = BytesIO()
+    wb.save(bio)
+    bio.seek(0)
+    return send_file(bio, as_attachment=True, download_name=f"opening_{kind}_template.xlsx", mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+
 @opening_balance_bp.post("/api/v1/opening-batches/<bid>/reopen")
 @login_required  # type: ignore[untyped-decorator]
 def reopen(bid: str) -> tuple[Any, int]:

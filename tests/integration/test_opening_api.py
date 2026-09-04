@@ -549,3 +549,10 @@ class TestCCDCFlow:
         bad = chief.post(f"/api/v1/opening-batches/{bid}/lock", json={"reason": "go"})
         assert bad.status_code == 409
         assert "242" in bad.get_json()["error"]
+
+
+class TestTemplates:
+    def test_download_gl_template(self, chief):
+        r = chief.get("/api/v1/opening-batches/templates/gl")
+        assert r.status_code == 200
+        assert r.headers["Content-Type"] == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"

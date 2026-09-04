@@ -112,7 +112,9 @@
 - [x] S5c year-roll (LOCKED rows → new DRAFT, no re-materialize) + endpoint
 - [x] Verify: 10 new tests RED→GREEN, ruff 0 black 0 mypy 0, pytest 1104
 - [x] Review: Approve → `tasks/review-opening-s5.md`
-- [ ] Next: Opening PROD readiness re-review (docs vs repo after S1–S5)
+- [x] Next: Opening PROD readiness re-review (docs vs repo after S1–S5)
+- [x] Add template download endpoint + test
+- [ ] Optional: multi-kind Excel import + spec path alias roll-year
 
 ## Final
 - [x] `pytest -q` 1023 green, `git push`, codegraph sync
