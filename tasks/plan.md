@@ -1,161 +1,59 @@
-# Implementation Plan: XML Invoice Ingest v2 (TT91/2026)
+# Implementation Plan: Master Data Must-Have (Party/UOM/Category/Warehouse/Tax/Lot/Price)
 
 ## Overview
-Parse Vietnamese e-invoice XML files (TT91/2026 format) and auto-create `SupplierInvoice` records. Handles VAT invoices (mau so 1), sales invoices (mau so 2), and other types per Appendix I symbol system. Integrates with existing `PurchaseService.create_invoice` gates.
+Build 11 missing master objects (Customer/Supplier/Employee/Department/UOM/ProductCategory/Warehouse/TaxCode/Lot/PriceList) ordered core→edge per TT99/TT58, Tryton party, Misa/Fast/Bravo. Each vertical slice delivers domain+storage+service+web+tests and is done only when ruff→black→mypy→pytest + code-review-and-quality Approve. No 3P (WMS/BOM) this version.
 
 ## Architecture Decisions
-- XML parsing: `xml.etree.ElementTree` (stdlib, no new deps)
-- New brick: `src/bricks/xml_ingest/` — separates parsing concern from purchase domain
-- Parser is pure Python (domain layer) — no Flask/SQLAlchemy imports
-- Service layer calls `PurchaseService.create_invoice` for gate enforcement
-- Duplicate guard: `exists_duplicate()` already on repository port
+- New brick `party` for Party + Customer/Supplier/Employee + Department (single Tryton party base with role flags vs 3 separate masters — fewer joins, Misa parity)
+- `uom` standalone brick (reused by inventory product), `product_category` inside inventory, `warehouse` inside inventory, `tax_code` inside system_settings, `lot` inside inventory, `price_list` inside inventory — keeps Lego 5-file per brick
+- All masters: `code unique/company`, `company_id FK`, `active`, `checksum GENESIS`, `company isolation`, `AUDITOR 403`
+- Domain pure, ports primitives only, storage Mapped, web `@login_required`
 
 ## Task List
 
-### Phase 1: Domain — XML parser
+### Phase 0: Discovery (domain-modeling + spec-driven)
+- Read `docs/inventory/*`, `docs/sales/*`, VAS 02, TT99 §13, Tryton party/product/uom/warehouse docs, Misa masters — done.
 
-#### Task 1: TT91 invoice symbol parser
-Parse 6-char invoice symbol string into structured data (coded/uncoded, year, type, internal code).
+### Phase 1: Slice 1 — Party base (P0 core, blocks AR/AP)
+**Task 1.1: Party domain + storage** — Party(id,company_id,code,name,mst,address,phone,email,is_customer/is_supplier/is_employee,active,checksum) + Department(code,name,parent,manager). 2 tables.
+**Task 1.2: Party service** — `create_party` MST `^[1-9]\d{2}(-\d{3})?$` + 10/13 digit fallback, duplicate code/MST per company 409, active guard, `actor+reason` required, `find_open_period` optional? No FY for master but audit chain.
+**Task 1.3: Party web** — `POST /party` `GET /party?company_id&role=customer/supplier/employee` + Department CRUD, AUDITOR 403 write.
+**Verification:** `pytest tests/unit/party + integration` 10 tests, ruff/black/mypy clean.
+**Files:** `src/bricks/party/*` (5 files), `alembic/env.py`, `src/app.py`, `tests/unit/party/*`, `tests/integration/test_party_api.py`
 
-**Acceptance criteria:**
-- [ ] `InvoiceSymbol` dataclass with fields: is_coded, year, type_code, internal_code
-- [ ] `parse_symbol("1C26TAA")` returns correct breakdown
-- [ ] `parse_symbol("1K26TYY")` returns correct breakdown
-- [ ] Invalid symbols raise `ValueError`
+#### Checkpoint 1
+- [ ] Slice 1 tests pass
+- [ ] `code-review-and-quality` Approve (5 axes checklist filed `tasks/review-slice1.md`)
 
-**Files:** `src/bricks/xml_ingest/domain.py`
-**Scope:** S (1 file)
+### Phase 2: Slice 2 — UOM + ProductCategory + Warehouse (P0)
+**Task 2.1: UOM master** — `UOM(code unique/company, name, base_uom_id, factor Decimal, active)` factor>0, base cycle guard.
+**Task 2.2: ProductCategory** — `code,name,parent, cost_method default, account 152/156, tax_category for 8%`
+**Task 2.3: Warehouse header** — `Warehouse(code, name, address, manager party_id, account_type)` + migrate `Location.warehouse_id FK Warehouse.id` (was loose UUID)
+**Verification:** 6 unit + 3 integration, no 611, `Product.uom` free text → FK UOM.id next slice (deferred to P1 to keep slice small)
+**Files:** `src/bricks/uom/*`, `src/bricks/inventory/*` category/warehouse add, tests
 
-#### Task 2: XML field mapping constants
-Define XPath expressions for TT91 XML invoice fields per Appendix III templates.
+#### Checkpoint 2
+- [ ] Slice 2 tests pass
+- [ ] Review Approve
 
-**Acceptance criteria:**
-- [ ] Constants for seller info (name, MST, address)
-- [ ] Constants for buyer info (name, MST, address)
-- [ ] Constants for invoice lines (item name, quantity, unit price, amount, VAT rate)
-- [ ] Constants for invoice header (number, symbol, date, type)
+### Phase 3: Slice 3 — TaxCode + Lot + PriceList (P1 statutory edge)
+**Task 3.1: TaxCode detail** — `code, rate -1/0/5/8/10, type input/output, account 1331/3331` beyond enum
+**Task 3.2: Lot/Batch** — `lot_code, product_id, expiry, qty` + `StockMove.lot_id`
+**Task 3.3: PriceList** — `product_id, uom_id, price, valid_from, standard_cost history` → `CostRevision`
+**Verification:** 6 tests, `Product.standard_cost` stays single until PriceList cutover (flag)
+**Files:** `src/bricks/system_settings/*` tax_code, `src/bricks/inventory/*` lot/price
 
-**Files:** `src/bricks/xml_ingest/domain.py`
-**Scope:** S (1 file)
-
-#### Task 3: XML invoice parser
-Parse TT91-format XML into `ParsedInvoice` dataclass.
-
-**Acceptance criteria:**
-- [ ] `ParsedInvoice` dataclass with all fields from SupplierInvoice
-- [ ] `parse_xml_invoice(xml_bytes: bytes) -> ParsedInvoice`
-- [ ] Handles VAT invoice lines with amount + VAT
-- [ ] Handles invoice symbol decomposition
-- [ ] Invalid XML raises descriptive errors
-
-**Files:** `src/bricks/xml_ingest/domain.py`
-**Scope:** M (1 file, complex logic)
-
-### Phase 2: Service — ingest orchestration
-
-#### Task 4: XMLIngestService
-Orchestrate XML parse → domain validation → PurchaseService.create_invoice.
-
-**Acceptance criteria:**
-- [ ] `ingest_single(xml_bytes, company_id, actor_id) -> SupplierInvoice`
-- [ ] Calls `parse_xml_invoice` then `PurchaseService.create_invoice`
-- [ ] Duplicate check: returns existing invoice if `exists_duplicate` matches
-- [ ] Propagates gate errors (PERIOD_CLOSED, INVALID_ACCOUNT, etc.)
-
-**Files:** `src/bricks/xml_ingest/services.py`
-**Scope:** S (1 file)
-
-#### Task 5: Batch ingest
-Support multiple XML files in one call.
-
-**Acceptance criteria:**
-- [ ] `ingest_batch(xml_list, company_id, actor_id) -> list[IngestResult]`
-- [ ] Each result has `status` (created/duplicate/error) + `invoice_id` or `error`
-- [ ] Partial failures don't abort batch
-
-**Files:** `src/bricks/xml_ingest/services.py`
-**Scope:** S (extend service)
-
-### Phase 3: Web adapter — API endpoints
-
-#### Task 6: Single XML upload endpoint
-POST `/api/v1/purchase-invoices/ingest` with XML file upload.
-
-**Acceptance criteria:**
-- [ ] Accepts `multipart/form-data` with XML file
-- [ ] Returns created `SupplierInvoice` (201) or duplicate (409)
-- [ ] Validates content-type is XML
-- [ ] WRITE_ROLES required
-
-**Files:** `src/bricks/purchases/web_adapter.py`
-**Scope:** S (1 file)
-
-#### Task 7: Batch XML upload endpoint
-POST `/api/v1/purchase-invoices/ingest-batch` with multiple XML files.
-
-**Acceptance criteria:**
-- [ ] Accepts multiple XML files in single request
-- [ ] Returns per-file results (created/duplicate/error)
-- [ ] WRITE_ROLES required
-
-**Files:** `src/bricks/purchases/web_adapter.py`
-**Scope:** S (1 file)
-
-### Phase 4: Tests
-
-#### Task 8: Unit tests — domain parser
-Test invoice symbol parsing, XML field extraction, ParsedInvoice construction.
-
-**Acceptance criteria:**
-- [ ] Test all 9 template codes (1-9)
-- [ ] Test C/K coded/uncoded
-- [ ] Test year extraction
-- [ ] Test valid XML parse
-- [ ] Test invalid XML handling
-- [ ] Test missing required fields
-
-**Files:** `tests/unit/xml_ingest/`
-**Scope:** M (multiple test cases)
-
-#### Task 9: Unit tests — service layer
-Test ingest orchestration with mock PurchaseService.
-
-**Acceptance criteria:**
-- [ ] Test single ingest success
-- [ ] Test duplicate detection
-- [ ] Test gate error propagation
-- [ ] Test batch with mixed results
-
-**Files:** `tests/unit/xml_ingest/`
-**Scope:** M
-
-#### Task 10: Integration tests — API endpoints
-Test XML upload endpoints with real app.
-
-**Acceptance criteria:**
-- [ ] Test POST single XML → 201
-- [ ] Test POST duplicate → 409
-- [ ] Test POST invalid XML → 422
-- [ ] Test POST batch → 200 with results
-- [ ] Test unauthenticated → 401
-
-**Files:** `tests/integration/test_xml_ingest_api.py`
-**Scope:** M
-
-### Checkpoint: Complete
-- [ ] All tests pass
-- [ ] Quality gates pass (ruff, black, mypy)
-- [ ] AGENTS.md updated
+#### Checkpoint 3 — Complete
+- [ ] All 3 slices Approve
+- [ ] `pytest 1000→~1030` green, `mypy` overrides added
+- [ ] `git sync` + codegraph sync
 
 ## Risks and Mitigations
 | Risk | Impact | Mitigation |
 |------|--------|------------|
-| TT91 XML schema varies by provider | High | Map common fields first; accept optional extras |
-| Large XML files cause memory issues | Low | Stream parse if needed; start with full parse |
-| PurchaseService gates too strict for batch | Medium | Log failures per-file, continue batch |
+| MST validation strict vs legacy 10-digit | High | regex `^[1-9]\d{2}(-\d{3})?$` + 10/13 fallback like sales, duplicate 409 |
+| Warehouse migrate breaks existing Location | Med | Keep `Location.warehouse_id` nullable, add FK later, dual-read |
+| UOM factor cycle | Low | Guard base cycle, simple factor>0 |
 
-## Legal Reference
-- Thông tư 91/2026/TT-BTC (eff 01/07/2026)
-- Phụ lục I: Invoice symbol system
-- Phụ lục III: Data transfer templates (01/TH-HĐĐT)
-- NĐ 254/2026/NĐ-CP Art 10: Invoice content requirements
+## Open Questions
+- Party single table vs 3 masters? Chose single with role flags — fewer joins, Tryton party parity; 3 masters would duplicate MST logic.

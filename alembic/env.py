@@ -21,6 +21,7 @@ from src.bricks.fiscal_year_period.storage import Base as FyBase
 from src.bricks.fixed_assets.storage import Base as Fabase
 from src.bricks.inventory.storage import Base as InvtyBase
 from src.bricks.invoice.storage import Base as InvBase
+from src.bricks.party.storage import Base as PartyBase
 from src.bricks.payment_terms.storage import Base as PtBase
 from src.bricks.purchases.storage import Base as PurchBase
 from src.bricks.system_settings.storage import Base as SetBase
@@ -46,6 +47,7 @@ target_metadata = [
     Fabase.metadata,
     InvBase.metadata,
     InvtyBase.metadata,
+    PartyBase.metadata,
     BankBase.metadata,
     PurchBase.metadata,
     SetBase.metadata,
