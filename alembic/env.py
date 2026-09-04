@@ -19,6 +19,7 @@ from src.bricks.document_conversion.storage import Base as DocConvBase
 from src.bricks.financial_statements.storage import Base as FsBase
 from src.bricks.fiscal_year_period.storage import Base as FyBase
 from src.bricks.fixed_assets.storage import Base as Fabase
+from src.bricks.inventory.storage import Base as InvtyBase
 from src.bricks.invoice.storage import Base as InvBase
 from src.bricks.payment_terms.storage import Base as PtBase
 from src.bricks.purchases.storage import Base as PurchBase
@@ -44,6 +45,7 @@ target_metadata = [
     CcBase.metadata,
     Fabase.metadata,
     InvBase.metadata,
+    InvtyBase.metadata,
     BankBase.metadata,
     PurchBase.metadata,
     SetBase.metadata,

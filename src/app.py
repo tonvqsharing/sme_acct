@@ -111,6 +111,10 @@ from src.bricks.fixed_assets.web_adapter import (
     fixed_assets_bp,
     init_fixed_assets_service,
 )
+from src.bricks.inventory.services import InventoryService
+from src.bricks.inventory.storage import Base as InvtyBase
+from src.bricks.inventory.storage import SQLAlchemyInventoryRepository
+from src.bricks.inventory.web_adapter import init_inventory_service, inventory_bp
 from src.bricks.invoice.services import InvoiceService
 from src.bricks.invoice.storage import Base as InvBase
 from src.bricks.invoice.storage import SQLAlchemyInvoiceRepository
@@ -236,6 +240,7 @@ def create_app(config: dict | None = None) -> Flask:
     TeBase.metadata.create_all(engine)
     FsBase.metadata.create_all(engine)
     DocConvBase.metadata.create_all(engine)
+    InvtyBase.metadata.create_all(engine)
     session_factory = sessionmaker(bind=engine)
     app.db_session = session_factory  # type: ignore[attr-defined]
 
@@ -281,6 +286,7 @@ def create_app(config: dict | None = None) -> Flask:
         tools_equipment_bp,
         xml_ingest_bp,
         document_conversion_bp,
+        inventory_bp,
     ):
         app.register_blueprint(bp)
 
@@ -294,6 +300,7 @@ def create_app(config: dict | None = None) -> Flask:
     coa_session = session_factory()
     fy_session = session_factory()
     purchases_session = session_factory()
+    invty_session = session_factory()
 
     # ── Company (tenant root) ───────────────────────────────────────────
     company_repo = SQLAlchemyCompanyRepository(session)
@@ -459,6 +466,39 @@ def create_app(config: dict | None = None) -> Flask:
         period_lock=_inv_period_lock,
     )
     init_invoice_service(invoice_svc, on_posted=auto_journal.build_for, voucher_service=voucher_svc)
+
+    # ── Inventory brick (Tryton stock parity, TT99 4 methods, no 611) ───
+    class _InventoryNumbering:  # type: ignore[no-redef]
+        def __init__(self, dns):
+            self._dns = dns
+
+        def issue(self, company_id, ship_type):  # ship_type is ShipmentType
+            from uuid import NAMESPACE_URL, uuid5
+
+            sys_actor = uuid5(NAMESPACE_URL, "system:numbering")
+            prefix_map = {"supplier_in": "PN/", "customer_out": "PX/", "internal": "CK/"}
+            pfx = prefix_map.get(
+                ship_type.value if hasattr(ship_type, "value") else str(ship_type), "CK/"
+            )
+            series = self._dns.list_by_company(company_id, active=True)
+            target = next((x for x in series if x.prefix.startswith(pfx)), None)
+            if target is None:
+                raise RuntimeError(f"No active {pfx}* inventory series")
+            seq = self._dns.increment_sequence(target.id, sys_actor, pfx.rstrip("/"))
+            return f"{pfx}{seq:06d}"
+
+    invty_repo = SQLAlchemyInventoryRepository(invty_session)
+    inventory_svc = InventoryService(
+        repo=invty_repo,
+        fy=_FyGate(),
+        numbering=_InventoryNumbering(dns_service),
+        audit=audit_svc,
+        voucher_service=voucher_svc,
+        coa=app.coa_service,
+        regime_of=regime_provider,
+    )
+    init_inventory_service(inventory_svc)
+    app.inventory_service = inventory_svc  # type: ignore[attr-defined]
 
     # ── Purchases brick ─────────────────────────────────────────────────
     purchases_repo = SQLAlchemySupplierInvoiceRepository(purchases_session)
