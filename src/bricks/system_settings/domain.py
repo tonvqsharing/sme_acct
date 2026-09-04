@@ -66,6 +66,8 @@ CONFIG_FLAGS = frozenset(
         "cost_center_required",
         "non_cash_threshold",
         "max_einvoice_series",
+        "sales_einvoice_enabled",
+        "variance_account",
     }
 )
 
@@ -94,9 +96,15 @@ def _validate_flag_value(flag_name: str, value: Any) -> None:
     elif flag_name == "non_cash_threshold":
         if isinstance(value, bool) or not isinstance(value, (int, float)) or value <= 0:
             raise ValueError(f"non_cash_threshold must be > 0, got {value!r}")
-    elif flag_name == "max_einvoice_series":  # noqa: SIM102 — elif chain matches sibling branches
+    elif flag_name == "max_einvoice_series":
         if isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= 99:
             raise ValueError(f"max_einvoice_series must be 1-99, got {value!r}")
+    elif flag_name == "sales_einvoice_enabled" and not isinstance(value, bool):
+        raise ValueError(f"sales_einvoice_enabled must be bool, got {value!r}")
+    elif flag_name == "variance_account" and (
+        not isinstance(value, str) or (value != "" and not value.strip())
+    ):
+        raise ValueError(f"variance_account must be a code or empty, got {value!r}")
 
 
 @dataclass
@@ -119,6 +127,9 @@ class CompanyConfig:
     # ── Law thresholds (NĐ181 Đ.26 5tr; series cap; gov-changeable) ────
     non_cash_threshold: int = 5000000
     max_einvoice_series: int = 15
+    # ── Feature + variance account (panel-managed) ─────────────────────
+    sales_einvoice_enabled: bool = False
+    variance_account: str = ""  # empty = variance rides the COGS line
 
     def with_series(self, series: EInvoiceSeries, actor: UUID) -> CompanyConfig:
         """Immutable update — returns new config, bumps version."""

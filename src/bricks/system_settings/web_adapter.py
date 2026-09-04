@@ -89,6 +89,8 @@ def get_config(cid: str) -> tuple[Any, int]:
                     "cost_center_required": cfg.cost_center_required,
                     "non_cash_threshold": cfg.non_cash_threshold,
                     "max_einvoice_series": cfg.max_einvoice_series,
+                    "sales_einvoice_enabled": cfg.sales_einvoice_enabled,
+                    "variance_account": cfg.variance_account,
                     "legal_reviewed_at": (
                         cfg.legal_reviewed_at.isoformat() if cfg.legal_reviewed_at else None
                     ),

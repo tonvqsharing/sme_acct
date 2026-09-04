@@ -13,6 +13,7 @@ from flask_login import current_user, login_required
 from src.bricks.invoice.services import (
     AlreadyIssuedError,
     AlreadyPostedError,
+    EInvoiceDisabledError,
     InvoiceNotFoundError,
     NoOpenPeriodError,
     NotPostedError,
@@ -253,6 +254,8 @@ def issue_einvoice(invoice_id: str) -> tuple[Any, int]:
         return jsonify({"data": serialize(inv)}), 200
     except InvoiceNotFoundError:
         abort(404, description="Invoice not found")
+    except EInvoiceDisabledError as exc:
+        return jsonify({"error": str(exc), "code": "E_INVOICE_DISABLED"}), 403
     except NotPostedError as exc:
         return jsonify({"error": str(exc), "code": "NOT_POSTED"}), 422
     except AlreadyIssuedError as exc:

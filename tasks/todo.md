@@ -68,7 +68,12 @@
 - [x] Migration `a1b2c3d4e5f6` guarded both lineages; scratch up/down/re-up green
 - [x] Verify: 7 new tests RED→GREEN, ruff 0 black 0 mypy 0, pytest 1057
 - [x] Review: Approve → `tasks/review-config-slice2.md`
-- [ ] Next: Config Slice 3 — `sales.e_invoice_enabled` flag + variance GL account decision
+## Config Slice 3 — E-invoice flag + variance account ✅ Done — Approve `tasks/review-config-slice3.md`
+- [x] `sales_einvoice_enabled` bool flag default False; service port defaults allow; 403 `E_INVOICE_DISABLED`
+- [x] `variance_account` flag default "" (= legacy ride); set + ≠ COGS → balanced 3-line voucher; chart roles added
+- [x] Migration `b2c3d4e5f6a7` guarded; scratch up/down/re-up green, single head
+- [x] Verify: 5 new tests RED→GREEN, ruff 0 black 0 mypy 0, pytest 1062
+- [x] Review: Approve → `tasks/review-config-slice3.md`
 
 ## Final
 - [x] `pytest -q` 1023 green, `git push`, codegraph sync

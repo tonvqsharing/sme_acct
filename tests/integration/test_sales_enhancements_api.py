@@ -186,8 +186,18 @@ class TestDeduction:
         assert bad.status_code == 422
 
 
+def _enable_einvoice(chief):
+    cfg = chief.get(f"/api/v1/system-settings/config/{COMPANY}").get_json()["data"]
+    r = chief.patch(
+        f"/api/v1/system-settings/config/{COMPANY}/flags/sales_einvoice_enabled",
+        json={"value": True, "config_version": cfg["config_version"]},
+    )
+    assert r.status_code == 200, r.get_json()
+
+
 class TestEInvoice:
     def test_issue_mock(self, chief, seeded):
+        _enable_einvoice(chief)
         payload = _create_invoice_payload(template_code="1C26TAA", invoice_symbol="HD/")
         r = chief.post("/api/v1/invoices", json=payload)
         inv_id = r.get_json()["data"]["id"]
@@ -200,11 +210,21 @@ class TestEInvoice:
         assert again.status_code == 409
 
     def test_issue_requires_posted(self, chief, seeded):
-        payload = _create_invoice_payload()
+        _enable_einvoice(chief)
+        payload = _create_invoice_payload(template_code="1C26TAA", invoice_symbol="HD/")
         r = chief.post("/api/v1/invoices", json=payload)
         inv_id = r.get_json()["data"]["id"]
         iss = chief.post(f"/api/v1/invoices/{inv_id}/einvoice/issue", json={})
         assert iss.status_code == 422
+
+    def test_issue_blocked_when_flag_off(self, chief, seeded):
+        payload = _create_invoice_payload(template_code="1C26TAA", invoice_symbol="HD/")
+        r = chief.post("/api/v1/invoices", json=payload)
+        inv_id = r.get_json()["data"]["id"]
+        chief.post(f"/api/v1/invoices/{inv_id}/post", json={"reason": "ok"})
+        iss = chief.post(f"/api/v1/invoices/{inv_id}/einvoice/issue", json={})
+        assert iss.status_code == 403
+        assert iss.get_json()["code"] == "E_INVOICE_DISABLED"
 
 
 class TestLedgerPaginationAndAging:

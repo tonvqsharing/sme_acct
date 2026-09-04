@@ -66,6 +66,8 @@ class SystemSettingsModel(Base):
     cost_center_required: Mapped[bool] = mapped_column(default=False)
     non_cash_threshold: Mapped[int] = mapped_column(Integer, default=5000000)
     max_einvoice_series: Mapped[int] = mapped_column(Integer, default=15)
+    sales_einvoice_enabled: Mapped[bool] = mapped_column(default=False)
+    variance_account: Mapped[str] = mapped_column(String(10), default="")
     # ── Legal review ──────────────────────────────────────────────────
     legal_reviewed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
@@ -115,6 +117,8 @@ class SQLAlchemySystemSettingsRepository(SystemSettingsRepositoryPort):
             cost_center_required=m.cost_center_required,
             non_cash_threshold=m.non_cash_threshold,
             max_einvoice_series=m.max_einvoice_series,
+            sales_einvoice_enabled=bool(m.sales_einvoice_enabled),
+            variance_account=m.variance_account or "",
             legal_reviewed_at=m.legal_reviewed_at,
             legal_reviewed_by=UUID(m.legal_reviewed_by) if m.legal_reviewed_by else None,
         )
@@ -137,6 +141,8 @@ class SQLAlchemySystemSettingsRepository(SystemSettingsRepositoryPort):
         m.cost_center_required = cfg.cost_center_required
         m.non_cash_threshold = cfg.non_cash_threshold
         m.max_einvoice_series = cfg.max_einvoice_series
+        m.sales_einvoice_enabled = cfg.sales_einvoice_enabled
+        m.variance_account = cfg.variance_account
         m.legal_reviewed_at = cfg.legal_reviewed_at
         m.legal_reviewed_by = str(cfg.legal_reviewed_by) if cfg.legal_reviewed_by else None
         self._session.commit()

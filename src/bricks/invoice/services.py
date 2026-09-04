@@ -43,6 +43,10 @@ class AlreadyIssuedError(Exception):
     pass
 
 
+class EInvoiceDisabledError(Exception):
+    pass
+
+
 class NotPostedError(Exception):
     pass
 
@@ -69,6 +73,7 @@ class InvoiceService:
         period_lock: Any | None = None,
         signer: Any | None = None,
         exclusion_of: Any | None = None,
+        einvoice_enabled_of: Any | None = None,
     ) -> None:
         self._fy = fy
         self._coa = coa
@@ -78,6 +83,7 @@ class InvoiceService:
         self._regime_of = regime_of
         self._period_lock = period_lock
         self._signer = signer
+        self._einvoice_enabled_of = einvoice_enabled_of
         self._exclusion_of = exclusion_of
         if self._exclusion_of is None:
             from src.bricks.system_settings.rate_windows import (
@@ -349,6 +355,8 @@ class InvoiceService:
         inv = self._repo.get_by_id(invoice_id)
         if inv is None:
             raise InvoiceNotFoundError("Không tìm thấy hóa đơn")
+        if self._einvoice_enabled_of is not None and not self._einvoice_enabled_of(inv.company_id):
+            raise EInvoiceDisabledError("Phát hành HĐĐT chưa được bật cho công ty này")
         validate_einvoice_ready(inv)
         xml_str = build_einvoice_xml(inv, seller)
         signer = self._signer

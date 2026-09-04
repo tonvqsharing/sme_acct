@@ -63,6 +63,7 @@ class InventoryService:
         coa: Any | None = None,
         regime_of: Any | None = None,
         uom_repo: Any | None = None,
+        variance_account_of: Any | None = None,
     ) -> None:
         self._repo = repo
         self._fy = fy
@@ -72,6 +73,7 @@ class InventoryService:
         self._coa = coa
         self._regime_of = regime_of
         self._uom_repo = uom_repo
+        self._variance_account_of = variance_account_of
 
     # ── product ──
     def create_product(
@@ -486,23 +488,26 @@ class InventoryService:
                 try:
                     inv_acc = resolve_chart_role("inventory", regime)  # 152
                 except Exception:  # noqa: BLE001
-                    inv_acc = "152"
-                    if inv_acc == "152":
-                        inv_acc = "1521"
-                cogs_acc = "632"
+                    inv_acc = "1521"
                 try:
                     cogs_acc = resolve_chart_role("cogs", regime)
                 except Exception:  # noqa: BLE001
                     cogs_acc = "6321"
+                try:
+                    sup_acc = resolve_chart_role("ap", regime)
+                except Exception:  # noqa: BLE001
+                    sup_acc = "3311"
             except Exception:  # noqa: BLE001
-                inv_acc, cogs_acc = "1521", "6321"
+                inv_acc, cogs_acc, sup_acc = "1521", "6321", "3311"
+            variance_acc = None
+            if self._variance_account_of is not None:
+                variance_acc = self._variance_account_of(ship.company_id) or None
             if ship.type == ShipmentType.SUPPLIER_IN:
                 total_val = sum(
                     self._repo.get_move(mid).qty * self._repo.get_move(mid).unit_cost
                     for mid in ship.moves
                 )
                 if total_val > 0:
-                    sup_acc = "3311"
                     self._voucher.create_voucher(
                         company_id=ship.company_id,
                         entry_date=ship.effective_date,
@@ -515,17 +520,52 @@ class InventoryService:
                         reason=reason,
                     )
             elif ship.type == ShipmentType.CUSTOMER_OUT and total_cogs > 0:
-                # Standard variance rides the same 6321 line until a variance
-                # account exists — audit carries the split for disclosure.
-                cogs_debit = total_cogs + total_variance
+                # Variance has its own line when a panel account is set and
+                # differs from COGS; otherwise it rides the COGS line (legacy).
+                lines = [
+                    {"account_code": cogs_acc, "debit": str(total_cogs), "credit": "0"},
+                    {"account_code": inv_acc, "debit": "0", "credit": str(total_cogs)},
+                ]
+                if total_variance != 0 and variance_acc and variance_acc != cogs_acc:
+                    if total_variance > 0:
+                        lines.append(
+                            {
+                                "account_code": variance_acc,
+                                "debit": str(total_variance),
+                                "credit": "0",
+                            }
+                        )
+                        lines.append(
+                            {
+                                "account_code": inv_acc,
+                                "debit": "0",
+                                "credit": str(total_variance),
+                            }
+                        )
+                    else:
+                        lines.append(
+                            {
+                                "account_code": inv_acc,
+                                "debit": str(-total_variance),
+                                "credit": "0",
+                            }
+                        )
+                        lines.append(
+                            {
+                                "account_code": variance_acc,
+                                "debit": "0",
+                                "credit": str(-total_variance),
+                            }
+                        )
+                else:
+                    # legacy: variance rides COGS line (audit carries the split)
+                    lines[0]["debit"] = str(total_cogs + total_variance)
+                    lines[1]["credit"] = str(total_cogs + total_variance)
                 self._voucher.create_voucher(
                     company_id=ship.company_id,
                     entry_date=ship.effective_date,
                     description=f"Giá vốn {ship.number}",
-                    lines=[
-                        {"account_code": cogs_acc, "debit": str(cogs_debit), "credit": "0"},
-                        {"account_code": inv_acc, "debit": "0", "credit": str(cogs_debit)},
-                    ],
+                    lines=lines,
                     actor=actor,
                     reason=reason,
                 )

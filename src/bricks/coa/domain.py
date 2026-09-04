@@ -36,6 +36,9 @@ CHART_TEMPLATES: dict[str, dict[str, str]] = {
         "ar": "1311",
         "revenue": "5111",
         "vat_output": "3331",
+        "inventory": "1521",
+        "cogs": "6321",
+        "ap": "3311",
     },
 }
 CHART_TEMPLATES["tt58_micro"] = CHART_TEMPLATES["tt133"]
@@ -47,6 +50,9 @@ CHART_TEMPLATES["tt99"] = {
     "ar": "1311000001",
     "revenue": "5111000001",
     "vat_output": "3331100001",
+    "inventory": "1521000001",
+    "cogs": "6321000001",
+    "ap": "3311000001",
 }
 
 

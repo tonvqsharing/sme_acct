@@ -189,3 +189,59 @@ def test_standard_out_books_variance_into_cogs_line():
     post_entries = [e for e in audit.entries if e["action"] == "POST"]
     assert post_entries[-1]["after_value"]["variance_total"] == 40000.0
     assert post_entries[-1]["after_value"]["cogs_total"] == 1000000.0
+
+
+def _setup_standard_stock(svc, code="SKU-V"):
+    prod = svc.create_product(
+        company_id=COMPANY,
+        code=code,
+        name="Bàn V",
+        uom="Cái",
+        cost_method="standard",
+        standard_cost="500000",
+        actor=uuid4(),
+        reason="p",
+    )
+    loc_id = uuid4()
+    ship_in = svc.create_shipment(
+        company_id=COMPANY,
+        type="supplier_in",
+        moves=[
+            {"product_id": str(prod.id), "qty": "10", "unit_cost": "520000", "to_loc": str(loc_id)}
+        ],
+        actor=uuid4(),
+        reason="in",
+    )
+    svc.post_shipment(ship_in.id, actor=uuid4(), reason="p")
+    return prod, loc_id
+
+
+def test_variance_account_gets_own_balanced_lines():
+    repo = FakeRepo()
+    voucher = FakeVoucher()
+    svc = InventoryService(
+        repo=repo,
+        fy=FakeFY(),
+        numbering=FakeNumbering(),
+        audit=FakeAudit(),
+        voucher_service=voucher,
+        variance_account_of=lambda cid: "6328",
+    )
+    prod, loc_id = _setup_standard_stock(svc)
+    ship_out = svc.create_shipment(
+        company_id=COMPANY,
+        type="customer_out",
+        moves=[{"product_id": str(prod.id), "qty": "2", "from_loc": str(loc_id)}],
+        actor=uuid4(),
+        reason="out",
+    )
+    svc.post_shipment(ship_out.id, actor=uuid4(), reason="p")
+    posted = [(ln["account_code"], ln["debit"], ln["credit"]) for ln in voucher.lines]
+    # standard COGS + inventory relief at standard; variance on its own account
+    assert ("6321", "1000000", "0") in posted
+    assert ("1521", "0", "1000000") in posted
+    assert ("6328", "40000", "0") in posted
+    assert ("1521", "0", "40000") in posted
+    total_debit = sum(Decimal(ln["debit"]) for ln in voucher.lines)
+    total_credit = sum(Decimal(ln["credit"]) for ln in voucher.lines)
+    assert total_debit == total_credit == Decimal(1040000)
