@@ -12,6 +12,7 @@ from sqlalchemy.types import JSON
 
 from src.bricks.purchases.contract import SupplierInvoiceRepositoryPort
 from src.bricks.purchases.domain import (
+    NON_CASH_THRESHOLD,
     PaymentMethod,
     PurchaseStatus,
     SupplierInvoice,
@@ -41,6 +42,7 @@ class SupplierInvoiceModel(Base):
     total_payment: Mapped[Decimal] = mapped_column(Numeric(18, 2))
     payment_method: Mapped[str] = mapped_column(String(10), default="none")
     payment_proof: Mapped[bool] = mapped_column(Boolean, default=False)
+    non_cash_threshold: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=5000000)
     deductibility: Mapped[str] = mapped_column(String(20))
     status: Mapped[str] = mapped_column(String(12), default="DRAFT")
     checksum: Mapped[str] = mapped_column(String(64), default="")
@@ -68,6 +70,11 @@ def _to_domain(m: SupplierInvoiceModel) -> SupplierInvoice:
         ],
         payment_method=PaymentMethod(m.payment_method),
         payment_proof=bool(m.payment_proof),
+        non_cash_threshold=(
+            Decimal(m.non_cash_threshold)
+            if m.non_cash_threshold is not None
+            else NON_CASH_THRESHOLD
+        ),
         status=PurchaseStatus(m.status),
     )
 
@@ -94,6 +101,7 @@ class SQLAlchemySupplierInvoiceRepository(SupplierInvoiceRepositoryPort):
                 total_payment=inv.total_payment,
                 payment_method=inv.payment_method.value,
                 payment_proof=inv.payment_proof,
+                non_cash_threshold=inv.non_cash_threshold,
                 deductibility=inv.deductibility.value,
                 status=inv.status.value,
                 checksum=inv.checksum,

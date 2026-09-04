@@ -234,3 +234,36 @@ class TestLegalReviewIntegration:
         r = chief_client.get(f"/api/v1/system-settings/config/{COMPANY}")
         data = r.get_json()["data"]
         assert data["legal_reviewed_at"] is not None
+
+
+class TestExclusionCategoryIntegration:
+    def test_crud_round_trip(self, chief_client, auditor_client):
+        """Seeded NĐ174 defaults listed; ADMIN removes/re-adds; AUDITOR blocked."""
+        r = chief_client.get(
+            "/api/v1/excluded-8pct-categories", query_string={"company_id": COMPANY}
+        )
+        assert r.status_code == 200
+        cats = [x["category"] for x in r.get_json()["data"]]
+        assert "telecom" in cats
+
+        rm = chief_client.delete(
+            "/api/v1/excluded-8pct-categories",
+            json={"company_id": COMPANY, "category": "telecom", "reason": "law change"},
+        )
+        assert rm.status_code == 200
+        r2 = chief_client.get(
+            "/api/v1/excluded-8pct-categories", query_string={"company_id": COMPANY}
+        )
+        assert "telecom" not in [x["category"] for x in r2.get_json()["data"]]
+
+        add = chief_client.post(
+            "/api/v1/excluded-8pct-categories",
+            json={"company_id": COMPANY, "category": "telecom", "reason": "re-include"},
+        )
+        assert add.status_code == 201
+
+        denied = auditor_client.post(
+            "/api/v1/excluded-8pct-categories",
+            json={"company_id": COMPANY, "category": "x", "reason": "x"},
+        )
+        assert denied.status_code == 403

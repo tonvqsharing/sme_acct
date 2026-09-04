@@ -68,6 +68,7 @@ class InvoiceService:
         rate_gate: Any | None = None,
         period_lock: Any | None = None,
         signer: Any | None = None,
+        exclusion_of: Any | None = None,
     ) -> None:
         self._fy = fy
         self._coa = coa
@@ -77,6 +78,14 @@ class InvoiceService:
         self._regime_of = regime_of
         self._period_lock = period_lock
         self._signer = signer
+        self._exclusion_of = exclusion_of
+        if self._exclusion_of is None:
+            from src.bricks.system_settings.rate_windows import (
+                is_8pct_eligible as _static_eligible,
+            )
+
+            self._exclusion_of = lambda company_id, category=None: _static_eligible(category)
+        assert self._exclusion_of is not None
 
         from src.bricks.system_settings.contract import ALLOWED_VAT_FRACTIONS
 
@@ -146,8 +155,6 @@ class InvoiceService:
         ):
             pass
         # Validate each line's effective rate
-        from src.bricks.system_settings.rate_windows import is_8pct_eligible
-
         # normalized allowed for Decimal equality (tolerate 0 vs 0.0)
         allowed_decimals = {Decimal(s) for s in self._allowed_vat_rates}
         validated_items: list[dict[str, Any]] = []
@@ -171,9 +178,11 @@ class InvoiceService:
                 raise ValueError(f"vat_rate {rate_str} không thuộc catalog thuế suất")
             if self._rate_gate is not None and issue_date is not None and rate_str != "-1":
                 self._rate_gate(rate_str, issue_date)
-            # 8% eligibility per line
+            # 8% eligibility per line (panel-managed exclusion list)
             cat = it.get("category", product_category)
-            if rate_str == "0.08" and cat is not None and not is_8pct_eligible(cat):
+            exclusion_of = self._exclusion_of
+            assert exclusion_of is not None
+            if rate_str == "0.08" and cat is not None and not exclusion_of(company_id, cat):
                 raise ValueError(f"Thuế suất 8% không áp dụng cho nhóm {cat} theo NĐ174/2025")
             validated_items.append(
                 {

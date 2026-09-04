@@ -420,6 +420,57 @@ class SQLAlchemyTaxCodeRepository:
         ]
 
 
+class ExcludedCategoryModel(Base):
+    __tablename__ = "excluded_8pct_categories"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    company_id: Mapped[str] = mapped_column(String(36), index=True)
+    category: Mapped[str] = mapped_column(String(50), index=True)
+
+
+class SQLAlchemyExclusionRepository:
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def list_categories(self, company_id: UUID) -> list[str]:
+        rows = (
+            self._session.query(ExcludedCategoryModel)
+            .filter(ExcludedCategoryModel.company_id == str(company_id))
+            .all()
+        )
+        return [r.category for r in rows]
+
+    def add(self, company_id: UUID, category: str) -> str:
+        existing = (
+            self._session.query(ExcludedCategoryModel)
+            .filter(
+                ExcludedCategoryModel.company_id == str(company_id),
+                ExcludedCategoryModel.category == category,
+            )
+            .first()
+        )
+        if existing is None:
+            self._session.add(
+                ExcludedCategoryModel(
+                    id=str(uuid4()), company_id=str(company_id), category=category
+                )
+            )
+            self._session.commit()
+        return category
+
+    def remove(self, company_id: UUID, category: str) -> None:
+        row = (
+            self._session.query(ExcludedCategoryModel)
+            .filter(
+                ExcludedCategoryModel.company_id == str(company_id),
+                ExcludedCategoryModel.category == category,
+            )
+            .first()
+        )
+        if row is not None:
+            self._session.delete(row)
+            self._session.commit()
+
+
 class SQLAlchemyTaxRateWindowRepository:
     def __init__(self, session: Session) -> None:
         self._session = session

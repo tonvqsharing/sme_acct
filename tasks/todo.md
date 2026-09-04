@@ -62,7 +62,13 @@
 - [x] Series-cap check reads config; purchases threshold wiring deferred to Slice 2
 - [x] Verify: 5 new tests RED→GREEN, ruff 0 black 0 mypy 0, pytest 1050
 - [x] Review: Approve → `tasks/review-config-slice1.md`
-- [ ] Next: Config Slice 2 — purchases threshold port + 8% exclusion table
+## Config Slice 2 — Threshold port + 8% exclusion table ✅ Done — Approve `tasks/review-config-slice2.md`
+- [x] `threshold_of` port stamps per-invoice threshold; old rows fall back to 5tr
+- [x] `exclusion_of` port; exclusions table seeded from NĐ174, panel CRUD, gates delegate
+- [x] Migration `a1b2c3d4e5f6` guarded both lineages; scratch up/down/re-up green
+- [x] Verify: 7 new tests RED→GREEN, ruff 0 black 0 mypy 0, pytest 1057
+- [x] Review: Approve → `tasks/review-config-slice2.md`
+- [ ] Next: Config Slice 3 — `sales.e_invoice_enabled` flag + variance GL account decision
 
 ## Final
 - [x] `pytest -q` 1023 green, `git push`, codegraph sync

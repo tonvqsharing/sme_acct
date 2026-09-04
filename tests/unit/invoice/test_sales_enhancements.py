@@ -117,6 +117,33 @@ class TestLineLevelVAT:
         )
         assert inv.vat_amount == Decimal(100000)
 
+    def test_8pct_panel_override_allows_excluded_category(self):
+        svc = InvoiceService(
+            fy=FakeFY(),
+            coa=FakeCOA(),
+            numbering=FakeNumbering(),
+            terms=FakeTerms(),
+            audit=None,
+            exclusion_of=lambda cid, cat=None: True,
+        )
+        inv = svc.create_invoice(
+            company_id=COMPANY,
+            customer_name="KH",
+            issue_date=date(2026, 8, 10),
+            vat_rate=Decimal("0.1"),
+            items=[
+                {
+                    "account_code": "5111",
+                    "amount": "1000",
+                    "vat_rate": "0.08",
+                    "category": "telecom",
+                }
+            ],
+            actor=uuid4(),
+            reason="panel override",
+        )
+        assert inv.vat_breakdown["0.08"] == Decimal(80)
+
     def test_8pct_per_line_ineligible_blocked(self):
         svc = _svc()
         with pytest.raises(ValueError, match="không áp dụng"):

@@ -399,6 +399,15 @@ def create_app(config: dict | None = None) -> Flask:
         ALLOWED_VAT_FRACTIONS as LAWFUL_VAT_FRACTIONS,  # str set, mypy clean
     )
 
+    # ── Panel-managed law values (config slice 1-2, before invoice) ─────
+    from src.bricks.system_settings.exclusions import CategoryExclusionService
+    from src.bricks.system_settings.storage import SQLAlchemyExclusionRepository
+    from src.bricks.system_settings.web_adapter import init_exclusion_service
+
+    _exclusion_repo = SQLAlchemyExclusionRepository(session_factory())
+    _exclusion_svc = CategoryExclusionService(repo=_exclusion_repo, audit=audit_svc)
+    init_exclusion_service(_exclusion_svc)
+
     # ── Bank / Cash (balance side-effects for vouchers) ─────────────────
     cash_svc_bc = CashAccountService(SQLAlchemyCashAccountRepository(bc_session))
     bank_svc_bc = BankAccountService(SQLAlchemyBankAccountRepository(bc_session))
@@ -478,6 +487,7 @@ def create_app(config: dict | None = None) -> Flask:
         allowed_vat_rates=LAWFUL_VAT_FRACTIONS,
         rate_gate=RATE_GATE,
         period_lock=_inv_period_lock,
+        exclusion_of=_exclusion_svc.is_eligible,
     )
     init_invoice_service(invoice_svc, on_posted=auto_journal.build_for, voucher_service=voucher_svc)
 
@@ -527,7 +537,16 @@ def create_app(config: dict | None = None) -> Flask:
     init_party_service(party_svc)
     app.party_service = party_svc  # type: ignore[attr-defined]
 
-    # ── Purchases brick ─────────────────────────────────────────────────
+    # ── Purchases brick (threshold reads panel config) ──────────────────
+    from src.bricks.system_settings.storage import SQLAlchemySystemSettingsRepository as _SSR
+
+    _settings_repo_early = _SSR(session_factory())
+
+    def _threshold_of(company_id):  # type: ignore[no-untyped-def]
+        from decimal import Decimal as _D
+
+        return _D(str(_settings_repo_early.get_config(company_id).non_cash_threshold))
+
     purchases_repo = SQLAlchemySupplierInvoiceRepository(purchases_session)
     purchase_svc = PurchaseService(
         repo=purchases_repo,
@@ -536,6 +555,8 @@ def create_app(config: dict | None = None) -> Flask:
         regime_of=regime_provider,
         allowed_vat_rates=LAWFUL_VAT_FRACTIONS,
         rate_gate=RATE_GATE,
+        threshold_of=_threshold_of,
+        exclusion_of=_exclusion_svc.is_eligible,
     )
     init_purchases_service(purchase_svc)
 

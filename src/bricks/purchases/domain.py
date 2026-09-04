@@ -57,6 +57,7 @@ class SupplierInvoice:
     lines: list[SupplierLine]
     payment_method: PaymentMethod = PaymentMethod.NONE
     payment_proof: bool = False
+    non_cash_threshold: Decimal = NON_CASH_THRESHOLD
     id: UUID = field(default_factory=uuid4)
     status: PurchaseStatus = PurchaseStatus.DRAFT
     checksum: str = ""
@@ -76,8 +77,8 @@ class SupplierInvoice:
         return self.subtotal + self.total_vat
 
     def _non_cash_proof_ok(self) -> bool:
-        """Điều 26 NĐ 181/2025: ≥5tr (gồm VAT) cần chứng từ không tiền mặt."""
-        if self.total_payment < NON_CASH_THRESHOLD:
+        """Điều 26 NĐ 181/2025: ≥ngưỡng (gồm VAT) cần chứng từ không tiền mặt."""
+        if self.total_payment < self.non_cash_threshold:
             return True
         if self.payment_method == PaymentMethod.CASH:
             return False
@@ -105,7 +106,7 @@ class SupplierInvoice:
             if (
                 not self._non_cash_proof_ok()
                 and self.payment_method is PaymentMethod.CASH
-                and self.total_payment >= NON_CASH_THRESHOLD
+                and self.total_payment >= self.non_cash_threshold
             ):
                 return Deductibility.NON_DEDUCTIBLE
             if not self._non_cash_proof_ok() and self.total_vat > 0:

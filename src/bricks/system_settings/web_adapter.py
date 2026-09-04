@@ -488,3 +488,69 @@ def list_tax_codes() -> tuple[Any, int]:
         ),
         200,
     )
+
+
+# ─── 8% exclusion categories (panel-managed, seeded from NĐ174) ──────────
+_exclusion_service: Any = None
+
+
+def init_exclusion_service(svc: Any) -> None:
+    global _exclusion_service
+    _exclusion_service = svc
+
+
+def _exclusions() -> Any:
+    s = _exclusion_service
+    if s is None:
+        abort(500, description="ExclusionService not initialized")
+    return s
+
+
+@settings_bp.get("/api/v1/excluded-8pct-categories")
+@login_required  # type: ignore[untyped-decorator]
+def list_excluded_categories() -> tuple[Any, int]:
+    raw = request.args.get("company_id", "")
+    try:
+        cid = UUID(raw)
+    except ValueError:
+        abort(422, description="company_id required")
+    rows = _exclusions().list_categories(cid)
+    return jsonify({"data": [{"category": r} for r in rows]}), 200
+
+
+@settings_bp.post("/api/v1/excluded-8pct-categories")
+@login_required  # type: ignore[untyped-decorator]
+def add_excluded_category() -> tuple[Any, int]:
+    role = getattr(current_user, "role", "")
+    if role not in ADMIN_ROLES:
+        abort(403)
+    body = request.get_json(silent=True) or {}
+    try:
+        cat = _exclusions().add_category(
+            company_id=UUID(body["company_id"]),
+            category=body["category"],
+            actor=UUID(str(current_user.id)),
+            reason=body.get("reason") or "exclude 8%",
+        )
+    except (KeyError, ValueError) as exc:
+        return jsonify({"error": str(exc), "code": "INVALID_EXCLUSION"}), 422
+    return jsonify({"data": {"category": cat}}), 201
+
+
+@settings_bp.delete("/api/v1/excluded-8pct-categories")
+@login_required  # type: ignore[untyped-decorator]
+def remove_excluded_category() -> tuple[Any, int]:
+    role = getattr(current_user, "role", "")
+    if role not in ADMIN_ROLES:
+        abort(403)
+    body = request.get_json(silent=True) or {}
+    try:
+        _exclusions().remove_category(
+            company_id=UUID(body["company_id"]),
+            category=body["category"],
+            actor=UUID(str(current_user.id)),
+            reason=body.get("reason") or "include 8%",
+        )
+    except (KeyError, ValueError) as exc:
+        return jsonify({"error": str(exc), "code": "INVALID_EXCLUSION"}), 422
+    return jsonify({"data": {"removed": True}}), 200

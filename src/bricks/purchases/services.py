@@ -73,6 +73,8 @@ class PurchaseService:
         audit: Any | None = None,
         allowed_vat_rates: frozenset[str] | None = None,
         rate_gate: Any | None = None,
+        threshold_of: Any | None = None,
+        exclusion_of: Any | None = None,
     ) -> None:
         raw = allowed_vat_rates or DEFAULT_ALLOWED_VAT_RATES
         self._allowed_vat_rates = frozenset(str(_d(r)) for r in raw)
@@ -82,6 +84,15 @@ class PurchaseService:
         self._coa = coa
         self._regime_of = regime_of
         self._audit = audit
+        self._threshold_of = threshold_of
+        self._exclusion_of = exclusion_of
+        if self._exclusion_of is None:
+            from src.bricks.system_settings.rate_windows import (
+                is_8pct_eligible as _static_eligible,
+            )
+
+            self._exclusion_of = lambda company_id, category=None: _static_eligible(category)
+        assert self._exclusion_of is not None
 
     # ── helpers ────────────────────────────────────────────────────────
     def _regime(self, company_id: UUID) -> str:
@@ -160,9 +171,9 @@ class PurchaseService:
             if self._rate_gate is not None:
                 self._rate_gate(rate_str, entry_date)
             if rate_str == "0.08":
-                from src.bricks.system_settings.rate_windows import is_8pct_eligible
-
-                if not is_8pct_eligible(l.get("category")):
+                exclusion_of = self._exclusion_of
+                assert exclusion_of is not None
+                if not exclusion_of(company_id, l.get("category")):
                     raise ValueError(
                         f"Thuế suất 8% không áp dụng cho nhóm {l.get('category')} theo NĐ174/2025"
                     )
@@ -187,6 +198,8 @@ class PurchaseService:
             payment_method=PaymentMethod(payment_method or "none"),
             payment_proof=bool(payment_proof),
         )
+        if self._threshold_of is not None:
+            inv.non_cash_threshold = _d(self._threshold_of(company_id))
 
         # Gate 4 — totals recompute vs optional client declaration
         if expected_total_payment is not None and _d(expected_total_payment) != inv.total_payment:
