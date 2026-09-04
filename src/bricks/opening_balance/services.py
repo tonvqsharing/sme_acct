@@ -487,8 +487,8 @@ class OpeningService:
         return b
 
     def is_locked(self, company_id: UUID) -> bool | None:
-        """Voucher gate: None = no batches (skip), False/True otherwise."""
+        """Voucher gate: None = no batches (skip); True only when every batch LOCKED."""
         batches = self._repo.list_batches(company_id)
         if not batches:
             return None
-        return any(b.state == BatchState.LOCKED for b in batches)
+        return all(b.state == BatchState.LOCKED for b in batches)

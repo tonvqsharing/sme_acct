@@ -190,6 +190,9 @@ class VoucherService:
             raise VoucherNotFoundError("Không tìm thấy chứng từ")
         if v.status == VoucherStatus.POSTED:
             raise AlreadyPostedError("Chứng từ đã được ghi sổ")
+        # Go-live gate re-checked: batch may have been reopened after draft.
+        if self._opening_locked is not None and self._opening_locked(v.company_id) is False:
+            raise NoOpeningLockError("Chưa khóa số dư đầu kỳ — hoàn tất setup trước khi ghi sổ")
         if self._on_posted is not None:
             # Balance side-effects run BEFORE the status flip so a failed
             # adjustment (e.g. overdraw) leaves the voucher in DRAFT.

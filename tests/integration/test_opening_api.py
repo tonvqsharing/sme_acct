@@ -134,7 +134,19 @@ class TestOpeningFlow:
             == 409
         )
 
-        # fix via second GL post then lock (need fresh batch: locked-edit tested in unit)
+        # fix first batch via balancing GL post, then lock it too:
+        # hardened gate requires EVERY batch locked, not just one
+        chief.post(
+            f"/api/v1/opening-batches/{bid}/gl",
+            json={
+                "reason": "gl-fix",
+                "lines": [{"account_code": "4111", "debit": "0", "credit": "100"}],
+            },
+        )
+        fix1 = chief.post(f"/api/v1/opening-batches/{bid}/lock", json={"reason": "go"})
+        assert fix1.status_code == 200
+
+        # second batch carries bank tie + full flow
         r2 = chief.post(
             "/api/v1/opening-batches",
             json={"company_id": COMPANY, "fiscal_year_id": fy_id, "reason": "init2"},
