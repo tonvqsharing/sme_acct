@@ -38,6 +38,10 @@ from src.bricks.party.services import PartyService
 from src.bricks.party.storage import Base as PartyBase
 from src.bricks.party.storage import SQLAlchemyPartyRepository
 from src.bricks.party.web_adapter import init_party_service, party_bp
+from src.bricks.uom.services import UOMService
+from src.bricks.uom.storage import Base as UOMBase
+from src.bricks.uom.storage import SQLAlchemyUOMRepository
+from src.bricks.uom.web_adapter import init_uom_service, uom_bp
 from src.bricks.coa.storage import Base as CoaBase
 from src.bricks.coa.storage import SQLAlchemyAccountRepository
 from src.bricks.coa.web_adapter import coa_bp, init_coa_service
@@ -246,6 +250,7 @@ def create_app(config: dict | None = None) -> Flask:
     DocConvBase.metadata.create_all(engine)
     InvtyBase.metadata.create_all(engine)
     PartyBase.metadata.create_all(engine)
+    UOMBase.metadata.create_all(engine)
     session_factory = sessionmaker(bind=engine)
     app.db_session = session_factory  # type: ignore[attr-defined]
 
@@ -293,6 +298,7 @@ def create_app(config: dict | None = None) -> Flask:
         document_conversion_bp,
         inventory_bp,
         party_bp,
+        uom_bp,
     ):
         app.register_blueprint(bp)
 
@@ -308,6 +314,7 @@ def create_app(config: dict | None = None) -> Flask:
     purchases_session = session_factory()
     invty_session = session_factory()
     party_session = session_factory()
+    uom_session = session_factory()
 
     # ── Company (tenant root) ───────────────────────────────────────────
     company_repo = SQLAlchemyCompanyRepository(session)
@@ -512,6 +519,12 @@ def create_app(config: dict | None = None) -> Flask:
     party_svc = PartyService(repo=party_repo, audit=audit_svc)
     init_party_service(party_svc)
     app.party_service = party_svc  # type: ignore[attr-defined]
+
+    # ── UOM brick ───────────────────────────────────────────────────────
+    uom_repo = SQLAlchemyUOMRepository(uom_session)
+    uom_svc = UOMService(repo=uom_repo, audit=audit_svc)
+    init_uom_service(uom_svc)
+    app.uom_service = uom_svc  # type: ignore[attr-defined]
 
     # ── Purchases brick ─────────────────────────────────────────────────
     purchases_repo = SQLAlchemySupplierInvoiceRepository(purchases_session)

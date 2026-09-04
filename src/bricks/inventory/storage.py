@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import Boolean, Date, Numeric, String
@@ -93,6 +94,29 @@ class CostRevisionModel(Base):
     old_cost: Mapped[Decimal] = mapped_column(Numeric(18, 2))
     new_cost: Mapped[Decimal] = mapped_column(Numeric(18, 2))
     reason: Mapped[str] = mapped_column(String(200))
+
+
+class ProductCategoryModel(Base):
+    __tablename__ = "inventory_categories"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    company_id: Mapped[str] = mapped_column(String(36), index=True)
+    code: Mapped[str] = mapped_column(String(30), index=True)
+    name: Mapped[str] = mapped_column(String(100))
+    parent_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    cost_method: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    account_code: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    tax_category: Mapped[str | None] = mapped_column(String(30), nullable=True)
+
+
+class WarehouseModel(Base):
+    __tablename__ = "inventory_warehouses"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    company_id: Mapped[str] = mapped_column(String(36), index=True)
+    code: Mapped[str] = mapped_column(String(30), index=True)
+    name: Mapped[str] = mapped_column(String(100))
+    address: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    manager_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    account_code: Mapped[str | None] = mapped_column(String(10), nullable=True)
 
 
 class SQLAlchemyInventoryRepository:
@@ -408,3 +432,111 @@ class SQLAlchemyInventoryRepository:
                 )
             )
         self._session.commit()
+
+    # ── category & warehouse ──
+    def create_category(self, cat: Any) -> Any:
+        self._session.add(
+            ProductCategoryModel(
+                id=str(cat.id),
+                company_id=str(cat.company_id),
+                code=cat.code,
+                name=cat.name,
+                parent_id=str(cat.parent_id) if cat.parent_id else None,
+                cost_method=cat.cost_method.value if cat.cost_method else None,
+                account_code=cat.account_code,
+                tax_category=cat.tax_category,
+            )
+        )
+        self._session.commit()
+        return cat
+
+    def list_categories(self, company_id: UUID) -> list[Any]:
+        rows = (
+            self._session.query(ProductCategoryModel)
+            .filter(ProductCategoryModel.company_id == str(company_id))
+            .all()
+        )
+        from src.bricks.inventory.domain import CostMethod, ProductCategory
+
+        return [
+            ProductCategory(
+                id=UUID(r.id),
+                company_id=UUID(r.company_id),
+                code=r.code,
+                name=r.name,
+                parent_id=UUID(r.parent_id) if r.parent_id else None,
+                cost_method=CostMethod(r.cost_method) if r.cost_method else None,
+                account_code=r.account_code,
+                tax_category=r.tax_category,
+            )
+            for r in rows
+        ]
+
+    def get_category(self, cid: UUID) -> Any | None:
+        m = self._session.get(ProductCategoryModel, str(cid))
+        if not m:
+            return None
+        from src.bricks.inventory.domain import CostMethod, ProductCategory
+
+        return ProductCategory(
+            id=UUID(m.id),
+            company_id=UUID(m.company_id),
+            code=m.code,
+            name=m.name,
+            parent_id=UUID(m.parent_id) if m.parent_id else None,
+            cost_method=CostMethod(m.cost_method) if m.cost_method else None,
+            account_code=m.account_code,
+            tax_category=m.tax_category,
+        )
+
+    def create_warehouse(self, wh: Any) -> Any:
+        self._session.add(
+            WarehouseModel(
+                id=str(wh.id),
+                company_id=str(wh.company_id),
+                code=wh.code,
+                name=wh.name,
+                address=wh.address,
+                manager_id=str(wh.manager_id) if wh.manager_id else None,
+                account_code=wh.account_code,
+            )
+        )
+        self._session.commit()
+        return wh
+
+    def list_warehouses(self, company_id: UUID) -> list[Any]:
+        rows = (
+            self._session.query(WarehouseModel)
+            .filter(WarehouseModel.company_id == str(company_id))
+            .all()
+        )
+        from src.bricks.inventory.domain import Warehouse
+
+        return [
+            Warehouse(
+                id=UUID(r.id),
+                company_id=UUID(r.company_id),
+                code=r.code,
+                name=r.name,
+                address=r.address,
+                manager_id=UUID(r.manager_id) if r.manager_id else None,
+                account_code=r.account_code,
+            )
+            for r in rows
+        ]
+
+    def get_warehouse(self, wid: UUID) -> Any | None:
+        m = self._session.get(WarehouseModel, str(wid))
+        if not m:
+            return None
+        from src.bricks.inventory.domain import Warehouse
+
+        return Warehouse(
+            id=UUID(m.id),
+            company_id=UUID(m.company_id),
+            code=m.code,
+            name=m.name,
+            address=m.address,
+            manager_id=UUID(m.manager_id) if m.manager_id else None,
+            account_code=m.account_code,
+        )

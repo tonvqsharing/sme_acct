@@ -144,6 +144,89 @@ class InventoryService:
     def list_locations(self, company_id: UUID) -> list[Location]:
         return self._repo.list_locations(company_id)  # type: ignore[no-any-return]
 
+    # ── category ──
+    def create_category(
+        self,
+        *,
+        company_id: UUID,
+        code: str,
+        name: str,
+        parent_id: UUID | None = None,
+        cost_method: str | None = None,
+        account_code: str | None = None,
+        tax_category: str | None = None,
+        actor: UUID,
+        reason: str,
+    ) -> Any:
+        if not actor or not reason.strip():
+            raise ValueError("actor and reason required")
+        from src.bricks.inventory.domain import CostMethod, ProductCategory
+
+        cm = CostMethod(cost_method) if cost_method else None
+        cat = ProductCategory(
+            company_id=company_id,
+            code=code,
+            name=name,
+            parent_id=parent_id,
+            cost_method=cm,
+            account_code=account_code,
+            tax_category=tax_category,
+        )
+        saved = self._repo.create_category(cat)
+        if self._audit:
+            self._audit.append(
+                entity_type="inventory_category",
+                entity_id=cat.id,
+                action="CREATE",
+                actor_id=actor,
+                reason=reason,
+                after_value={"code": code},
+            )
+        return saved
+
+    def list_categories(self, company_id: UUID) -> list[Any]:
+        return self._repo.list_categories(company_id)  # type: ignore[no-any-return]
+
+    # ── warehouse ──
+    def create_warehouse(
+        self,
+        *,
+        company_id: UUID,
+        code: str,
+        name: str,
+        address: str | None = None,
+        manager_id: UUID | None = None,
+        account_code: str | None = None,
+        actor: UUID,
+        reason: str,
+    ) -> Any:
+        if not actor or not reason.strip():
+            raise ValueError("actor and reason required")
+        from src.bricks.inventory.domain import Warehouse
+
+        wh = Warehouse(
+            company_id=company_id,
+            code=code,
+            name=name,
+            address=address,
+            manager_id=manager_id,
+            account_code=account_code,
+        )
+        saved = self._repo.create_warehouse(wh)
+        if self._audit:
+            self._audit.append(
+                entity_type="warehouse",
+                entity_id=wh.id,
+                action="CREATE",
+                actor_id=actor,
+                reason=reason,
+                after_value={"code": code},
+            )
+        return saved
+
+    def list_warehouses(self, company_id: UUID) -> list[Any]:
+        return self._repo.list_warehouses(company_id)  # type: ignore[no-any-return]
+
     # ── shipment ──
     def create_shipment(
         self,

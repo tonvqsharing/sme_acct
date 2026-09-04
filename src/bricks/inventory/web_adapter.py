@@ -168,6 +168,100 @@ def list_locations() -> tuple[Any, int]:
     )
 
 
+# ── category ──
+@inventory_bp.post("/api/v1/inventory/categories")
+@login_required  # type: ignore[untyped-decorator]
+def create_category() -> tuple[Any, int]:
+    _require_write()
+    body = request.get_json(silent=True) or {}
+    try:
+        cat = _svc().create_category(
+            company_id=UUID(body["company_id"]),
+            code=body["code"],
+            name=body.get("name", ""),
+            parent_id=UUID(body["parent_id"]) if body.get("parent_id") else None,
+            cost_method=body.get("cost_method"),
+            account_code=body.get("account_code"),
+            tax_category=body.get("tax_category"),
+            actor=UUID(str(current_user.id)),
+            reason=body.get("reason") or "create category",
+        )
+    except (KeyError, ValueError) as exc:
+        return jsonify({"error": str(exc), "code": "INVALID_CATEGORY"}), 422
+    return jsonify({"data": {"id": str(cat.id), "code": cat.code, "name": cat.name}}), 201
+
+
+@inventory_bp.get("/api/v1/inventory/categories")
+@login_required  # type: ignore[untyped-decorator]
+def list_categories() -> tuple[Any, int]:
+    raw = request.args.get("company_id", "")
+    try:
+        cid = UUID(raw)
+    except ValueError:
+        abort(422, description="company_id required")
+    rows = _svc().list_categories(cid)
+    return (
+        jsonify(
+            {
+                "data": [
+                    {
+                        "id": str(r.id),
+                        "code": r.code,
+                        "name": r.name,
+                        "cost_method": r.cost_method.value if r.cost_method else None,
+                    }
+                    for r in rows
+                ]
+            }
+        ),
+        200,
+    )
+
+
+# ── warehouse ──
+@inventory_bp.post("/api/v1/inventory/warehouses")
+@login_required  # type: ignore[untyped-decorator]
+def create_warehouse() -> tuple[Any, int]:
+    _require_write()
+    body = request.get_json(silent=True) or {}
+    try:
+        wh = _svc().create_warehouse(
+            company_id=UUID(body["company_id"]),
+            code=body["code"],
+            name=body.get("name", ""),
+            address=body.get("address"),
+            manager_id=UUID(body["manager_id"]) if body.get("manager_id") else None,
+            account_code=body.get("account_code"),
+            actor=UUID(str(current_user.id)),
+            reason=body.get("reason") or "create warehouse",
+        )
+    except (KeyError, ValueError) as exc:
+        return jsonify({"error": str(exc), "code": "INVALID_WAREHOUSE"}), 422
+    return jsonify({"data": {"id": str(wh.id), "code": wh.code, "name": wh.name}}), 201
+
+
+@inventory_bp.get("/api/v1/inventory/warehouses")
+@login_required  # type: ignore[untyped-decorator]
+def list_warehouses() -> tuple[Any, int]:
+    raw = request.args.get("company_id", "")
+    try:
+        cid = UUID(raw)
+    except ValueError:
+        abort(422, description="company_id required")
+    rows = _svc().list_warehouses(cid)
+    return (
+        jsonify(
+            {
+                "data": [
+                    {"id": str(r.id), "code": r.code, "name": r.name, "address": r.address}
+                    for r in rows
+                ]
+            }
+        ),
+        200,
+    )
+
+
 # ── shipments ──
 @inventory_bp.post("/api/v1/inventory/shipments")
 @login_required  # type: ignore[untyped-decorator]

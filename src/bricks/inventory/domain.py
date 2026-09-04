@@ -148,3 +148,38 @@ class StockPeriod:
     def __post_init__(self) -> None:
         if not 1 <= self.month <= 12:
             raise ValueError("month 1-12")
+
+
+@dataclass
+class ProductCategory:
+    company_id: UUID
+    code: str
+    name: str
+    parent_id: UUID | None = None
+    cost_method: CostMethod | None = None  # default for products in category
+    account_code: str | None = None  # 152/156 mapping
+    tax_category: str | None = None  # for 8% eligibility
+    id: UUID = field(default_factory=uuid4)
+
+    def __post_init__(self) -> None:
+        if not self.code.strip():
+            raise ValueError("code required")
+        if not self.name.strip():
+            raise ValueError("name required")
+
+
+@dataclass
+class Warehouse:
+    company_id: UUID
+    code: str
+    name: str
+    address: str | None = None
+    manager_id: UUID | None = None
+    account_code: str | None = None
+    id: UUID = field(default_factory=uuid4)
+
+    def __post_init__(self) -> None:
+        if not self.code.strip():
+            raise ValueError("code required")
+        if not self.name.strip():
+            raise ValueError("name required")
