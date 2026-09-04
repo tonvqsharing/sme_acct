@@ -39,6 +39,14 @@ class AlreadyPostedError(Exception):
     pass
 
 
+class AlreadyIssuedError(Exception):
+    pass
+
+
+class NotPostedError(Exception):
+    pass
+
+
 class InvoiceNotFoundError(Exception):
     pass
 
@@ -59,6 +67,7 @@ class InvoiceService:
         allowed_vat_rates: frozenset[str] | None = None,
         rate_gate: Any | None = None,
         period_lock: Any | None = None,
+        signer: Any | None = None,
     ) -> None:
         self._fy = fy
         self._coa = coa
@@ -67,6 +76,7 @@ class InvoiceService:
         self._audit = audit
         self._regime_of = regime_of
         self._period_lock = period_lock
+        self._signer = signer
 
         from src.bricks.system_settings.contract import ALLOWED_VAT_FRACTIONS
 
@@ -309,6 +319,48 @@ class InvoiceService:
 
     def list_invoices(self, company_id: UUID) -> list[Invoice]:
         return self._repo.get_by_company(company_id)
+
+    # ── e-invoice issue (NĐ254; signer port, mock default, no 3P) ──────
+    def issue_einvoice(
+        self,
+        invoice_id: UUID,
+        *,
+        actor: UUID,
+        reason: str,
+        seller: dict[str, Any] | None = None,
+    ) -> Invoice:
+        from src.bricks.invoice.domain import EInvoiceStatus
+        from src.bricks.invoice.einvoice import (
+            build_einvoice_xml,
+            mock_sign,
+            validate_einvoice_ready,
+            xml_hash,
+        )
+
+        inv = self._repo.get_by_id(invoice_id)
+        if inv is None:
+            raise InvoiceNotFoundError("Không tìm thấy hóa đơn")
+        validate_einvoice_ready(inv)
+        xml_str = build_einvoice_xml(inv, seller)
+        signer = self._signer
+        signature = signer.sign(xml_str, actor) if signer is not None else mock_sign(xml_str, actor)
+        inv.einvoice_status = EInvoiceStatus.SENT
+        inv.checksum = inv.compute_checksum(inv.checksum, actor, str(reason))
+        saved = self._repo.save(inv)
+        if self._audit is not None:
+            self._audit.append(
+                entity_type="invoice",
+                entity_id=inv.id,
+                action="EINVOICE_ISSUE",
+                actor_id=actor,
+                reason=str(reason),
+                after_value={
+                    "einvoice_status": "SENT",
+                    "xml_hash": xml_hash(xml_str),
+                    "signature": signature,
+                },
+            )
+        return saved
 
     # ── deduction (521) ───────────────────────────────────────────────
     def create_deduction(

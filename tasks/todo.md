@@ -43,5 +43,12 @@
 - [x] Review: Approve → `tasks/review-slice6.md`
 - [ ] Follow-up (separate): single-query `SUM(qty)` aggregation; `get_stock_value` same treatment
 
+## Slice 7 — Sales GDT real-sign seam (no 3P) ✅ Done — Approve `tasks/review-slice7.md`
+- [x] Pure `einvoice.py`: GDT-tagged XML builder + ready-guard + mock signer (sha256)
+- [x] Service `issue_einvoice` with injected `signer` port; web delegates (no more `_repo`/`_audit` privates)
+- [x] Verify: 8 new tests RED→GREEN (incl. GDT round-trip), ruff 0 black 0 mypy 0, pytest 1045
+- [x] Review: Approve → `tasks/review-slice7.md`
+- [ ] Follow-up (separate): real CA signer + GDT sender + XSD pin; flip `sales.e_invoice_enabled`
+
 ## Final
 - [x] `pytest -q` 1023 green, `git push`, codegraph sync

@@ -11,9 +11,11 @@ from flask import Blueprint, abort, jsonify, request
 from flask_login import current_user, login_required
 
 from src.bricks.invoice.services import (
+    AlreadyIssuedError,
     AlreadyPostedError,
     InvoiceNotFoundError,
     NoOpenPeriodError,
+    NotPostedError,
 )
 
 invoice_bp = Blueprint("invoice", __name__)
@@ -242,36 +244,20 @@ def issue_einvoice(invoice_id: str) -> tuple[Any, int]:
             403,
         )
     try:
-        inv = _svc().get_invoice(iid)
-        if inv is None:
-            abort(404, description="Invoice not found")
-        if inv.status.value != "POSTED":
-            return (
-                jsonify(
-                    {"error": "Chỉ phát hành HĐĐT cho hóa đơn đã POSTED", "code": "NOT_POSTED"}
-                ),
-                422,
-            )
-        # NĐ254 validation stub (no 3P): sequence + ký hiệu
-        from src.bricks.invoice.domain import EInvoiceStatus
-
-        if inv.einvoice_status != EInvoiceStatus.NOT_ISSUED:
-            return jsonify({"error": "HĐĐT already issued", "code": "ALREADY_ISSUED"}), 409
-        # Mock signing: set SENT, checksum update
-        inv.einvoice_status = EInvoiceStatus.SENT
-        inv.checksum = inv.compute_checksum(
-            inv.checksum, UUID(str(current_user.id)), body.get("reason") or "issue einvoice"
+        inv = _svc().issue_einvoice(
+            iid,
+            actor=UUID(str(current_user.id)),
+            reason=body.get("reason") or "issue einvoice",
+            seller=body.get("seller"),
         )
-        _svc()._repo.save(inv)
-        if _svc()._audit is not None:
-            _svc()._audit.append(
-                entity_type="invoice",
-                entity_id=inv.id,
-                action="EINVOICE_ISSUE",
-                actor_id=UUID(str(current_user.id)),
-                reason=body.get("reason") or "issue",
-                after_value={"einvoice_status": "SENT"},
-            )
         return jsonify({"data": serialize(inv)}), 200
+    except InvoiceNotFoundError:
+        abort(404, description="Invoice not found")
+    except NotPostedError as exc:
+        return jsonify({"error": str(exc), "code": "NOT_POSTED"}), 422
+    except AlreadyIssuedError as exc:
+        return jsonify({"error": str(exc), "code": "ALREADY_ISSUED"}), 409
+    except (KeyError, ValueError) as exc:
+        return jsonify({"error": str(exc), "code": "INVALID_EINVOICE"}), 422
     except Exception as exc:  # noqa: BLE001
         return jsonify({"error": str(exc), "code": "EINVOICE_ERROR"}), 422

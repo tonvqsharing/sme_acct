@@ -188,7 +188,7 @@ class TestDeduction:
 
 class TestEInvoice:
     def test_issue_mock(self, chief, seeded):
-        payload = _create_invoice_payload()
+        payload = _create_invoice_payload(template_code="1C26TAA", invoice_symbol="HD/")
         r = chief.post("/api/v1/invoices", json=payload)
         inv_id = r.get_json()["data"]["id"]
         chief.post(f"/api/v1/invoices/{inv_id}/post", json={"reason": "ok"})
