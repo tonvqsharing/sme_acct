@@ -7,19 +7,12 @@
 - [x] Verify: `ruff 0, black 0, mypy 0, pytest 1011` — 11 new tests (7 unit + 4 integration)
 - [x] Review: `code-review-and-quality` Approve → `tasks/review-slice1.md`
 
-## Slice 2 — UOM + ProductCategory + Warehouse (P0) — pending next slice
-- [ ] Task 2.1: UOM master (code/name/base/factor>0)
-- [ ] Task 2.2: ProductCategory (code/name/parent/cost_method/account/tax_category)
-- [ ] Task 2.3: Warehouse master (code/name/address/manager/account) + Location.warehouse_id FK migration
-- [ ] Verify: 9 new tests, no 611, Product.uom still text (FK next)
-- [ ] Review: Approve → `tasks/review-slice2.md`
-
-## Slice 2 — UOM + ProductCategory + Warehouse (P0)
-- [ ] Task 2.1: UOM master (code/name/base/factor>0)
-- [ ] Task 2.2: ProductCategory (code/name/parent/cost_method/account/tax_category)
-- [ ] Task 2.3: Warehouse master (code/name/address/manager/account) + Location.warehouse_id FK migration
-- [ ] Verify: 9 new tests, no 611, Product.uom still text (FK next)
-- [ ] Review: Approve → `tasks/review-slice2.md`
+## Slice 2 — UOM + ProductCategory + Warehouse (P0) ✅ Done — Approve `tasks/review-slice2.md`
+- [x] Task 2.1: UOM master (code/name/base/factor>0)
+- [x] Task 2.2: ProductCategory (code/name/parent/cost_method/account/tax_category)
+- [x] Task 2.3: Warehouse master (code/name/address/manager/account) + Location.warehouse_id FK migration
+- [x] Verify: 7 new tests (4 unit + 3 integration), ruff 0 black 0 mypy 0, pytest 1018
+- [x] Review: Approve → `tasks/review-slice2.md`
 
 ## Slice 3 — TaxCode + Lot + PriceList (P1) ✅ Done — Approve `tasks/review-slice3.md`
 - [x] Task 3.1: TaxCode detail (code/rate/type/account)

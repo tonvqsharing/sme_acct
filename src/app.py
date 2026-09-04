@@ -34,14 +34,6 @@ from src.bricks.bank_cash.storage import (
 )
 from src.bricks.bank_cash.web_adapter import bank_cash_bp, init_bank_cash_services
 from src.bricks.coa.services import AccountService
-from src.bricks.party.services import PartyService
-from src.bricks.party.storage import Base as PartyBase
-from src.bricks.party.storage import SQLAlchemyPartyRepository
-from src.bricks.party.web_adapter import init_party_service, party_bp
-from src.bricks.uom.services import UOMService
-from src.bricks.uom.storage import Base as UOMBase
-from src.bricks.uom.storage import SQLAlchemyUOMRepository
-from src.bricks.uom.web_adapter import init_uom_service, uom_bp
 from src.bricks.coa.storage import Base as CoaBase
 from src.bricks.coa.storage import SQLAlchemyAccountRepository
 from src.bricks.coa.web_adapter import coa_bp, init_coa_service
@@ -130,6 +122,10 @@ from src.bricks.invoice.web_adapter import init_invoice_service, invoice_bp
 from src.bricks.ledger.services import LedgerService
 from src.bricks.ledger.storage import SQLAlchemyLedgerSource
 from src.bricks.ledger.web_adapter import init_ledger_service, ledger_bp
+from src.bricks.party.services import PartyService
+from src.bricks.party.storage import Base as PartyBase
+from src.bricks.party.storage import SQLAlchemyPartyRepository
+from src.bricks.party.web_adapter import init_party_service, party_bp
 from src.bricks.payment_terms.services import (
     ApprovalService,
     DocumentNumberingSeriesService,
@@ -186,6 +182,10 @@ from src.bricks.tools_equipment.web_adapter import (
 from src.bricks.tools_equipment.web_adapter import (
     init_tools_equipment_bp,
 )
+from src.bricks.uom.services import UOMService
+from src.bricks.uom.storage import Base as UOMBase
+from src.bricks.uom.storage import SQLAlchemyUOMRepository
+from src.bricks.uom.web_adapter import init_uom_service, uom_bp
 from src.bricks.user_master_data.services import UserService
 from src.bricks.user_master_data.storage import (
     Base as UserBase,
