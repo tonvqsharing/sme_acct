@@ -50,5 +50,12 @@
 - [x] Review: Approve → `tasks/review-slice7.md`
 - [ ] Follow-up (separate): real CA signer + GDT sender + XSD pin; flip `sales.e_invoice_enabled`
 
+## Slice 8 — Master tables migration (slices 1–4, 6) ✅ Done — Approve `tasks/review-slice8.md`
+- [x] Hand-written `f4a9c1d2e7b5` (autogenerate broken repo-wide, pre-existing FK error untouched)
+- [x] 8 tables + 3 columns + 1 composite index; idempotent guards for both DB lineages
+- [x] Verify: scratch upgrade/downgrade/re-upgrade green, single head, ruff 0 black 0 mypy 0, pytest 1045
+- [x] Review: Approve → `tasks/review-slice8.md`
+- [ ] Follow-up (separate): backfill base inventory tables for alembic-only lineage; dedicated variance GL account
+
 ## Final
 - [x] `pytest -q` 1023 green, `git push`, codegraph sync
