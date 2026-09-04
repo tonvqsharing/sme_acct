@@ -477,8 +477,15 @@ def get_stock() -> tuple[Any, int]:
         abort(422, description="company_id required")
     product_id = UUID(args["product_id"]) if args.get("product_id") else None
     warehouse_id = UUID(args["warehouse_id"]) if args.get("warehouse_id") else None
-    rows = _svc().get_stock(cid, product_id=product_id, warehouse_id=warehouse_id)
-    return jsonify({"data": rows}), 200
+    try:
+        page = int(args.get("page", "1"))
+        page_size = int(args.get("page_size", "50"))
+    except ValueError:
+        abort(422, description="invalid pagination")
+    rows = _svc().get_stock(
+        cid, product_id=product_id, warehouse_id=warehouse_id, page=page, page_size=page_size
+    )
+    return jsonify({"data": rows, "page": page, "page_size": page_size}), 200
 
 
 @inventory_bp.get("/api/v1/reports/inventory/nxt")

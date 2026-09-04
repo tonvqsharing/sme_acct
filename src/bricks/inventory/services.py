@@ -576,6 +576,8 @@ class InventoryService:
         product_id: UUID | None = None,
         warehouse_id: UUID | None = None,
         as_of: date | None = None,
+        page: int = 1,
+        page_size: int = 50,
     ) -> list[dict[str, Any]]:
         # if product_id None list all products
         prods: list[Product | None] = (
@@ -583,8 +585,10 @@ class InventoryService:
             if product_id
             else self._repo.list_products(company_id)
         )
+        page = max(1, int(page))
+        page_size = min(200, max(1, int(page_size)))
         out = []
-        for p in prods:
+        for p in prods[(page - 1) * page_size : page * page_size]:
             if not p:
                 continue
             qty = self._repo.get_stock_qty(company_id, p.id, warehouse_id)

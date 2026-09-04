@@ -7,7 +7,7 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import Boolean, Date, Numeric, String
+from sqlalchemy import Boolean, Date, Index, Numeric, String
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
 from sqlalchemy.types import JSON
 
@@ -54,6 +54,14 @@ class LocationModel(Base):
 
 class StockMoveModel(Base):
     __tablename__ = "inventory_moves"
+    __table_args__ = (
+        Index(
+            "ix_moves_company_product_state",
+            "company_id",
+            "product_id",
+            "state",
+        ),
+    )
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     company_id: Mapped[str] = mapped_column(String(36), index=True)
     product_id: Mapped[str] = mapped_column(String(36), index=True)

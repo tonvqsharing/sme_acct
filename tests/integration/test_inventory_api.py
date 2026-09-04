@@ -298,3 +298,33 @@ class TestInventoryFlow:
             query_string={"company_id": COMPANY, "from": "2026-08-01", "to": "2026-08-31"},
         )
         assert turn.status_code == 200
+
+
+class TestStockPagination:
+    def test_stock_paginates_with_meta(self, chief, seeded):
+        for i in range(3):
+            r = chief.post(
+                "/api/v1/inventory/products",
+                json={
+                    "company_id": COMPANY,
+                    "code": f"SKU-PG-{i}",
+                    "name": f"Paginated {i}",
+                    "uom": "Cái",
+                    "cost_method": "wavg",
+                },
+            )
+            assert r.status_code == 201, r.get_json()
+        page1 = chief.get(
+            "/api/v1/inventory/stock",
+            query_string={"company_id": COMPANY, "page": 1, "page_size": 2},
+        )
+        assert page1.status_code == 200
+        body = page1.get_json()
+        assert len(body["data"]) == 2
+        assert body["page"] == 1
+        assert body["page_size"] == 2
+        bad = chief.get(
+            "/api/v1/inventory/stock",
+            query_string={"company_id": COMPANY, "page": "x"},
+        )
+        assert bad.status_code == 422

@@ -36,5 +36,12 @@
 - [x] Review: Approve → `tasks/review-slice5.md`
 - [ ] Follow-up (separate): dedicated variance account + `resolve_chart_role("variance")`; alembic migration for `uom_id`/`category_id` cols
 
+## Slice 6 — Stock perf ✅ Done — Approve `tasks/review-slice6.md`
+- [x] Composite index `ix_moves_company_product_state` on `(company_id, product_id, state)`
+- [x] Stock list pagination `page`/`page_size` (defaults 1/50, max 200, ledger-style meta)
+- [x] Verify: 4 new tests (3 unit RED→GREEN + 1 integration), ruff 0 black 0 mypy 0, pytest 1037
+- [x] Review: Approve → `tasks/review-slice6.md`
+- [ ] Follow-up (separate): single-query `SUM(qty)` aggregation; `get_stock_value` same treatment
+
 ## Final
 - [x] `pytest -q` 1023 green, `git push`, codegraph sync
