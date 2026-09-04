@@ -29,5 +29,12 @@
 - [x] Review: Approve → `tasks/review-slice4.md`
 - [ ] Follow-up (separate): alembic migration for `uom_id`/`category_id` cols (autogenerate blocked by pre-existing `tools_equipment → cost_centers` FK error)
 
+## Slice 5 — Variance + costing split ✅ Done — Approve `tasks/review-slice5.md`
+- [x] Pure `costing.py`: `moving_average_unit`/`specific_out_unit`/`fifo_out_unit`/`split_standard`/`fifo_lots_from_moves`
+- [x] Service delegates; STANDARD out books variance into 6321 line + audit split (`cogs_total`, `variance_total`)
+- [x] Verify: 6 new tests RED→GREEN, ruff 0 black 0 mypy 0, pytest 1033
+- [x] Review: Approve → `tasks/review-slice5.md`
+- [ ] Follow-up (separate): dedicated variance account + `resolve_chart_role("variance")`; alembic migration for `uom_id`/`category_id` cols
+
 ## Final
 - [x] `pytest -q` 1023 green, `git push`, codegraph sync

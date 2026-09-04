@@ -7,7 +7,7 @@ _Flask + SQLAlchemy, Lego bricks, SQLite, Flask-Login RBAC._
 `uv` only — always `uv run`, never venv activate.
 
 ```bash
-uv run pytest -q                                   # full suite (1027 passed)
+uv run pytest -q                                   # full suite (1033 passed)
 uv run pytest tests/unit/company/ -k "<name>" -v   # single test
 uv run pytest tests/integration/test_company_api.py -v
 uv run ruff check src tests
@@ -86,7 +86,7 @@ Audit-chain: `seq` per entity (not timestamps); persist verbatim `ts_iso` (SQLit
 
 Compliance (2026-09, mof.gov.vn/vbpl.vn): MST `^[1-9]\d{2}(-\d{3})?$`, `^[1-9]\d{2}$|^[1-9]\d{3}$` accounts, TT99/2025 replaces TT200, TT58/2026 replaces TT132, NĐ 254/2026+TT91/2026 replace NĐ123/2020+70/2025 & TT32/2025 (e-invoice 01/07/2026), input VAT ≥5tr non-cash (Luật GTGT 2024 Đ.14 + NĐ181 Đ.26 sửa NĐ144/2026), VAT 8% NQ204+ NĐ174 →31/12/2026 (`rate_windows.py`), 10y retention.
 
-## Module Status (22 bricks, 1027 tests)
+## Module Status (22 bricks, 1033 tests)
 
 | Module | State |
 |---|---|

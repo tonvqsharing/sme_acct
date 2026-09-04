@@ -2,12 +2,18 @@
 
 from __future__ import annotations
 
-from collections import deque
 from datetime import date
 from decimal import Decimal
 from typing import Any
 from uuid import UUID, uuid4
 
+from src.bricks.inventory.costing import (
+    fifo_lots_from_moves,
+    fifo_out_unit,
+    moving_average_unit,
+    specific_out_unit,
+    split_standard,
+)
 from src.bricks.inventory.domain import (
     GENESIS_CHECKSUM,
     CostMethod,
@@ -431,6 +437,7 @@ class InventoryService:
             raise PeriodClosedError("Kỳ kho đã khóa")
         # for CUSTOMER_OUT, check stock sufficiency and compute COGS per method
         total_cogs = Decimal(0)
+        total_variance = Decimal(0)
         for mid in ship.moves:
             mv = self._repo.get_move(mid)
             if not mv:
@@ -446,9 +453,21 @@ class InventoryService:
                         f"Tồn kho không đủ: need {mv.qty} have {available} for {prod.code}"
                     )
                 # compute cost per method
-                cogs_unit = self._compute_out_cost(prod, mv)
-                total_cogs += cogs_unit * mv.qty
-                mv.unit_cost = cogs_unit  # store actual COGS unit for value tracking
+                if prod.cost_method == CostMethod.STANDARD:
+                    assert prod.standard_cost is not None
+                    actual = moving_average_unit(
+                        self._repo.get_stock_qty(prod.company_id, prod.id),
+                        self._repo.get_stock_value(prod.company_id, prod.id),
+                        mv.unit_cost or Decimal(0),
+                    )
+                    cogs_line, var_line = split_standard(actual, prod.standard_cost, mv.qty)
+                    total_cogs += cogs_line
+                    total_variance += var_line
+                    mv.unit_cost = prod.standard_cost  # stock stays at standard
+                else:
+                    cogs_unit = self._compute_out_cost(prod, mv)
+                    total_cogs += cogs_unit * mv.qty
+                    mv.unit_cost = cogs_unit  # store actual COGS unit for value tracking
             # internal or supplier: unit_cost already set
             mv.state = self._import_move_state("DONE")
             mv.checksum = mv.compute_checksum(mv.checksum or GENESIS_CHECKSUM, actor, reason)
@@ -496,13 +515,16 @@ class InventoryService:
                         reason=reason,
                     )
             elif ship.type == ShipmentType.CUSTOMER_OUT and total_cogs > 0:
+                # Standard variance rides the same 6321 line until a variance
+                # account exists — audit carries the split for disclosure.
+                cogs_debit = total_cogs + total_variance
                 self._voucher.create_voucher(
                     company_id=ship.company_id,
                     entry_date=ship.effective_date,
                     description=f"Giá vốn {ship.number}",
                     lines=[
-                        {"account_code": cogs_acc, "debit": str(total_cogs), "credit": "0"},
-                        {"account_code": inv_acc, "debit": "0", "credit": str(total_cogs)},
+                        {"account_code": cogs_acc, "debit": str(cogs_debit), "credit": "0"},
+                        {"account_code": inv_acc, "debit": "0", "credit": str(cogs_debit)},
                     ],
                     actor=actor,
                     reason=reason,
@@ -514,52 +536,37 @@ class InventoryService:
                 action="POST",
                 actor_id=actor,
                 reason=reason,
-                after_value={"state": "DONE"},
+                after_value={
+                    "state": "DONE",
+                    "cogs_total": float(total_cogs),
+                    "variance_total": float(total_variance),
+                },
             )
         return ship  # type: ignore[no-any-return]
 
     def _compute_out_cost(self, prod: Product, move: StockMove) -> Decimal:
-        """Return unit COGS per product cost method. Tryton-like."""
+        """Return unit COGS per product cost method. Math lives in costing.py."""
         if prod.cost_method == CostMethod.STANDARD:
             assert prod.standard_cost is not None
             return prod.standard_cost
         if prod.cost_method == CostMethod.SPECIFIC:
-            # specific picks move's own cost (lot)
-            return move.unit_cost if move.unit_cost > 0 else prod.standard_cost or Decimal(0)
+            return specific_out_unit(move.unit_cost, prod.standard_cost)
         if prod.cost_method == CostMethod.WAVG:
-            # moving weighted average at current time
-            qty = self._repo.get_stock_qty(prod.company_id, prod.id)
-            val = self._repo.get_stock_value(prod.company_id, prod.id)
-            if qty <= 0:
-                return move.unit_cost or Decimal(0)
-            avg = (val / qty).quantize(Decimal(1)) if qty != 0 else move.unit_cost
-            return avg if avg > 0 else move.unit_cost
+            return moving_average_unit(
+                self._repo.get_stock_qty(prod.company_id, prod.id),
+                self._repo.get_stock_value(prod.company_id, prod.id),
+                move.unit_cost or Decimal(0),
+            )
         if prod.cost_method == CostMethod.FIFO:
-            # FIFO queue: earliest in lots first
             moves = self._repo.list_moves(prod.company_id, product_id=prod.id, state="DONE")
-            # build queue of in lots
-            queue: deque[tuple[Decimal, Decimal]] = deque()
-            for m in moves:
-                if m.from_loc is None and m.to_loc is not None:
-                    queue.append((m.qty, m.unit_cost))
-                elif m.to_loc is None and m.from_loc is not None:
-                    # consume FIFO
-                    need = m.qty
-                    while need > 0 and queue:
-                        q, c = queue[0]
-                        if q <= need:
-                            need -= q
-                            queue.popleft()
-                        else:
-                            queue[0] = (q - need, c)
-                            need = Decimal(0)
-            # next out cost is front lot cost
-            if queue:
-                return queue[0][1]
-            # fallback to last in cost or move cost
-            ins = [m for m in moves if m.from_loc is None]
-            if ins:
-                return ins[-1].unit_cost  # type: ignore[no-any-return]
+            ins, outs = fifo_lots_from_moves(moves)
+            unit = fifo_out_unit(ins, outs)
+            if unit > 0:
+                return unit
+            # fallback to last receipt cost or move cost
+            receipts = [m for m in moves if m.from_loc is None]
+            if receipts:
+                return receipts[-1].unit_cost  # type: ignore[no-any-return]
             return move.unit_cost or Decimal(0)
         return move.unit_cost
 
