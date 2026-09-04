@@ -498,6 +498,16 @@ def create_app(config: dict | None = None) -> Flask:
                 raise RuntimeError("fixed_assets port not wired")
             return getattr(_fa_service, name)
 
+    class _LateCCDC:
+        """Resolves CCDC svc at call time (wired below opening)."""
+
+        def __getattr__(self, name: str) -> Any:
+            from src.bricks.tools_equipment.web_adapter import _service as _ccdc_svc
+
+            if _ccdc_svc is None:
+                raise RuntimeError("ccdc port not wired")
+            return getattr(_ccdc_svc, name)
+
     opening_svc = OpeningService(
         repo=_opening_repo,
         fy_years=_fy_year_repo,
@@ -507,6 +517,7 @@ def create_app(config: dict | None = None) -> Flask:
         party_lookup=_party_lookup,
         inventory=_LateInventory(),
         fixed_assets=_LateFixedAssets(),
+        ccdc=_LateCCDC(),
     )
     init_opening_service(opening_svc)
     app.opening_service = opening_svc  # type: ignore[attr-defined]

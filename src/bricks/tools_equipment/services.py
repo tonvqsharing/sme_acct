@@ -106,6 +106,105 @@ class ToolEquipmentService:
 
         return self._repo.create(entity)
 
+    def open_ccdc_with_history(
+        self,
+        *,
+        company_id: UUID,
+        code: str,
+        name: str,
+        category: CCDCCategory | str,
+        purchase_date: date,
+        purchase_price: Decimal,
+        useful_life_months: int,
+        expense_account_code: str,
+        actor_id: UUID,
+        remaining_value: Decimal,
+        months_left: int,
+        salvage_value: Decimal = Decimal(0),
+        cost_center_id: UUID | None = None,
+        dimension_value_id: UUID | None = None,
+    ) -> ToolEquipment:
+        """Opening-balance entry: create CCDC + backfill elapsed POSTED allocations.
+
+        elapsed = useful_life_months − months_left, walked forward from
+        purchase_date's month. Final row absorbs VND rounding so rows sum
+        exactly to price − remaining. History rows bypass the FY-open gate
+        (they predate go-live); the live engine keeps gating new periods.
+        """
+        if isinstance(category, str):
+            category = CCDCCategory(category)
+        price = (
+            purchase_price if isinstance(purchase_price, Decimal) else Decimal(str(purchase_price))
+        )
+        remaining = (
+            remaining_value
+            if isinstance(remaining_value, Decimal)
+            else Decimal(str(remaining_value))
+        )
+        if not 0 <= remaining <= price:
+            raise ValueError(f"remaining_value must be within [0, price], got {remaining}")
+        life = int(useful_life_months)
+        left = int(months_left)
+        if not 1 <= left <= life:
+            raise ValueError(f"months_left must be within [1, useful_life_months], got {left}")
+        elapsed = life - left
+        target = price - remaining
+        if elapsed == 0 and target != 0:
+            raise ValueError(
+                f"months_left == useful_life but remaining {remaining} ≠ price {price}"
+            )
+
+        entity = self.create(
+            company_id=company_id,
+            code=code,
+            name=name,
+            category=category,
+            purchase_date=purchase_date,
+            purchase_price=price,
+            useful_life_months=life,
+            expense_account_code=expense_account_code,
+            actor_id=actor_id,
+            salvage_value=salvage_value,
+            prepaid_account_code="242" if life > 1 else None,
+            cost_center_id=cost_center_id,
+            dimension_value_id=dimension_value_id,
+        )
+        if elapsed == 0:
+            return entity
+
+        monthly = entity.monthly_allocation.quantize(Decimal(1), rounding=ROUND_HALF_UP)
+        rows: list[ToolEquipmentAllocation] = []
+        y, m = purchase_date.year, purchase_date.month
+        acc = Decimal(0)
+        for i in range(elapsed):
+            amount = monthly if i < elapsed - 1 else target - acc
+            if amount < 0:
+                raise ValueError(
+                    f"remaining {remaining} inconsistent with {elapsed} elapsed months"
+                )
+            existing = self._alloc_repo.find_existing_allocation(entity.id, y, m)
+            if existing is None:
+                rows.append(
+                    ToolEquipmentAllocation(
+                        tool_equipment_id=entity.id,
+                        period_year=y,
+                        period_month=m,
+                        allocated_amount=amount,
+                        expense_account_code=expense_account_code,
+                        cost_center_id=cost_center_id,
+                        dimension_value_id=dimension_value_id,
+                        status=AllocationStatus.POSTED,
+                    )
+                )
+            acc += monthly if i < elapsed - 1 else amount
+            m += 1
+            if m > 12:
+                m = 1
+                y += 1
+        if rows:
+            self._alloc_repo.create_many(rows)
+        return entity
+
     # -- Update ---------------------------------------------------------------
 
     def update(

@@ -101,7 +101,12 @@
 - [x] Migration `f6a7b8c9d0e1` guarded; scratch up/down/re-up green, single head
 - [x] Verify: 5 new tests RED→GREEN, ruff 0 black 0 mypy 0, pytest 1088
 - [x] Review: Approve → `tasks/review-opening-s4a.md`
-- [ ] Next: Opening S4b — CCDC opening via elapsed-allocation backfill + 242 tie
+## Opening S4b — CCDC backfill + 242 tie ✅ Done — Approve `tasks/review-opening-s4b.md`
+- [x] `open_ccdc_with_history` (elapsed POSTED rows, rounding-safe) + kind routing
+- [x] Lock tie split: FA↔211−214, CCDC↔242 (R-O04); no migration (same table)
+- [x] Verify: 6 new tests RED→GREEN, ruff 0 black 0 mypy 0, pytest 1094
+- [x] Review: Approve → `tasks/review-opening-s4b.md`
+- [ ] Next: Opening S5 — Excel import + voucher go-live gate hardening + year-roll
 
 ## Final
 - [x] `pytest -q` 1023 green, `git push`, codegraph sync

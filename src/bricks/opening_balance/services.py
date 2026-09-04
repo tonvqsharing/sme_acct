@@ -48,6 +48,7 @@ class OpeningService:
         party_lookup: Any | None = None,
         inventory: Any | None = None,
         fixed_assets: Any | None = None,
+        ccdc: Any | None = None,
     ) -> None:
         self._repo = repo
         self._fy_years = fy_years
@@ -57,6 +58,7 @@ class OpeningService:
         self._party_lookup = party_lookup
         self._inventory = inventory
         self._fixed_assets = fixed_assets
+        self._ccdc = ccdc
 
     # ── helpers ───────────────────────────────────────────────────────
     def _regime(self, company_id: UUID) -> str:
@@ -242,19 +244,17 @@ class OpeningService:
         from datetime import date as _date
 
         b = self._get_draft(batch_id)
-        if self._fixed_assets is None:
-            raise RuntimeError("fixed_assets port not wired")
         for r in rows:
-            if r.get("kind", "fixed_asset") != "fixed_asset":
-                raise ValueError("S4a supports kind=fixed_asset only (ccdc arrives S4b)")
+            kind = r.get("kind", "fixed_asset")
+            if kind not in ("fixed_asset", "ccdc"):
+                raise ValueError(f"kind must be fixed_asset|ccdc, got {kind}")
             original = _d(r["original_cost"])
             remaining = _d(r["remaining_value"])
             months_left = int(r["months_left"])
             regime = self._regime(b.company_id)
-            self._coa.validate_posting_account(b.company_id, r["expense_account"], regime)
             row = AssetOpening(
                 batch_id=b.id,
-                kind="fixed_asset",
+                kind=kind,
                 code=str(r["code"]).strip(),
                 name=str(r["name"]).strip(),
                 original_cost=original,
@@ -263,6 +263,36 @@ class OpeningService:
                 expense_account=r["expense_account"],
             )
             self._repo.add_asset(row)
+            acquired = (
+                _date.fromisoformat(r["acquisition_date"])
+                if r.get("acquisition_date")
+                else _date.today()  # noqa: DTZ011
+            )
+            if kind == "ccdc":
+                if self._ccdc is None:
+                    raise RuntimeError("ccdc port not wired")
+                life = int(r.get("useful_life_months", months_left))
+                self._ccdc.open_ccdc_with_history(
+                    company_id=b.company_id,
+                    code=row.code,
+                    name=row.name,
+                    category=r.get("category", "Khác"),
+                    purchase_date=(
+                        _date.fromisoformat(r["purchase_date"])
+                        if r.get("purchase_date")
+                        else acquired
+                    ),
+                    purchase_price=original,
+                    useful_life_months=life,
+                    expense_account_code=row.expense_account,
+                    actor_id=actor,
+                    remaining_value=remaining,
+                    months_left=months_left,
+                )
+                continue
+            if self._fixed_assets is None:
+                raise RuntimeError("fixed_assets port not wired")
+            self._coa.validate_posting_account(b.company_id, row.expense_account, regime)
             # Materialize asset at go-live with prior depreciation carried over.
             # Useful life unknown from book state alone: effective life =
             # max(declared useful_life, months_left) so SL never over-charges.
@@ -273,11 +303,7 @@ class OpeningService:
                 name=row.name,
                 category=r.get("category", "huu_hinh"),
                 original_cost=original,
-                acquisition_date=(
-                    _date.fromisoformat(r["acquisition_date"])
-                    if r.get("acquisition_date")
-                    else _date.today()  # noqa: DTZ011
-                ),
+                acquisition_date=acquired,
                 useful_life_months=life,
                 depreciation_account=row.expense_account,
                 actor=actor,
@@ -304,12 +330,18 @@ class OpeningService:
         stock_total = sum((r.total_value for r in stock), Decimal(0))
         assets = self._repo.list_assets(batch_id)
         assets_total = sum((r.remaining_value for r in assets), Decimal(0))
+        fa_total = sum((r.remaining_value for r in assets if r.kind == "fixed_asset"), Decimal(0))
+        ccdc_total = sum((r.remaining_value for r in assets if r.kind == "ccdc"), Decimal(0))
         gl_112 = sum(
             (r.debit - r.credit for r in gl if r.account_code.startswith("112")),
             Decimal(0),
         )
         gl_fa_net = sum(
             (r.debit - r.credit for r in gl if r.account_code.startswith(("211", "214"))),
+            Decimal(0),
+        )
+        gl_242 = sum(
+            (r.debit - r.credit for r in gl if r.account_code.startswith("242")),
             Decimal(0),
         )
         balanced = abs(debit - credit) <= TOLERANCE
@@ -327,7 +359,10 @@ class OpeningService:
                 "stock_lines": len(stock),
                 "assets_total": assets_total,
                 "assets_lines": len(assets),
+                "fa_total": fa_total,
                 "fa_gl_net": gl_fa_net,
+                "ccdc_total": ccdc_total,
+                "gl_242": gl_242,
             },
         }
 
@@ -403,20 +438,23 @@ class OpeningService:
             raise UnbalancedOpeningError(f"Chi tiết ngân hàng 112 {bank_total} ≠ sổ cái {gl_112}")
 
     def _verify_asset_tie(self, batch_id: UUID) -> None:
-        """R-O04: FA remaining ( NG − HK) must tie to GL 211−214 net."""
-        gl_net = sum(
-            (
-                r.debit - r.credit
-                for r in self._repo.list_gl(batch_id)
-                if r.account_code.startswith(("211", "214"))
-            ),
+        """R-O04: FA remaining (NG−HK) ↔ GL 211−214; CCDC remaining ↔ GL 242."""
+        gl = self._repo.list_gl(batch_id)
+        assets = self._repo.list_assets(batch_id)
+        gl_fa = sum(
+            (r.debit - r.credit for r in gl if r.account_code.startswith(("211", "214"))),
             Decimal(0),
         )
-        assets_total = sum(
-            (r.remaining_value for r in self._repo.list_assets(batch_id)), Decimal(0)
+        fa_total = sum((r.remaining_value for r in assets if r.kind == "fixed_asset"), Decimal(0))
+        if (fa_total != 0 or gl_fa != 0) and abs(fa_total - gl_fa) > TOLERANCE:
+            raise UnbalancedOpeningError(f"GTCL TSCĐ 211 {fa_total} ≠ sổ cái {gl_fa}")
+        gl_242 = sum(
+            (r.debit - r.credit for r in gl if r.account_code.startswith("242")),
+            Decimal(0),
         )
-        if abs(assets_total - gl_net) > TOLERANCE:
-            raise UnbalancedOpeningError(f"GTCL TSCĐ 211 {assets_total} ≠ sổ cái {gl_net}")
+        ccdc_total = sum((r.remaining_value for r in assets if r.kind == "ccdc"), Decimal(0))
+        if (ccdc_total != 0 or gl_242 != 0) and abs(ccdc_total - gl_242) > TOLERANCE:
+            raise UnbalancedOpeningError(f"GTCL CCDC 242 {ccdc_total} ≠ sổ cái {gl_242}")
 
     def lock(self, batch_id: UUID, *, actor: UUID, reason: str) -> OpeningBatch:
         b = self._get_draft(batch_id)

@@ -81,6 +81,11 @@ def ready(app):
     coa.create_account(
         UUID(COMPANY), "6421", "QLDN ct", parent_code="642", actor=uuid4(), reason="c"
     )
+    coa.create_account(UUID(COMPANY), "242", "CPTT", actor=uuid4(), reason="c")
+    coa.create_account(
+        UUID(COMPANY), "2421", "CPTT ct", parent_code="242", actor=uuid4(), reason="c"
+    )
+    coa.create_account(UUID(COMPANY), "627", "SXC", actor=uuid4(), reason="c")
     from src.bricks.payment_terms.web_adapter import _series_service as ss
 
     ss.create_series(company_id=UUID(COMPANY), prefix="PT/", actor=uuid4(), reason="s")
@@ -370,3 +375,48 @@ class TestAssetFlow:
         bad = chief.post(f"/api/v1/opening-batches/{bid}/lock", json={"reason": "go"})
         assert bad.status_code == 409
         assert "211" in bad.get_json()["error"]
+
+
+class TestCCDCFlow:
+    def test_ccdc_posts_backfills_and_ties_242(self, chief, ready):
+        fy_id = ready["fy_id"]
+        r = chief.post(
+            "/api/v1/opening-batches",
+            json={"company_id": COMPANY, "fiscal_year_id": fy_id, "reason": "init"},
+        )
+        bid = r.get_json()["data"]["id"]
+        st = chief.post(
+            f"/api/v1/opening-batches/{bid}/assets",
+            json={
+                "reason": "ccdc",
+                "rows": [
+                    {
+                        "kind": "ccdc",
+                        "code": "CCDC-OP",
+                        "name": "Máy khoan",
+                        "original_cost": "12000000",
+                        "remaining_value": "7000000",
+                        "months_left": 7,
+                        "useful_life_months": 12,
+                        "expense_account": "627",
+                        "purchase_date": "2026-01-15",
+                    }
+                ],
+            },
+        )
+        assert st.status_code == 201, st.get_json()
+
+        # 242 mismatch blocks lock
+        chief.post(
+            f"/api/v1/opening-batches/{bid}/gl",
+            json={
+                "reason": "gl",
+                "lines": [
+                    {"account_code": "2421", "debit": "5000000", "credit": "0"},
+                    {"account_code": "4111", "debit": "0", "credit": "5000000"},
+                ],
+            },
+        )
+        bad = chief.post(f"/api/v1/opening-batches/{bid}/lock", json={"reason": "go"})
+        assert bad.status_code == 409
+        assert "242" in bad.get_json()["error"]

@@ -89,10 +89,10 @@ class CounterpartyBalance:
 
 @dataclass
 class AssetOpening:
-    """TSCĐ/CCDC opening row: book state at go-live (kind=fixed_asset)."""
+    """TSCĐ/CCDC opening row: book state at go-live."""
 
     batch_id: UUID
-    kind: str  # fixed_asset (ccdc arrives S4b)
+    kind: str  # fixed_asset | ccdc
     code: str
     name: str
     original_cost: Decimal
