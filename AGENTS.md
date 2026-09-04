@@ -7,7 +7,7 @@ _Flask + SQLAlchemy, Lego bricks, SQLite, Flask-Login RBAC._
 `uv` only — always `uv run`, never venv activate.
 
 ```bash
-uv run pytest -q                                   # full suite (1062 passed)
+uv run pytest -q                                   # full suite (1071 passed)
 uv run pytest tests/unit/company/ -k "<name>" -v   # single test
 uv run pytest tests/integration/test_company_api.py -v
 uv run ruff check src tests
@@ -86,15 +86,15 @@ Audit-chain: `seq` per entity (not timestamps); persist verbatim `ts_iso` (SQLit
 
 Compliance (2026-09, mof.gov.vn/vbpl.vn): MST `^[1-9]\d{2}(-\d{3})?$`, `^[1-9]\d{2}$|^[1-9]\d{3}$` accounts, TT99/2025 replaces TT200, TT58/2026 replaces TT132, NĐ 254/2026+TT91/2026 replace NĐ123/2020+70/2025 & TT32/2025 (e-invoice 01/07/2026), input VAT ≥5tr non-cash (Luật GTGT 2024 Đ.14 + NĐ181 Đ.26 sửa NĐ144/2026), VAT 8% NQ204+ NĐ174 →31/12/2026 (`rate_windows.py`), 10y retention.
 
-## Module Status (22 bricks, 1062 tests)
+## Module Status (23 bricks, 1071 tests)
 
 | Module | State |
 |---|---|
-| Company, Payment Terms & Numbering (SOD 202), Audit Log, FY & Periods, COA, Invoice/Voucher/Ledger (line VAT 0/5/8/10/-1 + 521 deductions + FX + mock e-invoice, pagination), Bank/Cash (+ reconciliation), Purchases (deductibility, XML ingest v2), Tax Engine (windows+SOD), Currencies (ISO4217+gap-fill+revaluation), Auth/User, Fixed Assets (SL), Tools & Equipment (CCDC), XML Ingest (TT91), Cost Centers+Dimensions, System Settings (period lock/CONFIG_FLAGS), Financial Statements (B01/B02/B03), Document Conversion (MarkItDown), **Inventory (HTK: product/location/move/shipment/period, 4 cost methods per SKU wavg/fifo/specific/standard, no 611, NXT/turnover, 152/632)**, **Party (Tryton party base: Customer/Supplier/Employee + Department, MST, company isolation)**, **UOM (code/name/factor>0/base)** | ✅ done — unit+integration |
+| Company, Payment Terms & Numbering (SOD 202), Audit Log, FY & Periods, COA, Invoice/Voucher/Ledger (line VAT 0/5/8/10/-1 + 521 deductions + FX + mock e-invoice, pagination), Bank/Cash (+ reconciliation), Purchases (deductibility, XML ingest v2), Tax Engine (windows+SOD), Currencies (ISO4217+gap-fill+revaluation), Auth/User, Fixed Assets (SL), Tools & Equipment (CCDC), XML Ingest (TT91), Cost Centers+Dimensions, System Settings (period lock/CONFIG_FLAGS), Financial Statements (B01/B02/B03), Document Conversion (MarkItDown), **Inventory (HTK: product/location/move/shipment/period, 4 cost methods per SKU wavg/fifo/specific/standard, no 611, NXT/turnover, 152/632)**, **Party (Tryton party base: Customer/Supplier/Employee + Department, MST, company isolation)**, **UOM (code/name/factor>0/base)**, **Opening Balance S1 (batch DRAFT/LOCKED, GL single-side, bank, reconcile, voucher go-live gate)** | ✅ done — unit+integration |
 
 ## Migrations
 
-`alembic/env.py` aggregates 20 Bases (ledger has no Base).
+`alembic/env.py` aggregates 21 Bases (ledger has no Base).
 
 ```bash
 DATABASE_URL="sqlite:///./sme_acct.db" uv run alembic upgrade head

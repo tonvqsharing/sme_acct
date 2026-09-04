@@ -19,6 +19,7 @@ from src.bricks.coa.services import (
 )
 from src.bricks.voucher.services import (
     AlreadyPostedError,
+    NoOpeningLockError,
     NoOpenPeriodError,
     UnbalancedVoucherError,
     VoucherNotFoundError,
@@ -75,6 +76,8 @@ def create_voucher() -> tuple[Any, int]:
         )
     except NoOpenPeriodError:
         return jsonify({"error": "Kỳ sổ chưa mở", "code": "NO_OPEN_PERIOD"}), 409
+    except NoOpeningLockError as exc:
+        return jsonify({"error": str(exc), "code": "NO_OPENING_LOCK"}), 409
     except UnbalancedVoucherError as exc:
         return jsonify({"error": str(exc), "code": "UNBALANCED_VOUCHER"}), 422
     except (

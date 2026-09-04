@@ -22,6 +22,10 @@ class NoOpenPeriodError(Exception):
     pass
 
 
+class NoOpeningLockError(Exception):
+    pass
+
+
 class AlreadyPostedError(Exception):
     pass
 
@@ -100,6 +104,7 @@ class VoucherService:
         regime_of: Any | None = None,
         on_posted: Any | None = None,
         bank_repo: Any | None = None,
+        opening_locked: Any | None = None,
     ) -> None:
         self._fy = fy
         self._coa = coa
@@ -108,6 +113,7 @@ class VoucherService:
         self._regime_of = regime_of
         self._on_posted = on_posted
         self._bank_repo = bank_repo
+        self._opening_locked = opening_locked
         self._repo = repo if repo is not None else _MemoryRepo()
 
     def create_voucher(
@@ -156,6 +162,10 @@ class VoucherService:
         # Gate order matches invoice brick: period → accounts → balance
         if self._fy.find_open_period(company_id, entry_date) is None:
             raise NoOpenPeriodError("Kỳ sổ chưa mở cho ngày hạch toán")
+        # Go-live gate: companies with an opening batch must lock it first.
+        # None = no batches yet (grandfathered) → skip.
+        if self._opening_locked is not None and self._opening_locked(company_id) is False:
+            raise NoOpeningLockError("Chưa khóa số dư đầu kỳ — hoàn tất setup trước khi ghi sổ")
         regime = self._regime_of(company_id) if self._regime_of else "tt133"
         for line in jl:
             self._coa.validate_posting_account(company_id, line.account_code, regime)

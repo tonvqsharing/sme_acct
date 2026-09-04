@@ -122,6 +122,7 @@ from src.bricks.invoice.web_adapter import init_invoice_service, invoice_bp
 from src.bricks.ledger.services import LedgerService
 from src.bricks.ledger.storage import SQLAlchemyLedgerSource
 from src.bricks.ledger.web_adapter import init_ledger_service, ledger_bp
+from src.bricks.opening_balance.web_adapter import opening_balance_bp
 from src.bricks.party.services import PartyService
 from src.bricks.party.storage import Base as PartyBase
 from src.bricks.party.storage import SQLAlchemyPartyRepository
@@ -299,6 +300,7 @@ def create_app(config: dict | None = None) -> Flask:
         inventory_bp,
         party_bp,
         uom_bp,
+        opening_balance_bp,
     ):
         app.register_blueprint(bp)
 
@@ -463,6 +465,26 @@ def create_app(config: dict | None = None) -> Flask:
             seq = self._dns.increment_sequence(target.id, sys_actor, self._prefix.rstrip("/"))
             return f"{target.prefix}{seq:06d}"
 
+    # ── Opening balance brick (before voucher — go-live gate) ─────────
+    from src.bricks.fiscal_year_period.storage import SQLAlchemyFiscalYearRepository as _FYR
+    from src.bricks.opening_balance.services import OpeningService
+    from src.bricks.opening_balance.storage import Base as OpeningBase
+    from src.bricks.opening_balance.storage import SQLAlchemyOpeningBalanceRepository
+    from src.bricks.opening_balance.web_adapter import init_opening_service
+
+    OpeningBase.metadata.create_all(engine)
+    _opening_repo = SQLAlchemyOpeningBalanceRepository(session_factory())
+    _fy_year_repo = _FYR(fy_session)
+    opening_svc = OpeningService(
+        repo=_opening_repo,
+        fy_years=_fy_year_repo,
+        coa=_CoaGate(),
+        regime_of=regime_provider,
+        audit=audit_svc,
+    )
+    init_opening_service(opening_svc)
+    app.opening_service = opening_svc  # type: ignore[attr-defined]
+
     # ── Voucher brick ───────────────────────────────────────────────────
     class _TermsAdapter:
         def get_default(self, company_id):
@@ -479,6 +501,7 @@ def create_app(config: dict | None = None) -> Flask:
         repo=SQLAlchemyVoucherRepository(voucher_session),
         regime_of=regime_provider,
         on_posted=_apply_cash_balances,
+        opening_locked=opening_svc.is_locked,
     )
     init_voucher_service(voucher_svc)
 

@@ -75,5 +75,13 @@
 - [x] Verify: 5 new tests RED→GREEN, ruff 0 black 0 mypy 0, pytest 1062
 - [x] Review: Approve → `tasks/review-config-slice3.md`
 
+## Opening S1 — GL + bank + lock gate ✅ Done — Approve `tasks/review-opening-s1.md`
+- [x] `opening_balance` brick (5-file Lego): batch DRAFT/LOCKED, GL single-side, bank rows
+- [x] Voucher go-live gate grandfathered (no batches → skip); 409 `NO_OPENING_LOCK` otherwise
+- [x] Migration `c3d4e5f6a7b8` guarded; scratch up/down/re-up green, single head
+- [x] Verify: 9 new tests RED→GREEN, ruff 0 black 0 mypy 0, pytest 1071
+- [x] Review: Approve → `tasks/review-opening-s1.md`
+- [ ] Next: Opening S2 — counterparty AR/AP rows + aging hook
+
 ## Final
 - [x] `pytest -q` 1023 green, `git push`, codegraph sync
