@@ -175,8 +175,10 @@ class SystemSettingsService:
         if approver == actor:
             raise SodViolationError("Cần người phê duyệt khác người thực hiện")
         cfg = self.get_config(company_id)
-        if len(cfg.e_invoice_series) >= MAX_SERIES:
-            raise MaxSeriesExceededError("Đã đạt giới hạn 15 series hóa đơn điện tử active")
+        if len(cfg.e_invoice_series) >= cfg.max_einvoice_series:
+            raise MaxSeriesExceededError(
+                f"Đã đạt giới hạn {cfg.max_einvoice_series} series hóa đơn điện tử active"
+            )
         if any(x.prefix == prefix for x in cfg.e_invoice_series):
             raise DuplicateSeriesPrefixError(f"Prefix {prefix} đã tồn tại")
         new_series = EInvoiceSeries(prefix=prefix, ca_signer=ca_signer)

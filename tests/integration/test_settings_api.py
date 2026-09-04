@@ -150,6 +150,33 @@ class TestConfigFlagIntegration:
         )
         assert r.status_code == 409
 
+    def test_update_law_threshold_flags(self, accountant_client):
+        """Law thresholds change via panel with versioning."""
+        cfg_r = accountant_client.get(f"/api/v1/system-settings/config/{COMPANY}")
+        version = cfg_r.get_json()["data"]["config_version"]
+
+        r = accountant_client.patch(
+            f"/api/v1/system-settings/config/{COMPANY}/flags/non_cash_threshold",
+            json={"value": 10000000, "config_version": version},
+        )
+        assert r.status_code == 200
+        assert r.get_json()["data"]["config_version"] == version + 1
+
+        cfg_r2 = accountant_client.get(f"/api/v1/system-settings/config/{COMPANY}")
+        assert cfg_r2.get_json()["data"]["non_cash_threshold"] == 10000000
+
+        r2 = accountant_client.patch(
+            f"/api/v1/system-settings/config/{COMPANY}/flags/max_einvoice_series",
+            json={"value": 10, "config_version": version + 1},
+        )
+        assert r2.status_code == 200
+
+        bad = accountant_client.patch(
+            f"/api/v1/system-settings/config/{COMPANY}/flags/non_cash_threshold",
+            json={"value": -5, "config_version": version + 2},
+        )
+        assert bad.status_code == 422
+
     def test_unknown_flag_rejected(self, accountant_client):
         """Unknown flag name rejected."""
         cfg_r = accountant_client.get(f"/api/v1/system-settings/config/{COMPANY}")

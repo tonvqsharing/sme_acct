@@ -64,6 +64,8 @@ CONFIG_FLAGS = frozenset(
         "decimal_places",
         "default_currency",
         "cost_center_required",
+        "non_cash_threshold",
+        "max_einvoice_series",
     }
 )
 
@@ -89,6 +91,12 @@ def _validate_flag_value(flag_name: str, value: Any) -> None:
             raise ValueError(f"default_currency must be 3-letter ISO code, got {value!r}")
     elif flag_name == "cost_center_required" and not isinstance(value, bool):
         raise ValueError(f"cost_center_required must be bool, got {value!r}")
+    elif flag_name == "non_cash_threshold":
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or value <= 0:
+            raise ValueError(f"non_cash_threshold must be > 0, got {value!r}")
+    elif flag_name == "max_einvoice_series":  # noqa: SIM102 — elif chain matches sibling branches
+        if isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= 99:
+            raise ValueError(f"max_einvoice_series must be 1-99, got {value!r}")
 
 
 @dataclass
@@ -108,6 +116,9 @@ class CompanyConfig:
     decimal_places: int = 2
     default_currency: str = "VND"
     cost_center_required: bool = False
+    # ── Law thresholds (NĐ181 Đ.26 5tr; series cap; gov-changeable) ────
+    non_cash_threshold: int = 5000000
+    max_einvoice_series: int = 15
 
     def with_series(self, series: EInvoiceSeries, actor: UUID) -> CompanyConfig:
         """Immutable update — returns new config, bumps version."""

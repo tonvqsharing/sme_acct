@@ -64,6 +64,8 @@ class SystemSettingsModel(Base):
     decimal_places: Mapped[int] = mapped_column(Integer, default=2)
     default_currency: Mapped[str] = mapped_column(String(3), default="VND")
     cost_center_required: Mapped[bool] = mapped_column(default=False)
+    non_cash_threshold: Mapped[int] = mapped_column(Integer, default=5000000)
+    max_einvoice_series: Mapped[int] = mapped_column(Integer, default=15)
     # ── Legal review ──────────────────────────────────────────────────
     legal_reviewed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
@@ -111,6 +113,8 @@ class SQLAlchemySystemSettingsRepository(SystemSettingsRepositoryPort):
             decimal_places=m.decimal_places,
             default_currency=m.default_currency,
             cost_center_required=m.cost_center_required,
+            non_cash_threshold=m.non_cash_threshold,
+            max_einvoice_series=m.max_einvoice_series,
             legal_reviewed_at=m.legal_reviewed_at,
             legal_reviewed_by=UUID(m.legal_reviewed_by) if m.legal_reviewed_by else None,
         )
@@ -131,6 +135,8 @@ class SQLAlchemySystemSettingsRepository(SystemSettingsRepositoryPort):
         m.decimal_places = cfg.decimal_places
         m.default_currency = cfg.default_currency
         m.cost_center_required = cfg.cost_center_required
+        m.non_cash_threshold = cfg.non_cash_threshold
+        m.max_einvoice_series = cfg.max_einvoice_series
         m.legal_reviewed_at = cfg.legal_reviewed_at
         m.legal_reviewed_by = str(cfg.legal_reviewed_by) if cfg.legal_reviewed_by else None
         self._session.commit()

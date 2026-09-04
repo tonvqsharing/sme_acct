@@ -57,5 +57,12 @@
 - [x] Review: Approve → `tasks/review-slice8.md`
 - [ ] Follow-up (separate): backfill base inventory tables for alembic-only lineage; dedicated variance GL account
 
+## Config Slice 1 — Law thresholds as CONFIG flags ✅ Done — Approve `tasks/review-config-slice1.md`
+- [x] `non_cash_threshold` (default 5tr) + `max_einvoice_series` (default 15) versioned flags
+- [x] Series-cap check reads config; purchases threshold wiring deferred to Slice 2
+- [x] Verify: 5 new tests RED→GREEN, ruff 0 black 0 mypy 0, pytest 1050
+- [x] Review: Approve → `tasks/review-config-slice1.md`
+- [ ] Next: Config Slice 2 — purchases threshold port + 8% exclusion table
+
 ## Final
 - [x] `pytest -q` 1023 green, `git push`, codegraph sync
