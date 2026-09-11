@@ -2,7 +2,7 @@
 ## State
 IN_PROGRESS
 ## Current Task
-Task 2 complete — ready for Task 3 (Database Strategy & Persistence / MariaDB + EF Core).
+Task 3 [G3] Database Strategy & Persistence (PostgreSQL 16.14 + EF Core 10 + Npgsql) — IN PROGRESS. Research validation for DB platform change completed 2026-09-11.
 ## Task Progress
 2 / 7 complete
 ## Attempts On Current Task
@@ -94,7 +94,7 @@ All 8 Task 2 Verify criteria re-checked from scratch:
 7. `dotnet test -c Release` → **exit 0, 6/6 passed, 0 failed, 0 skipped**.
 8. **API smoke** — launched built dll directly (single tracked PID **22555**), `curl http://localhost:5189/` → **HTTP 200**, body title `Trang chủ - SmeAccounting`, **clean kill by PID confirmed** (no pkill/self-match). Log: 1 line = known-benign `StaticFileMiddleware[16] The WebRootPath was not found` (env content-root artifact, MEMORY #59 — app launched from repo root, no wwwroot; not app code, not a build warning).
 
-**Stop condition**: PLAN.md = 7 tasks; **2/7 complete → 5 remain → loop continues to Task 3** (Database Strategy & Persistence / MariaDB + EF Core).
+**Stop condition**: PLAN.md = 7 tasks; **2/7 complete → 5 remain → loop continues to Task 3** (Database Strategy & Persistence / PostgreSQL 16.14 + EF Core 10 + Npgsql).
 
 Non-blocking note (no action for Task 2): smoke dll path is `artifacts/bin/SmeAccounting.Api/release/SmeAccounting.Api.dll` (no `net10.0` subfolder).
 

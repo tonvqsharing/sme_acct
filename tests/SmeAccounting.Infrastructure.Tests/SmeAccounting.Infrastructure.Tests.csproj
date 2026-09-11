@@ -14,7 +14,7 @@
     <PackageReference Include="xunit.v3" />
     <PackageReference Include="NSubstitute" />
     <PackageReference Include="AwesomeAssertions" />
-    <PackageReference Include="Testcontainers.MariaDb" />
+    <PackageReference Include="Testcontainers.PostgreSql" />
     <PackageReference Include="Testcontainers.XunitV3" />
     <PackageReference Include="Respawn" />
   </ItemGroup>

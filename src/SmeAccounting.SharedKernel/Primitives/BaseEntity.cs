@@ -2,9 +2,11 @@ namespace SmeAccounting.SharedKernel;
 
 public abstract class BaseEntity
 {
-    protected BaseEntity() => Id = Guid.NewGuid();
+    protected BaseEntity()
+    {
+    }
 
-    public Guid Id { get; protected set; }
+    public long Id { get; protected set; }
 
     private readonly List<IDomainEvent> _domainEvents = [];
 

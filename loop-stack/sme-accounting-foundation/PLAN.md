@@ -2,7 +2,7 @@
 ## Mode
 build
 ## Goal
-Build production-ready project foundation and layout for Vietnamese SME Accounting Web Application. ASP.NET Core 10, MariaDB, Clean Architecture, Modular Monolith, on-premise. Foundation only — architecture, modules, projects, DB strategy, security, testing, deployment, docs.
+Build production-ready project foundation and layout for Vietnamese SME Accounting Web Application. ASP.NET Core 10, PostgreSQL 16.14, Clean Architecture, Modular Monolith, on-premise. Foundation only — architecture, modules, projects, DB strategy, security, testing, deployment, docs. [Research Validation 2026-09-11: database baseline changed from MariaDB/Pomelo to PostgreSQL 16.14/Npgsql/EF Core 10]
 ## Stop Condition
 all tasks in loop-stack/sme-accounting-foundation/PLAN.md checked
 ## Budget
@@ -36,7 +36,7 @@ Create:
 - `.slnx` (slnx XML format, .NET 10 default), `global.json` pinning SDK 10.0.x (`rollForward: latestFeature`)
 - `Directory.Build.props` — net10.0, Nullable, ImplicitUsings, LangVersion latest, `TreatWarningsAsErrors`, `AnalysisLevel latest-recommended`; **no TFM-conditional logic in .props** (moves to `.targets`)
 - `Directory.Build.targets` — any TFM-conditioned targets only
-- `Directory.Packages.props` — CPM: MediatR, FluentValidation(+DI ext), Pomelo.EntityFrameworkCore.MySql **9.0.0**, Serilog.AspNetCore(+enrichers, compact format, Seq), xUnit v3 + MTP runner, NSubstitute, AwesomeAssertions, NetArchTest.Rules **1.3.2** (pinned), Mvc.Testing, Testcontainers.MariaDb, Testcontainers.XunitV3, Respawn, AspNetCore.HealthChecks.MySql, EF Core (9.x, implicit via Pomelo). Enable CentralPackageTransitivePinningEnabled.
+- `Directory.Packages.props` — CPM: MediatR, FluentValidation(+DI ext), Npgsql (EF Core 10 provider for PostgreSQL 16.14) [historical: Pomelo.EntityFrameworkCore.MySql 9.0.0 / Testcontainers.MariaDb / AspNetCore.HealthChecks.MySql superseded 2026-09-11], Serilog.AspNetCore(+enrichers, compact format, Seq), xUnit v3 + MTP runner, NSubstitute, AwesomeAssertions, NetArchTest.Rules **1.3.2** (pinned), Mvc.Testing, Testcontainers.PostgreSql, Testcontainers.XunitV3, Respawn, AspNetCore.HealthChecks.Postgres, EF Core 10. Enable CentralPackageTransitivePinningEnabled.
 - `NuGet.config` — single nuget.org source + package source mapping (dependency-confusion defense)
 - `.editorconfig` — file-scoped namespaces, analyzer severity overrides, line length
 - `.gitignore` (artifacts/, bin/, obj/, .env), `.dockerignore`
@@ -76,23 +76,24 @@ Status: VERIFIED_PASS 2026-09-11 (audit CLEAN, verifier VERIFIED_PASS). 36 modul
 
 ---
 
-### Task 3 [G3] — Database Strategy & Persistence (MariaDB/EF Core)
+### Task 3 [G3] — Database Strategy & Persistence (PostgreSQL 16.14/EF Core 10/Npgsql)
 **Pillar:** database. **Blocked by:** Task 2. **Blocks:** Task 4, 6.
 
-Inside `SmeAccounting.Infrastructure` (schema owner per MEMORY; migrations generated with `--project Infrastructure --startup-project Api` exactly as RESEARCH CI shows):
+Inside `SmeAccounting.Infrastructure` (schema owner per MEMORY; migrations generated with `--project Infrastructure --startup-project Api`):
 - `SmeAccountingDbContext` + entity type configurations via model conventions
-- Model-wide: `HasCharSet("utf8mb4").UseCollation("utf8mb4_unicode_ci")`, decimal default precision `18,2`, **DECIDE OQ-1** (snake_case vs PascalCase) and record it, audit fields + soft delete on all mutable entities, global query filter `!IsDeleted`
+- Model-wide: `decimal` default precision `18,2`, **DECIDE OQ-1** (snake_case vs PascalCase for PostgreSQL) and record it, audit fields + soft delete on all mutable entities, global query filter `!IsDeleted`. Charset/collation not required for PostgreSQL; Unicode handled natively.
 - Minimal foundation entities only, no accounting engine: `Company`/`Branch` (org skeleton, single-tenant + `CompanyId` per OQ-2), COA `Account` (code/name/type/level — supports Circular 133 open chart), `AuditLogEntry`. **No journal/ledger/posting logic.**
-- Pomelo `UseMySql(..., new MariaDbServerVersion(10, 11, 0))` (explicit, never AutoDetect in prod), `EnableRetryOnFailure`, `DisableSensitiveDataLogging`
+- Npgsql `UseNpgsql(connectionString, npgsqlOptions => { })` with explicit PostgreSQL server version 16, `EnableRetryOnFailure`, `DisableSensitiveDataLogging`
 - `IDesignTimeDbContextFactory` for headless tooling/bundles
 - Initial migration + idempotent SQL script regeneration
-- Seeds — `UseSeeding` **and** `UseAsyncSeeding` (both, idempotent, existence-checked): Circular 133 COA (49 Level-1 + Level-2, resolve OQ-10: 133 default, structure permits 99/200 alternates), 5 default roles, default admin user (hashed password, env-driven), Development-only demo guard. `HasData` only for tiny static lookups (iso currencies). No `DeleteData` traps.
+- Seeds — `UseSeeding` **and** `UseAsyncSeeding` (both, idempotent, existence-checked): COA seed structure for Circular 133 / Circular 99 alternate, 5 default roles, default admin user (hashed password, env-driven), Development-only demo guard. `HasData` only for tiny static lookups (iso currencies). No `DeleteData` traps.
 - Startup check: `PendingModelChangeException` synchronization check — **never** auto-migrate in Production
 - Resolve + record OQ-7 (audit granularity = entity-level before/after snapshot for foundation)
+- Historical note: prior MariaDB/Pomelo baseline superseded by PostgreSQL 16.14/Npgsql per research validation 2026-09-11.
 
 **Verify:**
-- Initial migration SQL generated; regenerated idempotent script applies cleanly (against local/dev MariaDB if server available; otherwise static SQL review), second run is no-op
-- Generated SQL shows `utf8mb4_unicode_ci` on DB/tables, DECIMAL(18,2), decided naming convention, soft-delete query filter, audit columns on mutable tables
+- Initial migration SQL generated; regenerated idempotent script applies cleanly (against local/dev PostgreSQL 16.14 if server available; otherwise static SQL review), second run is no-op
+- Generated SQL shows `numeric` for money, `timestamptz` timestamps, decided naming convention, soft-delete query filter, audit columns on mutable tables
 - COA seed yields 49 Level-1 accounts; re-seed idempotent (run twice, no duplicates/errors)
 - Pending-model-change check passes
 - Domain persists-ignorant: no EF attributes/annotations in Domain/SharedKernel
@@ -152,13 +153,13 @@ Inside `SmeAccounting.Infrastructure` (schema owner per MEMORY; migrations gener
 - Architecture tests — NetArchTest.Rules 1.3.2 asserting RESEARCH §9 hard rules: Domain zero external deps; Application→Domain only; Infrastructure→App+Domain; Api→App+Infra; no circular deps; no business logic in controllers; no `static` domain methods; persistence-ignorant domain; no module→module references
 - Unit: SharedKernel (BaseEntity, soft delete, audit, ValueObject, Result), FV validators, MediatR pipeline behaviour
 - Security: policy verification (roles/permissions), lockout, antiforgery, authorization handlers
-- DB/integration: `WebApplicationFactory` + Testcontainers.MariaDb + Respawn; **env-var connection-string override** so CI runs against `mariadb:11.4` service (skip container boot when Docker absent — document locally)
-- DB tests: seed idempotency (COA 49 rows, roles, admin), audit fields written, soft-delete filter hides rows, utf8mb4 collation, PendingModelChange check test
+- DB/integration: `WebApplicationFactory` + Testcontainers.PostgreSql + Respawn; **env-var connection-string override** so CI runs against PostgreSQL service (skip container boot when Docker absent — document locally)
+- DB tests: seed idempotency (COA 49 rows, roles, admin), audit fields written, soft-delete filter hides rows, PendingModelChange check test
 - Per-project READMEs: how to run each test tier
 
 **Verify:**
 - `dotnet test -c Release` (MTP): all unit/application/security/architecture tests pass locally (no Docker required)
-- Integration/DB test code present, CI-wired (env-var override); green against real MariaDB in Task 7 CI
+- Integration/DB test code present, CI-wired (env-var override); green against real PostgreSQL 16.14 in Task 7 CI
 - All 9+ architecture rules pass; assertion lib single-consistent
 - Test projects restore/build with `--locked-mode`
 
@@ -176,9 +177,9 @@ Inside `SmeAccounting.Infrastructure` (schema owner per MEMORY; migrations gener
 **Verify:**
 - All doc files present, cross-linked, match repo layout/code and resolved OQs
 - Dockerfile + compose statically valid; `docker build` passes if Docker available (else review + CI)
-- CI workflow YAML valid and green on push (integration tests hit real MariaDB here)
+- CI workflow YAML valid and green on push (integration tests hit real PostgreSQL 16.14 here)
 - Scripts executable + idempotent; backup script runbook matches implementation
-- README quickstart reproduces local run (dev MariaDB + `dotnet run`)
+- README quickstart reproduces local run (dev PostgreSQL + `dotnet run`)
 
 ---
 

@@ -1,8 +1,9 @@
 # Loop Memory
 Updated continuously by all agents as they discover things.
 ## Learnings
-### Stack (locked)
-- **net10.0 / ASP.NET Core 10 / EF Core 9.0.0 via Pomelo.EntityFrameworkCore.MySql 9.0.0 / MariaDB 10.11 LTS / utf8mb4_unicode_ci / Clean Architecture Modular Monolith / MVC** (assumption Q4, 12 MVP modules).
+### Stack (locked — RESEARCH VALIDATION 2026-09-11)
+- **net10.0 / ASP.NET Core 10 / EF Core 10 / Npgsql / PostgreSQL 16.14 / Clean Architecture Modular Monolith / MVC** (assumption Q4, 12 MVP modules).
+- Historical: MariaDB 10.11 LTS / Pomelo 9.0.0 baseline was superseded by PostgreSQL 16.14 per research validation; previous MariaDB decisions are retained in RESEARCH.md as historical reference only.
 - **DB schema owned by Infrastructure TFSP module; EF migrations idempotent SQL + migration bundle artifact (CI-generated); PendingModelChangeException sync check on startup.**
 - **Domain**: Circular 133 has 49 Level-1 accounts (111-911, open extension policy); double-entry with balanced transactions and derived balances; VAS 10 FX rules; 90-day annual FS deadline.
 - **Open TODOs** (10 Qs): naming convention, tenant ID field, assertion lib, period automation, inventory costing, rate API, audit granularity, workflow engine, report versioning, seed data scope — executor must resolve during planning.

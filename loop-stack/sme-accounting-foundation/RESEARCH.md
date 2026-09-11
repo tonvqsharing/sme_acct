@@ -1,5 +1,46 @@
 # Research Log
 
+## Pre-Implementation Baseline — Research Validation 2026-09-11
+
+**Database baseline change**
+- OLD baseline: MariaDB 10.11 LTS / 11.4 LTS, Pomelo.EntityFrameworkCore.MySql 9.0.0, EF Core 9.x, Testcontainers.MariaDb, utf8mb4_unicode_ci.
+- NEW baseline: PostgreSQL 16.14, ASP.NET Core 10, EF Core 10, Npgsql, Testcontainers.PostgreSql.
+- PostgreSQL 16.14 is installed on Windows 10 and reachable from Kali WSL at 172.21.208.1:5432. Connection verified via `psql`.
+- All MariaDB-specific decisions in this file are retained for historical reference only and must NOT be used for implementation unless explicitly re-validated.
+
+**Accounting regulatory baseline — uncertainty explicit**
+- Previous research referenced Circular 133/2016/TT-BTC, Circular 200/2014/TT-BTC, Circular 99/2025/TT-BTC.
+- Status: OPEN QUESTION — which regime is the target for MVP? Circular 133 is simplified SME regime, Circular 99 replaces Circular 200 for enterprises. No regulatory authority has been confirmed in this loop.
+- CONFIRMED: Vietnam requires numbered chart of accounts, double-entry invariants, VAT tracking, VAS 10 FX rules, 90-day FS deadline.
+- ASSUMPTION to be resolved: default COA seed set and reporting templates must be confirmed with authoritative source before seeding.
+- No accounting business rules will be implemented in foundation phase.
+
+**Technology validation summary**
+- PostgreSQL 16 + ASP.NET Core 10: compatible.
+- EF Core 10 + Npgsql: Npgsql 8.x+ targets EF Core 10; provider supports PostgreSQL 16.
+- Data types for accounting: `numeric(18,2)` for money, `timestamptz` for timestamps, UUID or bigint for PKs — OPEN QUESTION.
+- Concurrency: optimistic with `xmin`/`RowVersion` or `xmin` timestamp — TECHNICAL DECISION pending.
+- Indexing: btree on account codes, date ranges, composite indexes — RECOMMENDATION.
+- JSONB viable for audit snapshots — RECOMMENDATION.
+- Testcontainers.PostgreSql supports integration tests; Docker required locally.
+
+**Requirements classification snapshot**
+- CONFIRMED REQUIREMENT: ASP.NET Core 10, Clean Architecture, Modular Monolith, on-premise deployment, Vietnamese UI, 12 module boundaries, Identity/Authorization foundations, audit fields, soft delete.
+- ASSUMPTION: single tenant, MVC, MVC cookie auth, 5 standard roles, branch-scoped access, CompanyId field, soft delete mandatory, workflow/approval, inventory costing, accounting period automation, audit granularity, report versioning.
+- OPEN QUESTION: OQ-1 naming convention (snake_case vs PascalCase — PostgreSQL prefers snake_case), OQ-2 tenant-ID field from day 1, OQ-3 assertion library, OQ-4 MVC vs Minimal API, OQ-5 multi-tenant strategy, OQ-6 payroll, OQ-7 audit granularity, OQ-8 workflow engine, OQ-9 report versioning, OQ-10 COA seed source.
+- TECHNICAL DECISION: EF Core migrations idempotent SQL, Central Package Management, MediatR 12.5.0, Modular monolith with IModule registry.
+- RISK: accounting regime ambiguity, PostgreSQL migration from existing MariaDB research, Windows dev/Linux prod parity, Npgsql EF Core 10 version pin, license changes for FluentAssertions/AwesomeAssertions.
+
+**Non-goals for foundation**
+- No accounting engine implementation, no business rules invention, no fake CRUD, no complete COA seed with authoritative data, no e-invoice integration, no payroll.
+
+**Items Planner must resolve before coding**
+- Confirm accounting regime and authoritative source for COA/report templates.
+- Decide PK strategy UUID vs bigint, naming convention for PostgreSQL, timestamp strategy, concurrency token.
+- Select Npgsql version for EF Core 10 and pin in Directory.Packages.props.
+- Re-validate Testcontainers.PostgreSql version and CI strategy for Windows-hosted PostgreSQL vs Linux CI.
+- Resolve open questions OQ-1, OQ-2, OQ-3, OQ-7, OQ-10.
+
 ## Context & Prior Work
 
 ### Repository State

@@ -15,7 +15,7 @@
     <PackageReference Include="NSubstitute" />
     <PackageReference Include="AwesomeAssertions" />
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
-    <PackageReference Include="Testcontainers.MariaDb" />
+    <PackageReference Include="Testcontainers.PostgreSql" />
     <PackageReference Include="Testcontainers.XunitV3" />
     <PackageReference Include="Respawn" />
   </ItemGroup>
