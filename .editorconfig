@@ -28,6 +28,7 @@ dotnet_diagnostic.IDE0005.severity = suggestion # build-time IDE0005 needs Gener
 dotnet_diagnostic.IDE0008.severity = suggestion
 dotnet_diagnostic.IDE0058.severity = none
 dotnet_diagnostic.CS1591.severity = none       # missing XML doc comments (docs not generated)
+dotnet_diagnostic.CA1000.severity = none       # intentional static Create/Fail factories on Result<T> (R9 dec. 2)
 
 [*.{xml,json,yml,yaml,props,targets,slnx}]
 indent_style = space

@@ -2,9 +2,17 @@
   "version": 2,
   "dependencies": {
     "net10.0": {
+      "MediatR.Contracts": {
+        "type": "Transitive",
+        "resolved": "2.0.1",
+        "contentHash": "FYv95bNT4UwcNA+G/J1oX5OpRiSUxteXaUt2BJbRSdRNiIUNbggJF69wy6mnk2wYToaanpdXZdCwVylt96MpwQ=="
+      },
       "smeaccounting.application": {
         "type": "Project",
         "dependencies": {
+          "FluentValidation": "[12.1.1, )",
+          "FluentValidation.DependencyInjectionExtensions": "[12.1.1, )",
+          "MediatR": "[12.5.0, )",
           "SmeAccounting.Domain": "[1.0.0, )",
           "SmeAccounting.SharedKernel": "[1.0.0, )"
         }
@@ -20,8 +28,296 @@
           "SmeAccounting.SharedKernel": "[1.0.0, )"
         }
       },
+      "smeaccounting.modules.accountingperiod.application": {
+        "type": "Project",
+        "dependencies": {
+          "MediatR": "[12.5.0, )",
+          "SmeAccounting.Application": "[1.0.0, )",
+          "SmeAccounting.Modules.AccountingPeriod.Domain": "[1.0.0, )",
+          "SmeAccounting.SharedKernel": "[1.0.0, )"
+        }
+      },
+      "smeaccounting.modules.accountingperiod.domain": {
+        "type": "Project",
+        "dependencies": {
+          "SmeAccounting.Domain": "[1.0.0, )",
+          "SmeAccounting.SharedKernel": "[1.0.0, )"
+        }
+      },
+      "smeaccounting.modules.accountingperiod.infrastructure": {
+        "type": "Project",
+        "dependencies": {
+          "SmeAccounting.Modules.AccountingPeriod.Application": "[1.0.0, )"
+        }
+      },
+      "smeaccounting.modules.audit.application": {
+        "type": "Project",
+        "dependencies": {
+          "MediatR": "[12.5.0, )",
+          "SmeAccounting.Application": "[1.0.0, )",
+          "SmeAccounting.Modules.Audit.Domain": "[1.0.0, )",
+          "SmeAccounting.SharedKernel": "[1.0.0, )"
+        }
+      },
+      "smeaccounting.modules.audit.domain": {
+        "type": "Project",
+        "dependencies": {
+          "SmeAccounting.Domain": "[1.0.0, )",
+          "SmeAccounting.SharedKernel": "[1.0.0, )"
+        }
+      },
+      "smeaccounting.modules.audit.infrastructure": {
+        "type": "Project",
+        "dependencies": {
+          "SmeAccounting.Modules.Audit.Application": "[1.0.0, )"
+        }
+      },
+      "smeaccounting.modules.authorization.application": {
+        "type": "Project",
+        "dependencies": {
+          "MediatR": "[12.5.0, )",
+          "SmeAccounting.Application": "[1.0.0, )",
+          "SmeAccounting.Modules.Authorization.Domain": "[1.0.0, )",
+          "SmeAccounting.SharedKernel": "[1.0.0, )"
+        }
+      },
+      "smeaccounting.modules.authorization.domain": {
+        "type": "Project",
+        "dependencies": {
+          "SmeAccounting.Domain": "[1.0.0, )",
+          "SmeAccounting.SharedKernel": "[1.0.0, )"
+        }
+      },
+      "smeaccounting.modules.authorization.infrastructure": {
+        "type": "Project",
+        "dependencies": {
+          "SmeAccounting.Modules.Authorization.Application": "[1.0.0, )"
+        }
+      },
+      "smeaccounting.modules.chartofaccounts.application": {
+        "type": "Project",
+        "dependencies": {
+          "MediatR": "[12.5.0, )",
+          "SmeAccounting.Application": "[1.0.0, )",
+          "SmeAccounting.Modules.ChartOfAccounts.Domain": "[1.0.0, )",
+          "SmeAccounting.SharedKernel": "[1.0.0, )"
+        }
+      },
+      "smeaccounting.modules.chartofaccounts.domain": {
+        "type": "Project",
+        "dependencies": {
+          "SmeAccounting.Domain": "[1.0.0, )",
+          "SmeAccounting.SharedKernel": "[1.0.0, )"
+        }
+      },
+      "smeaccounting.modules.chartofaccounts.infrastructure": {
+        "type": "Project",
+        "dependencies": {
+          "SmeAccounting.Modules.ChartOfAccounts.Application": "[1.0.0, )"
+        }
+      },
+      "smeaccounting.modules.financialreporting.application": {
+        "type": "Project",
+        "dependencies": {
+          "MediatR": "[12.5.0, )",
+          "SmeAccounting.Application": "[1.0.0, )",
+          "SmeAccounting.Modules.FinancialReporting.Domain": "[1.0.0, )",
+          "SmeAccounting.SharedKernel": "[1.0.0, )"
+        }
+      },
+      "smeaccounting.modules.financialreporting.domain": {
+        "type": "Project",
+        "dependencies": {
+          "SmeAccounting.Domain": "[1.0.0, )",
+          "SmeAccounting.SharedKernel": "[1.0.0, )"
+        }
+      },
+      "smeaccounting.modules.financialreporting.infrastructure": {
+        "type": "Project",
+        "dependencies": {
+          "SmeAccounting.Modules.FinancialReporting.Application": "[1.0.0, )"
+        }
+      },
+      "smeaccounting.modules.generalledger.application": {
+        "type": "Project",
+        "dependencies": {
+          "MediatR": "[12.5.0, )",
+          "SmeAccounting.Application": "[1.0.0, )",
+          "SmeAccounting.Modules.GeneralLedger.Domain": "[1.0.0, )",
+          "SmeAccounting.SharedKernel": "[1.0.0, )"
+        }
+      },
+      "smeaccounting.modules.generalledger.domain": {
+        "type": "Project",
+        "dependencies": {
+          "SmeAccounting.Domain": "[1.0.0, )",
+          "SmeAccounting.SharedKernel": "[1.0.0, )"
+        }
+      },
+      "smeaccounting.modules.generalledger.infrastructure": {
+        "type": "Project",
+        "dependencies": {
+          "SmeAccounting.Modules.GeneralLedger.Application": "[1.0.0, )"
+        }
+      },
+      "smeaccounting.modules.identity.application": {
+        "type": "Project",
+        "dependencies": {
+          "MediatR": "[12.5.0, )",
+          "SmeAccounting.Application": "[1.0.0, )",
+          "SmeAccounting.Modules.Identity.Domain": "[1.0.0, )",
+          "SmeAccounting.SharedKernel": "[1.0.0, )"
+        }
+      },
+      "smeaccounting.modules.identity.domain": {
+        "type": "Project",
+        "dependencies": {
+          "SmeAccounting.Domain": "[1.0.0, )",
+          "SmeAccounting.SharedKernel": "[1.0.0, )"
+        }
+      },
+      "smeaccounting.modules.identity.infrastructure": {
+        "type": "Project",
+        "dependencies": {
+          "SmeAccounting.Modules.Identity.Application": "[1.0.0, )"
+        }
+      },
+      "smeaccounting.modules.journal.application": {
+        "type": "Project",
+        "dependencies": {
+          "MediatR": "[12.5.0, )",
+          "SmeAccounting.Application": "[1.0.0, )",
+          "SmeAccounting.Modules.Journal.Domain": "[1.0.0, )",
+          "SmeAccounting.SharedKernel": "[1.0.0, )"
+        }
+      },
+      "smeaccounting.modules.journal.domain": {
+        "type": "Project",
+        "dependencies": {
+          "SmeAccounting.Domain": "[1.0.0, )",
+          "SmeAccounting.SharedKernel": "[1.0.0, )"
+        }
+      },
+      "smeaccounting.modules.journal.infrastructure": {
+        "type": "Project",
+        "dependencies": {
+          "SmeAccounting.Modules.Journal.Application": "[1.0.0, )"
+        }
+      },
+      "smeaccounting.modules.masterdata.application": {
+        "type": "Project",
+        "dependencies": {
+          "MediatR": "[12.5.0, )",
+          "SmeAccounting.Application": "[1.0.0, )",
+          "SmeAccounting.Modules.MasterData.Domain": "[1.0.0, )",
+          "SmeAccounting.SharedKernel": "[1.0.0, )"
+        }
+      },
+      "smeaccounting.modules.masterdata.domain": {
+        "type": "Project",
+        "dependencies": {
+          "SmeAccounting.Domain": "[1.0.0, )",
+          "SmeAccounting.SharedKernel": "[1.0.0, )"
+        }
+      },
+      "smeaccounting.modules.masterdata.infrastructure": {
+        "type": "Project",
+        "dependencies": {
+          "SmeAccounting.Modules.MasterData.Application": "[1.0.0, )"
+        }
+      },
+      "smeaccounting.modules.organization.application": {
+        "type": "Project",
+        "dependencies": {
+          "MediatR": "[12.5.0, )",
+          "SmeAccounting.Application": "[1.0.0, )",
+          "SmeAccounting.Modules.Organization.Domain": "[1.0.0, )",
+          "SmeAccounting.SharedKernel": "[1.0.0, )"
+        }
+      },
+      "smeaccounting.modules.organization.domain": {
+        "type": "Project",
+        "dependencies": {
+          "SmeAccounting.Domain": "[1.0.0, )",
+          "SmeAccounting.SharedKernel": "[1.0.0, )"
+        }
+      },
+      "smeaccounting.modules.organization.infrastructure": {
+        "type": "Project",
+        "dependencies": {
+          "SmeAccounting.Modules.Organization.Application": "[1.0.0, )"
+        }
+      },
+      "smeaccounting.modules.posting.application": {
+        "type": "Project",
+        "dependencies": {
+          "MediatR": "[12.5.0, )",
+          "SmeAccounting.Application": "[1.0.0, )",
+          "SmeAccounting.Modules.Posting.Domain": "[1.0.0, )",
+          "SmeAccounting.SharedKernel": "[1.0.0, )"
+        }
+      },
+      "smeaccounting.modules.posting.domain": {
+        "type": "Project",
+        "dependencies": {
+          "SmeAccounting.Domain": "[1.0.0, )",
+          "SmeAccounting.SharedKernel": "[1.0.0, )"
+        }
+      },
+      "smeaccounting.modules.posting.infrastructure": {
+        "type": "Project",
+        "dependencies": {
+          "SmeAccounting.Modules.Posting.Application": "[1.0.0, )"
+        }
+      },
+      "smeaccounting.modules.tax.application": {
+        "type": "Project",
+        "dependencies": {
+          "MediatR": "[12.5.0, )",
+          "SmeAccounting.Application": "[1.0.0, )",
+          "SmeAccounting.Modules.Tax.Domain": "[1.0.0, )",
+          "SmeAccounting.SharedKernel": "[1.0.0, )"
+        }
+      },
+      "smeaccounting.modules.tax.domain": {
+        "type": "Project",
+        "dependencies": {
+          "SmeAccounting.Domain": "[1.0.0, )",
+          "SmeAccounting.SharedKernel": "[1.0.0, )"
+        }
+      },
+      "smeaccounting.modules.tax.infrastructure": {
+        "type": "Project",
+        "dependencies": {
+          "SmeAccounting.Modules.Tax.Application": "[1.0.0, )"
+        }
+      },
       "smeaccounting.sharedkernel": {
         "type": "Project"
+      },
+      "FluentValidation": {
+        "type": "CentralTransitive",
+        "requested": "[12.1.1, )",
+        "resolved": "12.1.1",
+        "contentHash": "EPpkIe1yh1a0OXyC100oOA8WMbZvqUu5plwhvYcb7oSELfyUZzfxV48BLhvs3kKo4NwG7MGLNgy1RJiYtT8Dpw=="
+      },
+      "FluentValidation.DependencyInjectionExtensions": {
+        "type": "CentralTransitive",
+        "requested": "[12.1.1, )",
+        "resolved": "12.1.1",
+        "contentHash": "D0VXh4dtjjX2aQizuaa0g6R8X3U1JaVqJPfGCvLwZX9t/O2h7tkpbitbadQMfwcgSPdDbI2vDxuwRMv/Uf9dHA==",
+        "dependencies": {
+          "FluentValidation": "12.1.1"
+        }
+      },
+      "MediatR": {
+        "type": "CentralTransitive",
+        "requested": "[12.5.0, )",
+        "resolved": "12.5.0",
+        "contentHash": "vqm2H8/nqL5NAJHPhsG1JOPwfkmbVrPyh4svdoRzu+uZh6Ex7PRoHBGsLYC0/RWCEJFqD1ohHNpteQvql9OktA==",
+        "dependencies": {
+          "MediatR.Contracts": "[2.0.1, 3.0.0)"
+        }
       }
     }
   }

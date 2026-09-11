@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>SmeAccounting.Modules.Audit.Infrastructure</RootNamespace>
+    <AssemblyName>SmeAccounting.Modules.Audit.Infrastructure</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../Application/SmeAccounting.Modules.Audit.Application.csproj" />
+  </ItemGroup>
+
+</Project>

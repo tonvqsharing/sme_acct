@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>SmeAccounting.Modules.Journal.Domain</RootNamespace>
+    <AssemblyName>SmeAccounting.Modules.Journal.Domain</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../../SmeAccounting.Domain/SmeAccounting.Domain.csproj" />
+    <ProjectReference Include="../../../SmeAccounting.SharedKernel/SmeAccounting.SharedKernel.csproj" />
+  </ItemGroup>
+
+</Project>

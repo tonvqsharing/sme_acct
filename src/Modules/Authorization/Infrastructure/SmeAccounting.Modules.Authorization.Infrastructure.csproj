@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>SmeAccounting.Modules.Authorization.Infrastructure</RootNamespace>
+    <AssemblyName>SmeAccounting.Modules.Authorization.Infrastructure</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../Application/SmeAccounting.Modules.Authorization.Application.csproj" />
+  </ItemGroup>
+
+</Project>

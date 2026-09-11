@@ -6,6 +6,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\SmeAccounting.Application\SmeAccounting.Application.csproj" />
     <ProjectReference Include="..\SmeAccounting.Domain\SmeAccounting.Domain.csproj" />
     <ProjectReference Include="..\SmeAccounting.SharedKernel\SmeAccounting.SharedKernel.csproj" />
