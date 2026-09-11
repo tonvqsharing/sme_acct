@@ -3,8 +3,13 @@ Shared tool/library inventory across all loops in this project.
 ## Framework & Runtime
 - .NET 10 LTS (net10.0), ASP.NET Core 10, EF Core 9 via Pomelo.EntityFrameworkCore.MySql 9.0.0
 - MariaDB 10.6+ LTS (recommend 10.11 LTS or 11.4 LTS), utf8mb4 charset (`utf8mb4_unicode_ci` for Vietnamese)
+## Architecture Patterns (Modular Monolith)
+- Per-module `Add{Module}Module()` extension + `IModule` in base Application; explicit `AddModules([...])` registry in Api (no reflection)
+- MediatR: call `AddMediatR` multi-assembly (Scoped) — safe no-op override across modules, container decides lifetime
+- Api references module Application (typed IRequest types) + module Infrastructure (DI); DB centralized in one Infrastructure project + single DbContext
 ## Backend Packages
-- MediatR (CQRS), FluentValidation (pipeline behaviour), MySqlConnector (driver), Pomelo.EntityFrameworkCore.MySql (EF provider)
+- MediatR 12.5.0 (CQRS; DI merged into main package, no Extensions pkg), FluentValidation 12.1.1 (pipeline behaviour; DI extension namespace is `FluentValidation` itself — `FluentValidation.Results` = `ValidationFailure`), MySqlConnector (driver), Pomelo.EntityFrameworkCore.MySql (EF provider)
+- net10.0 lib projects needing ASP.NET Core services (e.g. IHttpContextAccessor): `<FrameworkReference Include="Microsoft.AspNetCore.App" />` — env EOL for Http.Abstractions NuGet
 ## Testing
 - xUnit v3 (4.0.0) + MTP runner — enabled via global.json `"test.runner": "Microsoft.Testing.Platform"` (NOT `--test-runner`; flag doesn't exist in dotnet new xunit). Test projects need `OutputType=Exe` + `UseAppHost` + `<Using Include="Xunit"/>`. All projects must share runner; VSTest+MTP mixed → exit 1.
 - NETSDK1188 (MTP 2.3.3 locale resources) → NoWarn in Directory.Build.props

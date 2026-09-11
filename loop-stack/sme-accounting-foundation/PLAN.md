@@ -56,8 +56,10 @@ Create:
 
 ---
 
-### Task 2 [G2] — Core Architecture: Clean Architecture + Modular Monolith Kernel
+### Task 2 [G2] — Core Architecture: Clean Architecture + Modular Monolith Kernel ✅ DONE
 **Pillar:** architecture. **Blocked by:** Task 1. **Blocks:** Task 3, 4, 5.
+
+Status: VERIFIED_PASS 2026-09-11 (audit CLEAN, verifier VERIFIED_PASS). 36 module projects + SharedKernel + composition root.
 
 - `SmeAccounting.SharedKernel`: `BaseEntity`, `ValueObject`, `IAuditable` (Created/Updated; per RESEARCH §8 audit field set), `ISoftDeletable`, `ICompanyScoped` with `CompanyId` (OQ-2 mitigation — single-tenant now, tenant-ready field on key entities, cost ~zero), `IDomainEvent` + in-process dispatch seam, `ICurrentUserProvider`, `IDateTimeProvider`, `Result<T>`/error types, repository + `IUnitOfWork` abstractions. No EF attributes — persistence-ignorant.
 - Module skeleton: **12 MVP modules** (RESEARCH §2A/2D) as `src/Modules/{Identity, Authorization, Organization, MasterData, Audit, ChartOfAccounts, AccountingPeriod, Journal, Posting, GeneralLedger, Tax, FinancialReporting}/{Domain,Application,Infrastructure}/` with a module-registration pattern (`IModule` + `AddModule()` extension method) — **empty structure, no business logic, no fake CRUD, no invented rules**.

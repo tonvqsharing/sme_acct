@@ -34,3 +34,21 @@ Shared across all loops in this project.
 - **Dependency graph gate**: Domain/SharedKernel carry zero ProjectReference AND zero PackageReference; Application→Domain+SK; Infrastructure→Application+Domain+SK; Api→Application+Infrastructure; tests reference only their targets.
 - **MediatR licensing**: 12.5.0 is last Apache-2.0; 13.0.0+ is RPL-1.5 (commercial restrictions) — pin 12.5.0. FluentAssertions went paid (2025) → AwesomeAssertions 9.6.0 fork.
 - **.NET 10 chiseled containers**: `aspnet:10.0-noble-chiseled` (Ubuntu default, UID 1654, port 8080), framework-dependent by default; no native AOT for this stack.
+
+### Modular Monolith Kernel (verified Task 2, sme-accounting-foundation)
+- **Module registry pattern**: base `Application` exposes `IModule` + per-module `Add{Module}Module()` extension + explicit registry in `Api` (`AddModules([...])` — 12 explicit modules, **no reflection**). Composition root: `AddControllersWithViews → AddApplication → AddInfrastructure → AddModules → MapStaticAssets → MapControllerRoute`.
+- **Api references module Application AND Infrastructure (24 refs)** — NOT Infra-only: controllers need typed `IRequest<T>` command types from module Application.
+- **Multi-`AddMediatR` is safe** (13×, base + each module, all `Scoped`): assembly scans + service-override patterns are no-ops; container decides lifetimes. MediatR 12.5.0 DI merged into main package (no Extensions pkg); `RegisterServicesFromAssemblyContaining<T>()` + `Lifetime=Scoped`.
+- **No module→module refs**; Domain/SharedKernel zero ProjectReference AND zero PackageReference. Module Infrastructure = `IModule` + DI only, zero EF; DB/migrations/seeding centralized in one `SmeAccounting.Infrastructure` + shared `SmeAccountingDbContext`.
+- **Infrastructure needs IHttpContextAccessor**: `Microsoft.AspNetCore.Http.Abstractions` NuGet is EOL (top 2.3.13, netstandard2.0-era) → use `<FrameworkReference Include="Microsoft.AspNetCore.App" />` instead — no package, no CPM pin, no lock change. Applies to any lib project needing ASP.NET Core services in net10.0.
+
+### FluentValidation + analyzer traps (verified Task 2)
+- **FV DI extension namespace is `FluentValidation`**, NOT `FluentValidation.DependencyInjectionExtensions` (that namespace does not exist → CS0234/CS1061). `AddValidatorsFromAssembly(asm, ServiceLifetime.Scoped)` from `using FluentValidation;` alone.
+- **`ValidationFailure` lives in `FluentValidation.Results`** (12.1.1).
+- **CA1716**: type named `Error` fails build (reserved VB keyword) → name it `Failure`. Generic `Result<T>` static factories trip CA1000 → `.editorconfig` `dotnet_diagnostic.CA1000.severity = none`.
+- **CS0108**: covariant factory `Result<T>.Fail(...)` hiding base `Result.Fail(...)` needs `new` keyword (return-type-only hiding is an error under WTE). No `new` needed for `Create`.
+- **CA1725/CA2016**: MediatR `IPipelineBehavior.Handle` override params must be named `cancellationToken`; call `next(cancellationToken)` explicitly.
+- **zsh traps** (module scaffolding): `modules` is a read-only zsh special variable; `for m in $scalar` does NOT word-split in zsh (creates one literal space-named dir). Use zsh arrays or bash.
+
+### Effective working patterns
+- **Smoke-test pattern**: build → `dotnet sln list` (expect exact project count) → launch built dll directly → curl `/` expect 200 → kill-by-PID (NOT `pkill -f <name>` — self-matching footgun). `StaticFileMiddleware[16] WebRootPath not found` is benign env artifact when content-root ≠ Api dir; silence with `wwwroot/.gitkeep`.

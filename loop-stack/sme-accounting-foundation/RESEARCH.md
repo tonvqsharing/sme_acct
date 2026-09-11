@@ -1474,3 +1474,556 @@ From `xunit.v3.core.mtp-v2/4.0.0/buildTransitive/xunit.v3.core.mtp-v2.targets` (
 | xunit.v3 MTP build requirements | [xunit.net MTP getting-started](https://xunit.net/docs/getting-started/v3/microsoft-testing-platform) |
 | CPM error codes (NU1008/NU1010/NU1004) | [learn.microsoft CPM](https://learn.microsoft.com/en-us/nuget/consume-packages/central-package-management) |
 | artifacts output layout | [learn.microsoft build-properties / ArtifactsPath](https://learn.microsoft.com/en-us/dotnet/core/project-sdk/msbuild-props#artifactsoutputlayout) |
+
+## Task-Specific Research — Task 2 [G2] — Core Architecture: Clean Architecture + Modular Monolith Kernel
+
+> Researcher 8. Everything below marked **[local]** was verified by compiling/running on this machine (SDK **10.0.401**, net10.0, LangVersion 14.0, CPM pin set from Task 1). Web sources checked 2026-09-11. Plan text referenced as PLAN §Task 2.
+
+### 1. C# 14 extension members — VERIFIED **[local]**
+
+Available at **`LangVersion 14.0`** (no `preview` needed) on SDK 10.0.401. Repo already pins `14.0` in Directory.Build.props — Task 4's `ClaimsPrincipal` extension member will compile as-is. Exact working syntax (compiled + ran, 0 warnings):
+
+```csharp
+using System.Security.Claims;
+
+public static class ClaimsPrincipalExtensions
+{
+    extension (ClaimsPrincipal claims)              // NO access modifier on the block
+    {
+        public Guid? UserId =>                      // instance member (NOT static)
+            claims.FindFirst("sub") is { } c && Guid.TryParse(c.Value, out var id) ? id : null;
+        public bool IsRole(string role) => claims.IsInRole(role);
+    }
+}
+// usage: claimsPrincipal.UserId  (instance syntax)
+```
+
+Syntax rules proven by compiler errors:
+- Block form: `extension (T param) { ... }` inside a `public static class`; declaring modifier on the block is an error (CS0106).
+- The receiver param is declared **without** `this` — `extension (this T x)` is an error (`this` not available, CS0027).
+- Members that reference the receiver value must be **instance** members; `static` members cannot access the extension parameter (CS9347).
+- `static` members *are* allowed in the block but can't read the receiver — for claims the members above are instance.
+- Access uses normal `using` scoping of the containing static class (same rule as classic extension methods).
+
+If the executor prefers zero-new-syntax, classic `public static Guid? GetUserId(this ClaimsPrincipal cp)` works identically — but the new-block form is verified available, so Task 4's "C#14 claims extension members" plan line is realisable. Keep `LangVersion 14.0`.
+
+### 2. MediatR 12.5.0 — registration API VERIFIED **[local]**
+
+Test project referenced **only** `<PackageReference Include="MediatR" Version="12.5.0"/>` (+FluentValidation) — `AddMediatR` was not a separate package. **v12 merged DI registration into the main `MediatR` package** (the old `MediatR.Extensions.Microsoft.DependencyInjection` is obsolete). All compiled + ran:
+
+```csharp
+services.AddMediatR(cfg =>
+{
+    cfg.RegisterServicesFromAssembly(typeof(ApplicationMarker).Assembly);
+    cfg.RegisterServicesFromAssemblyContaining<ApplicationMarker>();
+    cfg.Lifetime = ServiceLifetime.Scoped;
+});
+```
+
+Facts for the executor:
+- `IServiceCollection`/`AddMediatR` resolve **transitively** from MediatR 12.5.0's `Microsoft.Extensions.DependencyInjection.Abstractions` dep — base Application needs only the one `MediatR` PackageReference. (`BuildServiceProvider()` needs the full DI-container package, but that's Api's Web-SDK job / test-project business, not classlib Application.)
+- `IPublisher`/`INotification` live in MediatR too — available for the Task-5 domain-event dispatcher without new packages.
+- MediatR 12.5.0 is already pinned in Directory.Packages.props (Task 1). No CPM change.
+- No `LicenseKey` API in 12.x (that's 13+/14.x) — no license noise.
+
+### 3. FluentValidation 12.1.1 pipeline behaviour — VERIFIED **[local]**
+
+The canonical MediatR `IPipelineBehavior` validation behaviour compiles + runs against FluentValidation 12.1.1:
+
+```csharp
+public sealed class ValidationBehaviour<TRequest, TResponse> : IPipelineBehavior<TRequest, TResponse>
+    where TRequest : IRequest<TResponse>
+{
+    private readonly IEnumerable<IValidator<TRequest>> _validators;
+    public ValidationBehaviour(IEnumerable<IValidator<TRequest>> validators) => _validators = validators;
+
+    public async Task<TResponse> Handle(TRequest request, RequestHandlerDelegate<TResponse> next, CancellationToken ct)
+    {
+        if (_validators.Any())
+        {
+            var context = new ValidationContext<TRequest>(request);
+            var errors = await Task.WhenAll(_validators.Select(v => v.ValidateAsync(context, ct)));
+            var failures = errors.SelectMany(r => r.Errors).Where(f => f is not null).ToList();
+            if (failures.Count != 0)
+                throw new ValidationException(failures);   // ctor(IEnumerable<ValidationFailure>) exists
+        }
+        return await next();
+    }
+}
+```
+
+Verified specifically:
+- `ValidationException(IEnumerable<ValidationFailure>)` ctor present. `ValidationFailure` is in **`FluentValidation.Results`** namespace (needs `using FluentValidation.Results;`).
+- `AddValidatorsFromAssembly(asm, ServiceLifetime.Scoped)` + `AddValidatorsFromAssemblyContaining<T>()` from `FluentValidation.DependencyInjectionExtensions` 12.1.1 work, scoped lifetime honored (`GetRequiredService<IValidator<T>>()` returned the scanner-resolved `AbstractValidator`).
+- `{PropertyName}` placeholder resolves (test validator produced `"Name ..."` roles from `RuleFor(x => x.Name).NotEmpty().WithMessage("{PropertyName} bắt buộc")`) — vi-VN messages (plan Task 5) work via `WithMessage` + resx.
+- The behaviour class should filter **null** failures (`f is not null`) — FluentValidation 12 can yield null entries (Milan's canonical version keeps this guard) — cheaper than a guard-clause pre-check of `request`.
+
+Where it lives (PLAN): base `SmeAccounting.Application`, registered in `AddApplication()`:
+```csharp
+public static IServiceCollection AddApplication(this IServiceCollection services) => services
+    .AddMediatR(cfg => { cfg.RegisterServicesFromAssemblyContaining<ApplicationMarker>(); })
+    .AddValidatorsFromAssembly(typeof(ApplicationMarker).Assembly, ServiceLifetime.Scoped)
+    .AddTransient(typeof(IPipelineBehavior<,>), typeof(ValidationBehaviour<,>));
+```
+
+### 4. MVC structure in Api — VERIFIED **[local]**
+
+`dotnet new mvc` on SDK 10.0.401 generates `Controllers/`, `Views/` (`Home`, `Shared`), `Models/`, `wwwroot/lib/{bootstrap,jquery,jquery-validation}` — MVC template fully present; plan assumption Q4 (MVC over Razor Pages) is sound. .NET 10 MVC Program.cs shape:
+
+```csharp
+var builder = WebApplication.CreateBuilder(args);
+builder.Services.AddControllersWithViews();      // MVC (NOT AddRazorPages)
+
+var app = builder.Build();
+app.UseExceptionHandler("/Home/Error");           // Production switch — Task 5
+app.UseHsts(); app.UseHttpsRedirection(); app.UseRouting(); app.UseAuthorization();
+app.MapStaticAssets();                            // .NET 10 replaces UseStaticFiles for app assets
+app.MapControllerRoute(name: "default", pattern: "{controller=Home}/{action=Index}/{id?}").WithStaticAssets();
+app.Run();
+```
+
+Task-2 Program.cs stays top-level statements (current file is already 5-line top-level); executor adds `AddControllersWithViews()` + `AddApplication()` + `AddInfrastructure()` + module registration, scaffolds `Controllers/` + `Views/` (+ `Views/Shared/_ViewImports.cshtml`, `_ViewStart.cshtml`; a trivial `HomeController`/`Index.cshtml` is optional and makes the route smoke-testable). Serilog two-stage bootstrap body stays **Task 5** (Api does **not** take Serilog + other T5 packages yet — Task 2 Api csproj may grow only ProjectReferences, no new packages needed).
+
+Genuine ASP.NET Core 10 note: `MapStaticAssets()` is the recommended static-asset analysis pipeline (supersedes `UseStaticFiles` default wiring); keep it for the Bootsrap/LibMan assets that land in Task 4/5.
+
+### 5. SharedKernel — concrete design (with reasoning)
+
+All of these live in `SmeAccounting.SharedKernel` (zero PackageReference — verified constraint from Task 1, keep it that way). Suggested folder layout: `Primitives/` (BaseEntity, ValueObject, typed markers), `Results/`, `Events/`, `Abstractions/` (providers, persistence contracts).
+
+**BaseEntity** — id + event ledger, no EF awareness:
+```csharp
+public abstract class BaseEntity
+{
+    protected BaseEntity() => Id = Guid.NewGuid();
+    public Guid Id { get; protected set; }
+    private readonly List<IDomainEvent> _domainEvents = [];
+    public IReadOnlyCollection<IDomainEvent> DomainEvents => _domainEvents.AsReadOnly();
+    protected void RaiseDomainEvent(IDomainEvent @event) => _domainEvents.Add(@event);
+    public void ClearDomainEvents() => _domainEvents.Clear();
+}
+```
+Decision: **`Guid` PKs** (`Guid.NewGuid()` on construction, EF `ValueGeneratedOnAdd` fine in Task 3). Typed-ID value objects (kgrzybek-style `EntityInt32Id`) are a deliberate **non-goal at foundation** — over-engineering for one shared-DbContext SME app; revisit only if a module shows real need.
+
+**Capability interfaces** — declared as contracts (concrete entities pick what they implement; avoids C# no-mixin hierarchy wall). This is the plan's "IAuditable/ISoftDeletable/ICompanyScoped" set — **not** EF attributes, persistence-ignorant:
+```csharp
+public interface IAuditable
+{
+    DateTime CreatedAtUtc { get; set; }
+    Guid? CreatedBy { get; set; }
+    DateTime? UpdatedAtUtc { get; set; }
+    Guid? UpdatedBy { get; set; }
+}
+public interface ISoftDeletable
+{
+    bool IsDeleted { get; set; }
+    DateTime? DeletedAtUtc { get; set; }
+    Guid? DeletedBy { get; set; }
+}
+public interface ICompanyScoped
+{
+    Guid CompanyId { get; set; }        // OQ-2 mitigation: tenant-ready field now, single-tenant MVP
+}
+```
+- Names use the `*AtUtc` suffix choice (matches `IDateTimeProvider.UtcNow`); executor may keep RESEARCH §8's snake names at the DB layer (Task 3 naming decision) — the **C# property names** are what these interfaces fix. The `UpdatedBy`/`DeletedBy` nullable GUid* match `ICurrentUserProvider.UserId` being `Guid?`.
+- `CompanyScopedEntity : BaseEntity, ICompanyScoped` optional intermediate for the common case → just add `CompanyId` property; `BaseEntity` itself does **not** implement the capability interfaces (mixins-pragmatism).
+- Task 3 applies these via EF model conventions (detect interface implementations) + global query filter `!IsDeleted`.
+
+**ValueObject** — Ardalis-style, with the WTE gotchas pre-flagged:
+```csharp
+public abstract class ValueObject : IEquatable<ValueObject>
+{
+    protected abstract IEnumerable<object> GetAtomicValues();
+    public override bool Equals(object? obj) => obj is ValueObject other && Equals(other);
+    public bool Equals(ValueObject? other) => other is not null && ValuesAreEqual(other);
+    private bool ValuesAreEqual(ValueObject other) => GetAtomicValues().SequenceEqual(other.GetAtomicValues());
+    public override int GetHashCode() => GetAtomicValues().Aggregate(17, (acc, v) => acc * 31 + (v?.GetHashCode() ?? 0));
+    public static bool operator ==(ValueObject a, ValueObject b) => a is null ? b is null : a.Equals(b);
+    public static bool operator !=(ValueObject a, ValueObject b) => !(a == b);
+}
+```
+WTE traps: implement `IEquatable<ValueObject>`+`GetHashCode` with `==`/`!=` together (CS0660/CS0661 + CA1815/CA2225 otherwise fail the build under `TreatWarningsAsErrors` + `latest-recommended`). Consider `record`-based value objects instead for most cases (C# records give atomic equality free); keep `ValueObject` base only where behavior/encapsulated invariants demand it. `SmartEnum` — defer (OQ-4/5 outside foundation).
+
+**Result<T>/error types — DECISION: custom in SharedKernel, not Ardalis.Result/FluentResults/ErrorOr.** Plan literally places `Result<T>`/error types in SharedKernel, and SharedKernel must stay zero-package (Task 1 gate) — so **custom, no package**. Milan-2026 style, minimal:
+```csharp
+public sealed record Error(string Code, string Description)
+{
+    public static readonly Error None = new(string.Empty, string.Empty);
+}
+public class Result
+{
+    protected Result(bool isSuccess, Error error) { IsSuccess = isSuccess; Error = error; }
+    public bool IsSuccess { get; }
+    public bool IsFailure => !IsSuccess;
+    public Error Error { get; }
+    public static Result Success() => new(true, Error.None);
+    public static Result Failure(Error error) => new(false, error);
+    public static implicit operator Result(Error error) => Failure(error);
+}
+public sealed class Result<T> : Result
+{
+    private readonly T? _value;
+    private Result(T value) : base(true, Error.None) => _value = value;
+    private Result(Error e) : base(false, e) => _value = default;
+    public T Value => IsSuccess ? _value! : throw new InvalidOperationException("Accessing Value of failed Result");
+    public static Result<T> Success(T value) => new(value);
+    public static new Result<T> Failure(Error error) => new(error);
+    public static implicit operator Result<T>(T value) => Success(value);
+    public static implicit operator Result<T>(Error error) => Failure(error);
+}
+```
+Considerations behind the call:
+- Ardalis.Result is MIT and battle-tested, but brings `ResultStatus`+HTTP-mapping machinery an MVC app doesn't need, and costs SharedKernel its zero-package property. FluentResults/ErrorOr are heavier ergonomics (sweeping of all `IEnumerable<T>` ctor overloads etc.). None justified for one SME app's foundation.
+- **Flow convention to record in docs/architecture.md**: input validation → FluentValidation pipeline throws `ValidationException` (400 ProblemDetails in Task 5); expected business-rule failures → `Result.Failure(Error)`; truly exceptional/unexpected paths → exceptions → 500. Result used by MediatR handlers returning `Result<Something>`/`Result` (`IRequest<TResponse>` no-constraint — verified; `IReturns` untouched), controllers translate to ActionResult/ProblemDetails (Task 5).
+
+**ICurrentUserProvider + IDateTimeProvider — minimal**:
+```csharp
+public interface ICurrentUserProvider
+{
+    Guid? UserId { get; }
+    bool IsAuthenticated { get; }
+}
+public interface IDateTimeProvider { DateTime UtcNow { get; } }
+```
+- No ASP.NET types leak into SharedKernel (pure contract). Rich claim reads (roles/permissions/branches) done via the Task-4 `ClaimsPrincipal` C#14 extension members in the **Api/Infrastructure** HTTP layer, not here.
+- `ICurrentUserProvider` impl = `HttpContext.User` (Task 5, or Task 4 auth does it); `IDateTimeProvider` impl = `SystemClock`-style `DateTime.UtcNow` (Infrastructure, Task 5), registered Singleton. Both **Scoped/Singleton** registration noted; EF interceptors in Task 3 may consume both to stamp audit fields.
+
+**IDomainEvent + in-process dispatch seam (foundation, no external bus)**:
+```csharp
+public interface IDomainEvent { DateTime OccurredAtUtc { get; } }
+public interface IDomainEventsDispatcher
+{
+    Task DispatchAsync(IEnumerable<IDomainEvent> domainEvents, CancellationToken ct = default);
+}
+```
+- `BaseEntity` collects events (`RaiseDomainEvent`/`ClearDomainEvents` above).
+- Task 5 implements the dispatcher over **MediatR `IPublisher`** with a generic wrapper notification (`DomainEventNotification<IDomainEvent>` carrying the event; handlers typed `IDomainEventsHandler<TDomainEvent : IDomainEvent>`), i.e. the kgrzybek MediatorModule + Milan dispatcher pattern. Only the **seam interface** is defined now — satisfies "in-process dispatch seam (no external event bus for foundation)". **No outbox** in foundation (Milan: outbox is for cannot-lose side effects; defer).
+- Should SharedKernel's `IDomainEvent` implement MediatR `INotification`? **No** — that would drag MediatR into SharedKernel (license + package gate). The wrapper pattern in Application/Infrastructure keeps SharedKernel clean.
+
+**Repository + IUnitOfWork — minimal (avoid over-engineering)**:
+```csharp
+public interface IUnitOfWork { Task<int> SaveChangesAsync(CancellationToken ct = default); }
+
+public interface IRepository<T> where T : BaseEntity
+{
+    Task<T?> GetByIdAsync(Guid id, CancellationToken ct = default);
+    Task<List<T>> ListAsync(CancellationToken ct = default);
+    Task AddAsync(T entity, CancellationToken ct = default);
+    void Update(T entity);
+    void Remove(T entity);
+}
+```
+- Rationale: EF `DbContext` already *is* repository+UoW; `IUnitOfWork` exists purely so Application/Domain code depends on a contract, not EF. One shared DbContext ⇒ one shared transaction scope (plan constraint §7). **No specification pattern, no `IReadRepository` split, no paged/query-signature inventory at foundation** — those become over-engineering until a real query need exists (plan's own guardrail). Generic repo implementation lands in Infrastructure Task 3.
+
+### 6. Module registration pattern — `IModule` + `AddModule()`
+
+Reference patterns inspected: kgrzybek/modular-monolith-with-ddd real shape = per-module static `{Module}Startup.Initialize(connectionString, ...)` with Autofac modules inside (composition root calls each `Initialize` explicitly — **no reflection scan, no IModule interface**); deadislove/dotnet-ModularMonolith-template and NET-Architecture-Templates/ModularMonolith use an **`IModule` interface + reflection scan** (`services.AddModules()`); Milan Jovanović 2026 guide recommends **explicit registration, no reflection magic**; CodeMaze `IModule` = `RegisterModule(IServiceCollection)` + `MapEndpoints` returns `IEndpointRouteBuilder`.
+
+**Recommendation for this loop (matches PLAN's "IModule + AddModule() extension method", foundation-grade):**
+
+Host `IModule` in **base `SmeAccounting.Application`**, NOT SharedKernel — `IModule` needs `IServiceCollection` (an `Microsoft.Extensions.DependencyInjection.Abstractions` type ⇒ package dep), which fails SharedKernel's zero-package gate. Base Application already gets DI abstractions transitively via MediatR 12.5.0 (verified §2).
+
+```csharp
+// SmeAccounting.Application
+public interface IModule { IServiceCollection AddModule(IServiceCollection services); }
+```
+```csharp
+// each Modules/{M}/Infrastructure — both the interface impl AND a static extension:
+public sealed class IdentityModule : IModule
+{
+    public IServiceCollection AddModule(IServiceCollection services)
+    {
+        // Task ≥3: EF entity configs, MediatR handlers for the module, etc.
+        services.AddTransient<ISomething, Something>();
+        return services;
+    }
+}
+public static class IdentityModuleExtensions
+{
+    public static IServiceCollection AddIdentityModule(this IServiceCollection services)
+        => new IdentityModule().AddModule(services);
+}
+```
+```csharp
+// Api — explicit registry loop (compile-safe, greppable, trims clean, no reflection):
+public static IServiceCollection AddModules(this IServiceCollection services, IEnumerable<IModule> modules)
+{
+    foreach (var module in modules) module.AddModule(services);
+    return services;
+}
+// Program.cs:
+var modules = new IModule[] { new IdentityModule(), new AuthorizationModule(), /*...all 12...*/ };
+builder.Services.AddModules(modules);
+```
+- 12 modules (PLAN §2A/2D MVP): Identity, Authorization, Organization, MasterData, Audit, ChartOfAccounts, AccountingPeriod, Journal, Posting, GeneralLedger, Tax, FinancialReporting.
+- Explicit array beats reflection scan for 12 modules — avoids `Assembly.GetTypes()` surprises, is Locate-able, and keeps trim-safety (irrelevant at foundation but free). Keep `AddModule()` extension name so each module is also individually callable in tests.
+- **kgrzybek's `{Module}Startup.Initialize(connectionString,...)` autofac flavor is heavier than foundation needs** — noted, not adopted.
+
+### 7. Project graph for the 12 module triads (36 new projects)
+
+```
+src/Modules/{Module}/
+  {Module}.Domain/            SmeAccounting.Modules.{Module}.Domain        refs: SmeAccounting.Domain, SmeAccounting.SharedKernel      packages: NONE
+  {Module}.Application/       SmeAccounting.Modules.{Module}.Application   refs: + SmeAccounting.Application, + local .Domain            packages: MediatR (explicit, CPM-pinned)
+  {Module}.Infrastructure/    SmeAccounting.Modules.{Module}.Infrastructure refs: + local .Application (+ transitives)                    packages: NONE (EF arrives Task 3)
+Api                          += ProjectReferences to all 12 × .Infrastructure (module registration loop)
+```
+- **No module→module ProjectReference** (compiler-enforced — the Task-1 style dependency rule extends to modules; arch tests Task 6).
+- Namespace `SmeAccounting.Modules.{Module}.{Layer}` — **verified clean** under CA1716 + `latest-recommended` + WTE + EnforceCodeStyleInBuild **[local test]**: both `Modules` and even singular `Module` segments build 0-warning in repo-equivalent props. (R7's CA1716 finding was specifically segment `Lib`.) Pluralified `Modules` remains the safe convention anyway.
+- Module.Domain referencing shared `SmeAccounting.Domain` is intentional: base Domain is the shared-domain-contract anchor and the arithmetic/logic home that has zero deps; module Domains add bounded-context entities. Base Domain's exact contents are executor's call (may stay near-empty now; `CompanyId`-scoped common entities could live there later).
+- Api **does not** need MediatR/FluentValidation PackageReferences — `AddApplication()` (in Application assembly) owns registration; Api already references Application+Infrastructure (Task 1 graph). New Api additions are ProjectReferences to the 12 module Infrastructure projects only.
+- **CPM/lock impact**: adding PackageReferences (MediatR to 12 module Applications + base Application gets MediatR/FV) trips **NU1004 under `--locked-mode`** until locks regenerate. Step for executor after scaffolding: `dotnet restore --use-lock-file` at solution level → verify `dotnet restore --locked-mode` exit 0 → `git add` all **new** `packages.lock.json` (36 module projects get one each) + the touched ones (Application; Api only if Api project refs changed count as lock-affecting — they don't; PackageReference-only changes do) and commit. Task 1 precedent: every slnx project needs its own committed lock file.
+- `.slnx` gains 36 `<Project Path="src/Modules/..."/>` entries; folder auto-grouping keeps `src/` top-level intact (no new Folder elements needed; `dotnet sln add` handles it).
+- Keep `Directory.Build.props` untouched (net10.0 etc. applies to all new projects automatically).
+
+### 8. Program.cs (Api) Task-2 skeleton + MVC folders
+
+```csharp
+var builder = WebApplication.CreateBuilder(args);   // Task 5 wraps in Serilog two-stage bootstrap (try/catch/finally)
+
+builder.Services.AddControllersWithViews();
+builder.Services.AddApplication();                  // MediatR 12.5.0 + FV 12.1.1 pipeline (base Application)
+builder.Services.AddInfrastructure();               // providers/DB skeleton (Task 5 real content)
+builder.Services.AddModules(new IModule[] { /* 12 module instances */ });
+
+var app = builder.Build();
+app.MapStaticAssets();
+app.MapControllerRoute(name: "default", pattern: "{controller=Home}/{action=Index}/{id?}").WithStaticAssets();
+app.UseAuthorization();                             // requires UseAuthentication; Task 4 wires identity
+app.Run();
+```
+Folders: `Controllers/`, `Views/`, `Views/Shared/` (with `_ViewImports.cshtml` + `_ViewStart.cshtml`). Optional stub `HomeController` + `Views/Home/Index.cshtml` so route mapping is exercised; **no business logic** (plan §16.2 — controllers delegate to MediatR later, none yet).
+
+### 9. Decisions for executor (numbered)
+
+1. **Extension members** — use C#14 block syntax (verified §1) for Task 4 claims; keep `LangVersion 14.0`.
+2. **Result** — custom `Error`/`Result`/`Result<T>` in SharedKernel; no Ardalis/ErrorOr/FluentResults package (§5). Record the flow convention (FV throws for input; Result for expected failures; exceptions for exceptional) in docs/architecture.md.
+3. **IDs** — `Guid` everywhere incl. `CompanyId`; no typed-ID objects at foundation.
+4. **IModule host** — base `SmeAccounting.Application` (DI-abstraction package constraint keeps it out of SharedKernel); explicit 12-module array registration in Api, plus per-module static `Add{Module}Module()` extension (§6).
+5. **Capability interfaces** — `IAuditable`/`ISoftDeletable`/`ICompanyScoped` as persistence-ignorant contracts; `BaseEntity` does not implement them; Task 3 EF conventions read them (§5).
+6. **Naming** — module namespaces `SmeAccounting.Modules.{Module}.{Layer}` (verified CA1716-clean); module folder paths under `src/Modules/{Module}/{Domain|Application|Infrastructure}/`.
+7. **MVC** — `AddControllersWithViews()` + `MapStaticAssets()` + default route; no `AddRazorPages`.
+8. **Lock files** — regenerate via `dotnet restore --use-lock-file` after package additions; commit 36 new module lock files; verify `--locked-mode`.
+9. **No outbox, no spec pattern, no typed-IDs** at foundation — all flagged as deliberate minimisation (plan's "avoid over-engineering — foundation level").
+
+### 10. Risks / gotchas (Task-2 specific)
+
+- **CS0660/CS0661/CA1815/CA2225** under `TreatWarningsAsErrors` when writing `ValueObject` operators — implement `IEquatable<T>`+`GetHashCode` consistent with `==`/`!=` or the build fails; or prefer C# `record` value objects (§5).
+- **NU1004 drift-gate** — first `--locked-mode` build after adding PackageReferences fails; expected, regenerate locks (above).
+- **CA2214 (DoNotCallOverridableMethodsInConstructors)** — `BaseEntity` ctor must not call virtual members (can't: `Id = Guid.NewGuid()` is fine); keep event list field init non-virtual.
+- **SharedKernel/Domain zero-package re-audit** — adding `MediatR` to module Applications is fine (Application layer); do **not** let any Domain/SharedKernel project acquire a PackageReference (Task 6 NetArchTest re-checks).
+- **Module count** = 3×12+5 base+6 tests = 47 projects in the slnx — `dotnet build`/test times grow; normal for this architecture, no action.
+- **`ValidationFailure` namespace** — `FluentValidation.Results` (not root) — reference in the behaviour class (§3) or `using FluentValidation.Results;` is the compile fix.
+
+### 11. References (Task 2 additions)
+
+| Topic | Source |
+|---|---|
+| Domain events dispatcher (in-process, no library; strongly-typed wrapper) | [milanjovanovic.tech building-a-custom-domain-events-dispatcher](https://milanjovanovic.tech/blog/building-a-custom-domain-events-dispatcher-in-dotnet) |
+| Modular monolith complete guide 2026 (boundaries, shared kernel, explicit registration) | [milanjovanovic.tech modular-monolith-architecture-dotnet](https://milanjovanovic.tech/blog/modular-monolith-architecture-dotnet) |
+| kgrzybek modular monolith primer/integration styles (module→module via events, never project refs) | [kamilgrzybek.com modular-monolith-primer](https://www.kamilgrzybek.com/blog/posts/modular-monolith-primer), [integration-styles](https://www.kamilgrzybek.com/blog/posts/modular-monolith-integration-styles) |
+| kgrzybek actual registration shape (per-module `{Module}Startup.Initialize`) | [github.com/kgrzybek/modular-monolith-with-ddd](https://github.com/kgrzybek/modular-monolith-with-ddd) (cloned + inspected) |
+| Result pattern (Error record + Result/Result<T>, Milan 2026) | [milanjovanovic.tech functional-error-handling-result-pattern](https://www.milanjovanovic.tech/blog/functional-error-handling-in-dotnet-with-the-result-pattern) |
+| Ardalis.Result (rejected: package dep + HTTP-mapping for MVC app) | [github.com/ardalis/Result](https://github.com/ardalis/Result) |
+| ErrorOr vs Result comparisons | [antondevtips.com how-to-replace-exceptions-with-result-pattern](https://antondevtips.com/blog/how-to-replace-exceptions-with-result-pattern-in-dotnet) |
+| MVC in .NET 10 ([local] `dotnet new mvc` verified) | [aspnetcore-docs view=aspnetcore-10.0](https://learn.microsoft.com/en-us/aspnet/core/?view=aspnetcore-10.0) |
+| MediatR 12x DI API ([local] compiled; merged DI in main package) | [github.com/LuckyPennySoftware/MediatR](https://github.com/LuckyPennySoftware/MediatR) |
+| FluentValidation 12 ([local] pipeline + `ValidationException`) | [docs.fluentvalidation.net](https://docs.fluentvalidation.net/) |
+
+### 12. Per-module minimal content matrix (Researcher 9, complement to R8 §5-§7)
+
+R8 shipped the module *mechanics* (triad graph, IModule, registration). This subsection fixes what each of the 12 MVP module triads legitimately holds **at foundation** — empty structure, no entities, no fake CRUD, no invented rules. Verified end-to-end in a scratch build (see §17) — graph compiled 0-warning / 0-error, module handler dispatched through the Api-equivalent host.
+
+**Foundation scaffolding per module (the ONLY code allowed in any module triad at Task 2):**
+- **Domain**: zero `.cs` files. Namespace `SmeAccounting.Modules.{M}.Domain` reserved; csproj references base `SmeAccounting.Domain` + `SmeAccounting.SharedKernel`. Empty classlib builds 0-warning (Task 1 precedent).
+- **Application**: optional single marker `public abstract class {M}ApplicationMarker { }` (recommended — gives `RegisterServicesFromAssemblyContaining<{M}ApplicationMarker>()` a concrete target next task + greppable module identity); zero business types. MediatR PackageReference.
+- **Infrastructure**: is the only layer with real scaffold code — `{M}Module : IModule` + static `Add{M}Module()` extension (R8 §6). `AddModule` body currently: `services.AddMediatR(cfg => cfg.RegisterServicesFromAssemblyContaining<{M}ApplicationMarker>())`. No EF, no DbContext, no packages (see §13).
+
+**What each module's Domain is *known* for (identified, NOT designed — boundaries + future ownership only), per RESEARCH §2A/2D/§5/§6:**
+
+| # | Module | Known aggregates/state from accounting domain (NOT designed) | Known boundary facts (no code) | Real content lands |
+|---|--------|-----------------------------------------------------------------|--------------------------------|--------------------|
+| 1 | Identity | User, Role, UserClaim, UserLogin (ASP.NET Identity types) | Cookie auth, 5 standard roles | Task 4 |
+| 2 | Authorization | Permission catalog (`Permissions.*` constants), RolePermission | Policy-based RBAC, branch-scoped access | Task 4 |
+| 3 | Organization | Company, Branch, Department | Single company/tenant; branches share COA/currency/fiscal year | Task 3 (Company/Branch per plan) |
+| 4 | MasterData | Customer, Vendor, Currency, ExchangeRate | VND mandatory default; daily buy/sell/transfer rates | Task 3 (iso currencies seed only) |
+| 5 | Audit | AuditLogEntry (append-only; NOT soft-deleted) | OQ-7 = entity-level before/after snapshot (Task 3); consumes domain events later | Task 3 |
+| 6 | ChartOfAccounts | Account (code/name/type/level, hierarchy) | 49 Level-1 (Circular 133); open extension — nothing hardcoded | Task 3 (Account + COA seed) |
+| 7 | AccountingPeriod | FiscalYear, AccountingPeriod (Open/Closed) | Closed-period posting lock is a Posting invariant | later |
+| 8 | Journal | JournalEntry (+ lines), balance invariant, draft→approved→posted, voucher ref | `SUM(debits)==SUM(credits)` enforced at domain level | later |
+| 9 | Posting | posting service; balances **derived, never stored** | Ledger entries immutable; corrections via reversal only | later |
+| 10 | GeneralLedger | derived account balances; trial balance; ledger queries | — | later |
+| 11 | Tax | tax codes, VAT calc, accounts 133/3331, Form 01/GTGT | VAT 10/5/0/8% rates | later |
+| 12 | FinancialReporting | FS templates B01/02/03-DN (regulatory indices, versioned) | 90-day annual FS deadline | later |
+
+**Explicitly NOT scaffolded at foundation:** no entity classes in module Domains, no EF configurations, no commands/queries/validators/handlers, no fake CRUD endpoints, no invented accounting rules. Module Domains stay empty so no premature design leaks into EF (Task 3 owns entity modeling + naming + audit fields per its own verify list).
+
+### 13. Infrastructure split — central `SmeAccounting.Infrastructure` vs 12 module Infrastructures
+
+**DB schema is owned centrally, one shared `SmeAccountingDbContext` in `SmeAccounting.Infrastructure`** (plan Task 3 + MEMORY: "DB schema owned by Infrastructure; migrations `--project Infrastructure --startup-project Api`"). This resolves the "does each module get its own EF-config partial?" question: **no** — module Infrastructures hold zero EF/schema/DbContext code at foundation.
+
+| Concern | Central `SmeAccounting.Infrastructure` | Module `{M}.Infrastructure` |
+|---|---|---|
+| DbContext + all `IEntityTypeConfiguration<T>` (grouped `Persistence/Configurations/Modules/{M}/` for discoverability) | ✅ | ❌ |
+| EF migrations (`InitialCreate` etc.) + `IDesignTimeDbContextFactory` | ✅ | ❌ |
+| Seeding (`UseSeeding`/`UseAsyncSeeding`, `HasData`) | ✅ | ❌ |
+| `IUnitOfWork` / `IRepository<T>` implementations over the shared DbContext | ✅ (recommended — module Infra stays thin; if instead a module needs its own repo impl, its Infra adds a ref to central Infra, never the reverse) | ⚠ optional later |
+| `ICurrentUserProvider`, `IDateTimeProvider` impls | ✅ (Task 5) | ❌ |
+| DI composition: `IModule` + `Add{M}Module()`; per-module MediatR assembly registration | ❌ | ✅ |
+| Domain-event dispatch wiring (`SaveChangesInterceptor`, MediatR `IPublisher` wrapper) | ✅ (Task 5) | ❌ |
+
+**Entity-placement decision (gates Task 3, flag for executor — plan text vs clean architecture):** Task-3 plan literally lists `Company`/`Branch`/`Account`/`AuditLogEntry` as entities created "Inside `SmeAccounting.Infrastructure`". Two readings:
+- **(A) plan-literal** — EF entity classes live in central Infrastructure now. Simple, matches plan text; debt: entities sit outside their bounded contexts, must be lifted into module Domains (Organization/ChartOfAccounts/Audit) later.
+- **(B) module-Domain-first (recommended)** — each entity authored in its owning module Domain at Task 3 (`Company`/`Branch`→Organization, `Account`→ChartOfAccounts, `AuditLogEntry`→Audit); central Infrastructure adds ProjectReferences to those 3 module Domains so the **single shared DbContext still models them**; migrations + seeding stay central. Cost: 3 ProjectReferences; benefit: entities live in their context from day 1, matches RESEARCH §2A/2D ownership, no later refactor.
+
+Recommendation: **(B)**. Either way the foundation (Task 2) leaves module Domains empty and central Infrastructure untouched; Task 3 executor confirms within that task's scope. kgrzybek-style per-module DbContext/migrations **rejected** for foundation — conflicts with the single-shared-DbContext decision and Task-3 CI migration path (`--project Infrastructure`).
+
+### 14. Domain events — in-process dispatch seam, minimal design (foundation, no outbox)
+
+R8 §5 fixed the SharedKernel seam (`IDomainEvent`, `BaseEntity.RaiseDomainEvent`/`ClearDomainEvents`, `IDomainEventsDispatcher`). This subsection pins the dispatch mechanics so Task 3/5 wire it without guesswork:
+
+```csharp
+// SharedKernel.Events — optional DRY convenience base (verified compiles 0-warning):
+public interface IDomainEvent { DateTime OccurredAtUtc { get; } }
+public abstract record DomainEvent(DateTime OccurredAtUtc) : IDomainEvent;   // entities: sealed record XEvent(...) : DomainEvent(now)
+
+// Task 5, base Application — the strongly-typed MediatR wrapper:
+public record DomainEventNotification<TDomainEvent>(TDomainEvent DomainEvent) : INotification
+    where TDomainEvent : IDomainEvent;
+
+// Task 5, central Infrastructure — seam implementation (no outbox):
+public sealed class DomainEventsDispatcher : IDomainEventsDispatcher
+{
+    private readonly IPublisher _publisher;
+    public async Task DispatchAsync(IEnumerable<IDomainEvent> events, CancellationToken ct)
+    {
+        foreach (var e in events)
+            await _publisher.Publish(new DomainEventNotification<IDomainEvent>(e), ct);
+    }
+}
+```
+
+Foundation decisions (all deliberate minimisation):
+1. **Dispatch trigger = after commit, single owner.** Task 5 registers a `SaveChangesInterceptor` (central Infrastructure) that: collects `DomainEvents` from tracked `BaseEntity` aggregates → `ClearDomainEvents()` → `await base.SaveChangesAsync(...)` → `DispatchAsync(collected)`. Do **not** also dispatch from the `IUnitOfWork` implementation — one owner, no double-fire. Re-entrancy: because the ledger is cleared post-dispatch, a second `SaveChangesAsync` in the same scope no-ops events.
+2. **Why after commit:** handlers observe persisted aggregates; a failed handler can't roll back the aggregate's save. Trade-off, documented: handler failure after commit leaves the event "lost" (no transactional outbox). Acceptable at foundation (single-box, in-process, accounting domain events are rare); Task 5/7 revisit with retry/monitoring and recorded `ObservedAt`. Milan's guidance on outbox deferred.
+3. **Wrapper over MediatR, not `IDomainEvent : INotification`** — keeps SharedKernel zero-package/license-clean (R8). Handlers are plain `INotificationHandler<DomainEventNotification<T>>` registered via `AddMediatR` assembly scan (module Applications register theirs via module Infra, §15).
+4. Cross-module awareness: a module can only now-discover other modules' events if the event **type** is reachable (module → module refs prohibited). Rules for when this bites: keep cross-module events in Module.Application of the raising module and let the consumer reference Contracts-only (or central base Application for genuinely cross-cutting events like audit). Not exercised at foundation — recorded so Task 5 doesn't invent a bus.
+
+### 15. Composition root — exact patterns + the Api-module-reference question (RESOLVED)
+
+All patterns below **verified locally**, full 12-module graph compiled + ran (SDK 10.0.401, `LangVersion 14.0`, `TreatWarningsAsErrors` + `latest-recommended` + `EnforceCodeStyleInBuild`).
+
+**Base Application — `AddApplication()`** (base `SmeAccounting.Application/DependencyInjection.cs` static class; now gains its 3 PackageReferences, all already CPM-pinned — **no Directory.Packages.props change**):
+
+```csharp
+using FluentValidation;
+using MediatR;
+using Microsoft.Extensions.DependencyInjection;
+
+namespace SmeAccounting.Application;
+
+public abstract class ApplicationMarker { }
+
+public static class DependencyInjection
+{
+    public static IServiceCollection AddApplication(this IServiceCollection services) => services
+        .AddMediatR(cfg =>
+        {
+            cfg.RegisterServicesFromAssemblyContaining<ApplicationMarker>();
+            cfg.Lifetime = ServiceLifetime.Scoped;                 // verified: DI merged in MediatR main pkg
+        })
+        .AddValidatorsFromAssembly(typeof(ApplicationMarker).Assembly, ServiceLifetime.Scoped)
+        .AddTransient(typeof(IPipelineBehavior<,>), typeof(ValidationBehaviour<,>));
+}
+```
+
+**Base Infrastructure — `AddInfrastructure()`**: empty body `=> services;` today; providers/DbContext/persistence land Task 3/5.
+
+**Module Infrastructure — `{M}Module` + `Add{M}Module()`** (R8 §6), with the AddModule body now registering its own Application assembly (verified `AddMediatR` is safe to call 13 times — base + 12 modules; handles accumulate, core services dedupe):
+
+```csharp
+public sealed class JournalModule : IModule
+{
+    public IServiceCollection AddModule(IServiceCollection services) => services
+        .AddMediatR(cfg => cfg.RegisterServicesFromAssemblyContaining<JournalApplicationMarker>());
+}
+public static class JournalModuleExtensions
+{
+    public static IServiceCollection AddJournalModule(this IServiceCollection services)
+        => new JournalModule().AddModule(services);
+}
+```
+
+**→ RESOLVED: Api references each module Application AND Infrastructure — NOT Infrastructure-only.** R8 §7's graph ("Api refs only 12× module Infra") is registration-complete but **typing-broken**: MVC controllers must construct typed `IRequest<T>` commands, and command types live in module Application. Api referencing module Infra alone leaves those types invisible (proven in scratch: the host needed `using SmeAccounting.Modules.Journal.Application` to `Send(new PingQuery())`). Final Api wiring: base `SmeAccounting.Application` + base `SmeAccounting.Infrastructure` + **12×(module Application + module Infrastructure)** = 24 module ProjectReferences. Clean-architecture-consistent (Api → Application + Infrastructure per Task-1 rule), zero reflection, zero extra packages.
+
+**Api `AddModules` helper** — must live in a namespace (CA1050, §17):
+
+```csharp
+// SmeAccounting.Api/ModulesAddExtensions.cs
+namespace SmeAccounting.Api;
+public static class ModulesAddExtensions
+{
+    public static IServiceCollection AddModules(this IServiceCollection services, IEnumerable<IModule> modules)
+    {
+        foreach (var m in modules) m.AddModule(services);
+        return services;
+    }
+}
+```
+
+**Program.cs order** (R8 §8, with modules): `AddControllersWithViews()` → `builder.Services.AddApplication()` → `.AddInfrastructure()` → `.AddModules([new IdentityModule(), new AuthorizationModule(), … new FinancialReportingModule()])`. Explicit array, no reflection (`Assembly.GetTypes()` scanning rejected per R8 §6).
+
+### 16. Project reference wiring table + naming + slnx (36 new projects, verified)
+
+**Naming convention** (matches Task-1 manual-csproj style, all verified CA1716-clean + 0-warning):
+- Project file == AssemblyName == RootNamespace == `SmeAccounting.Modules.{M}.{Layer}` (csproj sets `RootNamespace` + `AssemblyName` explicitly, per existing Task-1 csprojs).
+- Folder: `src/Modules/{M}/{Domain|Application|Infrastructure}/` (12 module names, PascalCase, all safe — incl. `MasterData`, `ChartOfAccounts`, `AccountingPeriod`, `FinancialReporting`, `GeneralLedger`).
+
+**Wiring table (36 projects + Api additions; the three-layer rule extends to every module):**
+
+| Project (36) | ProjectReference (→) | PackageReference |
+|---|---|---|
+| `{M}.Domain` (×12) | `SmeAccounting.Domain`, `SmeAccounting.SharedKernel` | **none** |
+| `{M}.Application` (×12) | `SmeAccounting.Application`, `SmeAccounting.SharedKernel`, own `{M}.Domain` | `MediatR` (pinned 12.5.0) |
+| `{M}.Infrastructure` (×12) | own `{M}.Application` | **none** |
+| `SmeAccounting.Api` (adds) | + 12×`{M}.Application` + 12×`{M}.Infrastructure` (on top of existing base App+Infra) | none new |
+| `SmeAccounting.Application` (base, gains) | unchanged (Domain, SharedKernel) | + `MediatR`, `FluentValidation`, `FluentValidation.DependencyInjectionExtensions` (all already CPM-pinned 12.5.0 / 12.1.1 / 12.1.1) |
+
+- **No module→module ProjectReference** (verified in scratch: every module ref points only at `..\Application\`/`..\Domain\` within its own module). Compiler-enforced isolation; Arch tests in Task 6 re-check.
+- **Central Infrastructure**: unchanged at Task 2 (no module refs; Task 3 may add the Option-B module-Domain refs per §13).
+- Project count after Task 2: 5 base src + 36 module + 6 tests = **47** in the slnx (matches R8).
+- **`.slnx`**: `dotnet sln add` appends **flat** `<Project Path>` entries — it does NOT auto-create Folder elements (verified). Executor: `dotnet sln SmeAccounting.slnx add src/Modules/*/*/*.csproj` (or per-project), then hand-edit slnx to group like the existing `/src/`/`/tests/` folders, e.g.:
+  ```xml
+  <Folder Name="/src/Modules/">
+    <Folder Name="/src/Modules/Journal/">
+      <Project Path="src/Modules/Journal/Domain/SmeAccounting.Modules.Journal.Domain.csproj" />
+      <Project Path="src/Modules/Journal/Application/SmeAccounting.Modules.Journal.Application.csproj" />
+      <Project Path="src/Modules/Journal/Infrastructure/SmeAccounting.Modules.Journal.Infrastructure.csproj" />
+    </Folder>
+    <!-- … 11 more modules … -->
+  </Folder>
+  ```
+- **Lock files**: 36 new `packages.lock.json` (module Apps carry MediatR + its transitive chain; Domains remain `net10.0: {}`; Infras carry MediatR transitives) + base `SmeAccounting.Application` lock regenerated (new packages). Api lock untouched (project refs don't affect package locks). Executor flow: scaffold → `dotnet restore --use-lock-file` → verify `dotnet restore --locked-mode` exit 0 → commit (NU1004 expected on the first locked build if locks aren't regenerated first).
+
+### 17. NEW local findings — WTE analyzer traps in the R8 designs (must fix during Task 2)
+
+Five rules fire under `TreatWarningsAsErrors` + `AnalysisLevel latest-recommended` + `EnforceCodeStyleInBuild` (all reproduced in scratch, SDK 10.0.401):
+
+1. **CA1716 — the planned `Error` record name FAILS the build.** `public sealed record Error(...)` triggers *"Rename type Error so that it no longer conflicts with the reserved language keyword"* (VB `Error`). R8 §5's `Result` design as written **does not compile under WTE**. Fix (verified): rename to **`Failure`** — `Failure(string Code, string Description)`; property `Result.Failure`, static `Result.Failure(...)` rename to `Fail(...)` (avoids `Failure`/`Failure` name-collision noise; compiled clean). Alternatives if a different name is preferred: `AppError`, `DomainError` — executor picks one and records in docs/architecture.md.
+2. **CA1000 — no static members on generic types.** `Result<T>.Success`/`Result<T>.Failure` static factories error. Verified fix: `.editorconfig` → `dotnet_diagnostic.CA1000.severity = none` (whole-solution; this rule is a style-guard and the factory pattern is intentional). Alternative: `[SuppressMessage]` on `Result<T>` only. Keep static factories `Create`/`Fail` (implicit conversions preserved).
+3. **CA1725 — override parameter names must match the interface.** `IPipelineBehavior<TRequest,TResponse>.Handle(..., CancellationToken cancellationToken)` and `IRequestHandler<,>.Handle(..., CancellationToken cancellationToken)`: naming the parameter `ct` is a build error. Use `cancellationToken` in the FV behaviour **and in every future MediatR handler** (R8 §3 sample needs the rename).
+4. **CA2016 — forward the token.** `return await next(cancellationToken);` (passing nothing to `next()` errors).
+5. **CA1050 — no global types.** Helper extension classes next to `Program.cs` top-level statements must be **namespaced** (`namespace SmeAccounting.Api;`), CS8803 forbids namespace-after-top-level-statements so put helpers in their own file.
+
+Re-verified clean after fixes: SharedKernel `Result/Failure/Result<T>`, `ValidationBehaviour` with canonical param names, module markers, `IModule` host in base Application, Composition root dispatch. Zero warnings across the whole 12-module graph.
+
+### 18. References (Researcher 9 additions)
+
+| Topic | Source |
+|---|---|
+| CA1716 reserved-keyword type names (Error → failure) | [learn.microsoft CA1716](https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1716) |
+| CA1000 static members on generic types (suppress via editorconfig) | [learn.microsoft CA1000](https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1000), [learn.microsoft code-analysis-identifiers](https://learn.microsoft.com/dotnet/fundamentals/code-analysis/configuration-options) |
+| CA1725 parameter-name matches base, CA2016 forward CancellationToken | [learn.microsoft CA1725](https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1725), [CA2016](https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca2016) |
+| CA1050 declare types in namespaces | [learn.microsoft CA1050](https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1050) |
+| EF `SaveChangesInterceptor` + domain-events-after-commit pattern | [milanjovanovic.tech building-a-custom-domain-events-dispatcher-in-dotnet](https://milanjovanovic.tech/blog/building-a-custom-domain-events-dispatcher-in-dotnet) |
+| slnx folder elements (flat `dotnet sln add`, manual Folder nesting — [local]) | [learn.microsoft dotnet new sln / slnx](https://learn.microsoft.com/dotnet/core/tools/dotnet-sln), SDK 10.0.401 CLI-verified |
+| MediatR 12.5.0 multi-`AddMediatR` registration (scoped, dedupe — [local]) | [github.com/LuckyPennySoftware/MediatR](https://github.com/LuckyPennySoftware/MediatR) |
