@@ -1,0 +1,49 @@
+# Build output (UseArtifactsOutput -> repo-root artifacts/)
+artifacts/
+**/bin/
+**/obj/
+
+# Local configuration / secrets
+.env
+.env.*
+*.local
+appsettings.*.local.json
+
+# User / machine-specific
+*.user
+*.suo
+.vs/
+.idea/
+*.userprefs
+*.DotSettings.user
+
+# Test results / coverage
+TestResults/
+**/TestResults/
+coverage/
+*.coverage
+*.coveragexml
+*.cache
+
+# Logs
+logs/
+*.log
+
+# NuGet
+*.nupkg
+*.snupkg
+*.nuget.g.props
+*.nuget.g.targets
+.packages/
+
+# EF Core bundle / migration artifacts produced at build time
+artifacts/efbundle*
+artifacts/*-idempotent.sql
+
+# Docs / tooling scratch
+docs/.vitepress/cache/
+docs/.vitepress/dist/
+
+# OS dirt
+.DS_Store
+Thumbs.db

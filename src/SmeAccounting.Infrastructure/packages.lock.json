@@ -1,0 +1,20 @@
+{
+  "version": 2,
+  "dependencies": {
+    "net10.0": {
+      "smeaccounting.application": {
+        "type": "Project",
+        "dependencies": {
+          "SmeAccounting.Domain": "[1.0.0, )",
+          "SmeAccounting.SharedKernel": "[1.0.0, )"
+        }
+      },
+      "smeaccounting.domain": {
+        "type": "Project"
+      },
+      "smeaccounting.sharedkernel": {
+        "type": "Project"
+      }
+    }
+  }
+}

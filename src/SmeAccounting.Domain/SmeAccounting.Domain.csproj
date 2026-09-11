@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>SmeAccounting.Domain</RootNamespace>
+    <AssemblyName>SmeAccounting.Domain</AssemblyName>
+  </PropertyGroup>
+
+</Project>

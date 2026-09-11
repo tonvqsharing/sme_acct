@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>SmeAccounting.Infrastructure</RootNamespace>
+    <AssemblyName>SmeAccounting.Infrastructure</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\SmeAccounting.Application\SmeAccounting.Application.csproj" />
+    <ProjectReference Include="..\SmeAccounting.Domain\SmeAccounting.Domain.csproj" />
+    <ProjectReference Include="..\SmeAccounting.SharedKernel\SmeAccounting.SharedKernel.csproj" />
+  </ItemGroup>
+
+</Project>

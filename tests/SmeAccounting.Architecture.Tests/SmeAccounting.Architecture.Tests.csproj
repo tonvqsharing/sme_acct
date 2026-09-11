@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <UseAppHost>true</UseAppHost>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\SmeAccounting.Domain\SmeAccounting.Domain.csproj" />
+    <ProjectReference Include="..\..\src\SmeAccounting.SharedKernel\SmeAccounting.SharedKernel.csproj" />
+    <ProjectReference Include="..\..\src\SmeAccounting.Application\SmeAccounting.Application.csproj" />
+    <ProjectReference Include="..\..\src\SmeAccounting.Infrastructure\SmeAccounting.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\SmeAccounting.Api\SmeAccounting.Api.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="AwesomeAssertions" />
+    <PackageReference Include="NetArchTest.Rules" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+</Project>

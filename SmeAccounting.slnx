@@ -1,0 +1,17 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/SmeAccounting.Api/SmeAccounting.Api.csproj" />
+    <Project Path="src/SmeAccounting.Application/SmeAccounting.Application.csproj" />
+    <Project Path="src/SmeAccounting.Domain/SmeAccounting.Domain.csproj" />
+    <Project Path="src/SmeAccounting.Infrastructure/SmeAccounting.Infrastructure.csproj" />
+    <Project Path="src/SmeAccounting.SharedKernel/SmeAccounting.SharedKernel.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/SmeAccounting.Application.Tests/SmeAccounting.Application.Tests.csproj" />
+    <Project Path="tests/SmeAccounting.Architecture.Tests/SmeAccounting.Architecture.Tests.csproj" />
+    <Project Path="tests/SmeAccounting.Domain.Tests/SmeAccounting.Domain.Tests.csproj" />
+    <Project Path="tests/SmeAccounting.Infrastructure.Tests/SmeAccounting.Infrastructure.Tests.csproj" />
+    <Project Path="tests/SmeAccounting.Security.Tests/SmeAccounting.Security.Tests.csproj" />
+    <Project Path="tests/SmeAccounting.Web.Tests/SmeAccounting.Web.Tests.csproj" />
+  </Folder>
+</Solution>

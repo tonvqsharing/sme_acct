@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <RootNamespace>SmeAccounting.Api</RootNamespace>
+    <AssemblyName>SmeAccounting.Api</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\SmeAccounting.Application\SmeAccounting.Application.csproj" />
+    <ProjectReference Include="..\SmeAccounting.Infrastructure\SmeAccounting.Infrastructure.csproj" />
+  </ItemGroup>
+
+</Project>
