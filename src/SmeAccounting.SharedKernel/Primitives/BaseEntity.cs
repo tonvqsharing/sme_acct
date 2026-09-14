@@ -6,7 +6,7 @@ public abstract class BaseEntity
     {
     }
 
-    public long Id { get; protected set; }
+    public long Id { get; set; }
 
     private readonly List<IDomainEvent> _domainEvents = [];
 

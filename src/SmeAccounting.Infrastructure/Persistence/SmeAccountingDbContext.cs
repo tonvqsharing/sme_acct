@@ -66,6 +66,40 @@ public class SmeAccountingDbContext : DbContext
         }
 
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(SmeAccountingDbContext).Assembly);
+
+        SeedData(modelBuilder);
+    }
+
+    private static void SeedData(ModelBuilder modelBuilder)
+    {
+        var now = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+
+        modelBuilder.Entity<Company>().HasData(
+            new Company
+            {
+                Id = 1,
+                Name = "Demo Company",
+                Code = "DEMO",
+                IsActive = true,
+                CreatedAtUtc = now,
+                CreatedBy = null,
+                IsDeleted = false
+            }
+        );
+
+        modelBuilder.Entity<Branch>().HasData(
+            new Branch
+            {
+                Id = 1,
+                CompanyId = 1,
+                Name = "Head Office",
+                Code = "HO",
+                IsActive = true,
+                CreatedAtUtc = now,
+                CreatedBy = null,
+                IsDeleted = false
+            }
+        );
     }
 
     private static void ApplySnakeCaseNamingConvention(ModelBuilder modelBuilder)

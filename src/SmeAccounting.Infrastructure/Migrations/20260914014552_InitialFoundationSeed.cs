@@ -7,7 +7,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace SmeAccounting.Infrastructure.Migrations
 {
     /// <inheritdoc />
-    public partial class InitialFoundationSnake : Migration
+    public partial class InitialFoundationSeed : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
@@ -119,6 +119,16 @@ namespace SmeAccounting.Infrastructure.Migrations
                         principalColumn: "id",
                         onDelete: ReferentialAction.Cascade);
                 });
+
+            migrationBuilder.InsertData(
+                table: "companies",
+                columns: new[] { "id", "code", "created_at_utc", "created_by", "deleted_at_utc", "deleted_by", "is_active", "is_deleted", "name", "updated_at_utc", "updated_by" },
+                values: new object[] { 1L, "DEMO", new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc), null, null, null, true, false, "Demo Company", null, null });
+
+            migrationBuilder.InsertData(
+                table: "branches",
+                columns: new[] { "id", "code", "company_id", "created_at_utc", "created_by", "deleted_at_utc", "deleted_by", "is_active", "is_deleted", "name", "updated_at_utc", "updated_by" },
+                values: new object[] { 1L, "HO", 1L, new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc), null, null, null, true, false, "Head Office", null, null });
 
             migrationBuilder.CreateIndex(
                 name: "IX_accounts_parent_id",

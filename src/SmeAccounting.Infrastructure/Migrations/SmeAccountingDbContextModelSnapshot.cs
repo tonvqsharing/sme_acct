@@ -220,6 +220,18 @@ namespace SmeAccounting.Infrastructure.Migrations
                     b.HasIndex("CompanyId");
 
                     b.ToTable("branches");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = 1L,
+                            Code = "HO",
+                            CompanyId = 1L,
+                            CreatedAtUtc = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            IsActive = true,
+                            IsDeleted = false,
+                            Name = "Head Office"
+                        });
                 });
 
             modelBuilder.Entity("SmeAccounting.Infrastructure.Persistence.Entities.Company", b =>
@@ -276,6 +288,17 @@ namespace SmeAccounting.Infrastructure.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("companies");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = 1L,
+                            Code = "DEMO",
+                            CreatedAtUtc = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            IsActive = true,
+                            IsDeleted = false,
+                            Name = "Demo Company"
+                        });
                 });
 
             modelBuilder.Entity("SmeAccounting.Infrastructure.Persistence.Entities.Account", b =>
