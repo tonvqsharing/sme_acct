@@ -1,6 +1,13 @@
 # Loop Memory
 Updated continuously by all agents as they discover things.
 ## Learnings
+### [G1] Implement Domain layer - Discovery 2026-09-14
+- Created src/Modules/Authorization/Domain/Permissions.cs static catalog with nested classes Accounts, Journal, Reports, Settings, Users, Audit, 19 constants matching docs/security.md, All() aggregates via spread
+- Created src/Modules/Authorization/Domain/Roles.cs static class with constants Admin, ChiefAccountant, Accountant, Viewer, Auditor and All()
+- Created src/Modules/Authorization/Domain/RolePermissionMap.cs static mapping dictionary with GetPermissions helper, matches RoleSeeder.StandardRoles permissions per docs/security.md
+- Domain csproj references verified: only SmeAccounting.Domain and SmeAccounting.SharedKernel, no EF or ASP.NET Core refs
+- No Permission entity created, Permission remains static catalog as per design
+- Files follow Identity.Application.Permissions pattern, namespace SmeAccounting.Modules.Authorization.Domain
 ### [G1] Discover module structure and design domain entities - Discovery 2026-09-14
 - Authorization module path verified: src/Modules/Authorization/
 - Structure mirrors Identity module: Domain/Application/Infrastructure sub-projects
