@@ -11,7 +11,7 @@
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
     <UseArtifactsOutput>true</UseArtifactsOutput>
     <!-- Microsoft.Testing.Platform 2.3.3 ships locale resources (ru, cs, ...) .NET does not recognize -->
-    <NoWarn>$(NoWarn);NETSDK1188;CA1000;IDE0161;CA1861</NoWarn>
+    <NoWarn>$(NoWarn);NETSDK1188;CA1000;IDE0161;CA1861;CA1848;CA1873</NoWarn>
   </PropertyGroup>
 
 </Project>
