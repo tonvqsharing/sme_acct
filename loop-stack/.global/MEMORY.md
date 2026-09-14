@@ -50,5 +50,17 @@ Shared across all loops in this project.
 - **CA1725/CA2016**: MediatR `IPipelineBehavior.Handle` override params must be named `cancellationToken`; call `next(cancellationToken)` explicitly.
 - **zsh traps** (module scaffolding): `modules` is a read-only zsh special variable; `for m in $scalar` does NOT word-split in zsh (creates one literal space-named dir). Use zsh arrays or bash.
 
+### Identity Module — Application Layer (verified Task 2, build-identity-auth)
+- **Permission authorization types belong in Application** (not Infrastructure): `PermissionRequirement`, `PermissionAuthorizationHandler`, `PermissionPolicyProvider`, `ClaimsPrincipalExtensions`, `Permissions` — all depend only on `Microsoft.AspNetCore.Authorization` + `System.Security.Claims`, no Infrastructure deps.
+- **FrameworkReference pattern for Authorization**: any net10.0 lib using `IAuthorizationPolicyProvider`, `AuthorizationHandler<T>`, or `AuthorizationPolicyBuilder` needs `<FrameworkReference Include="Microsoft.AspNetCore.App" />` — same pattern as IHttpContextAccessor.
+- **PermissionPolicyProvider** intercepts `"Permission:{name}"` policy strings → creates `PermissionRequirement` on the fly. Fallback: `DefaultAuthorizationPolicyProvider`.
+- **PermissionAuthorizationHandler** grants access if user has required permission OR `Users.ManageRoles` (admin bypass).
+
+### Identity Module — Infrastructure Layer (verified Task 3, build-identity-auth)
+- **IdentityDbContext** extends `IdentityDbContext<ApplicationUser, ApplicationRole, long>` — snake_case table/column naming via `OnModelCreating` loop over `builder.Model.GetEntityTypes()`.
+- **IdentityDbContextFactory** implements `IDesignTimeDbContextFactory<IdentityDbContext>` with hardcoded Npgsql connection string — design-time only, `Microsoft.EntityFrameworkCore.Design` PackageReference must have `PrivateAssets="all"`.
+- **EF Core package versions in Directory.Packages.props**: Identity.EFCore 10.0.12, EFCore 10.0.12, EFCore.Design 10.0.12, Npgsql.EFCore.PostgreSQL 10.0.3 — all versionless under CPM.
+- **Build will fail** until Task 4 adds `ApplicationUser`/`ApplicationRole` — that's expected per plan; only those two CS0246 errors remain.
+
 ### Effective working patterns
 - **Smoke-test pattern**: build → `dotnet sln list` (expect exact project count) → launch built dll directly → curl `/` expect 200 → kill-by-PID (NOT `pkill -f <name>` — self-matching footgun). `StaticFileMiddleware[16] WebRootPath not found` is benign env artifact when content-root ≠ Api dir; silence with `wwwroot/.gitkeep`.

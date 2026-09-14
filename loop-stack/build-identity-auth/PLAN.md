@@ -17,7 +17,7 @@ yes
   - `Role.cs` (`BaseEntity`): `Name`, `NormalizedName`, `Description`, `DisplayOrder` (int)
   - Leave `SmeAccounting.Modules.Identity.Domain.csproj` unchanged (keeps references to `SmeAccounting.Domain` and `SmeAccounting.SharedKernel` — `BaseEntity` lives in SharedKernel)
 
-- [ ] [G2] **Task 2: Application layer — Permissions, ClaimsPrincipalExtensions, Authorization**
+- [x] [G2] **Task 2: Application layer — Permissions, ClaimsPrincipalExtensions, Authorization** ✅ VERIFIED_PASS
   Move permission constants and authorization logic into the Application layer. NO dependency on Infrastructure.
   - `Permissions.cs` — copy from `src/SmeAccounting.Infrastructure/Identity/Permissions.cs` → `src/Modules/Identity/Application/Permissions.cs`. Change namespace to `SmeAccounting.Modules.Identity.Application`.
   - `ClaimsPrincipalExtensions.cs` — copy from `src/SmeAccounting.Infrastructure/Identity/ClaimsPrincipalExtensions.cs` → `src/Modules/Identity/Application/ClaimsPrincipalExtensions.cs`. Change namespace to `SmeAccounting.Modules.Identity.Application`.
@@ -25,7 +25,7 @@ yes
   - `PermissionPolicyProvider.cs` — copy from `src/SmeAccounting.Infrastructure/Identity/PermissionPolicyProvider.cs` → `src/Modules/Identity/Application/PermissionPolicyProvider.cs`. Change namespace to `SmeAccounting.Modules.Identity.Application`.
   - Update `SmeAccounting.Modules.Identity.Application.csproj`: add `<FrameworkReference Include="Microsoft.AspNetCore.App" />` (needed for `Microsoft.AspNetCore.Authorization` types used by PermissionPolicyProvider and PermissionAuthorizationHandler)
 
-- [ ] [G2] **Task 3: Infrastructure project setup and IdentityDbContext**
+- [x] [G2] **Task 3: Infrastructure project setup and IdentityDbContext** ✅ VERIFIED_PASS
   Prepare Infrastructure layer with required packages and database context.
   - Update `SmeAccounting.Modules.Identity.Infrastructure.csproj`:
     - Add `<FrameworkReference Include="Microsoft.AspNetCore.App" />`

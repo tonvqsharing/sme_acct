@@ -2,20 +2,21 @@
 ## State
 IN_PROGRESS
 ## Current Task
-[G2] Task 3: Infrastructure project setup and IdentityDbContext
+(G3) Task 4: Infrastructure — ApplicationUser, ApplicationRole, and mapper
 ## Task Progress
 2 / 5 complete
 ## Attempts On Current Task
-0
+1
 ## Completed Tasks
 [G1] Task 1: Domain entities for Identity — VERIFIED_PASS
-[G1] Task 2: Application layer — Permissions, ClaimsPrincipalExtensions, Authorization
+[G2] Task 2: Application layer — Permissions, ClaimsPrincipalExtensions, Authorization — VERIFIED_PASS
+[G2] Task 3: Infrastructure project setup and IdentityDbContext — VERIFIED_PASS
 ## Skipped Tasks
 (none)
 ## Last Researcher Result
-Completed Requirements & Constraints research. SharedKernel provides: BaseEntity (long Id, domain events), ValueObject, IAuditable, ISoftDeletable, ICompanyScoped, Result<T>/Failure, IRepository/IUnitOfWork, ICurrentUserProvider/IDateTimeProvider. EF Core: PostgreSQL/Npgsql, snake_case naming, bigint PKs with IdentityByDefaultColumn, xmin concurrency token, numeric(18,2) decimals, global soft delete query filter. Tests: xUnit v3 + MTP runner (all projects must share), NSubstitute, AwesomeAssertions, Testcontainers.PostgreSql + Respawn, WebApplicationFactory pattern. Identity module stubs empty; real code in SmeAccounting.Infrastructure/Identity/ (11 files): ApplicationUser (IdentityUser<long>), ApplicationRole, separate IdentityDbContext, permission-based RBAC (19 permissions, "Permission:{name}" policy). 5 standard roles seeded. Cookie auth 8hr, password 8+ complex, 5-attempt lockout. Full inventory in RESEARCH.md.
+Task 2 research complete. 4 files to copy from Infrastructure/Identity → Modules/Identity/Application: Permissions.cs (pure constants, no deps), ClaimsPrincipalExtensions.cs (System.Security.Claims), PermissionAuthorizationHandler.cs (Microsoft.AspNetCore.Authorization), PermissionPolicyProvider.cs (Microsoft.AspNetCore.Authorization + Options). Need FrameworkReference to csproj. ICurrentUserProvider in SharedKernel not used by these files. All namespace changes: SmeAccounting.Infrastructure.Identity → SmeAccounting.Modules.Identity.Application.
 ## Last Executor Result
-(none)
+Task 3 done. 2 files copied from Infrastructure/Identity → Modules/Identity/Infrastructure (IdentityDbContext.cs, IdentityDbContextFactory.cs). Namespace: `SmeAccounting.Modules.Identity.Infrastructure`. csproj updated: FrameworkReference + 4 PackageReferences (Identity.EFCore, EFCore, EFCore.Design w/ PrivateAssets, Npgsql) + Domain ProjectReference. Build: 2 errors (ApplicationUser/ApplicationRole — expected, Task 4). Restore: OK.
 ## Last Audit Result
 (none)
 ## Active Heartbeats
