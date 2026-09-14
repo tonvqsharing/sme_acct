@@ -5,4 +5,8 @@
     <AssemblyName>SmeAccounting.Domain</AssemblyName>
   </PropertyGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\SmeAccounting.SharedKernel\SmeAccounting.SharedKernel.csproj" />
+  </ItemGroup>
+
 </Project>

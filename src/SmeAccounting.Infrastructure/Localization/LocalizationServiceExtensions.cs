@@ -13,13 +13,26 @@ public static class LocalizationServiceExtensions
 
         services.Configure<RequestLocalizationOptions>(options =>
         {
-            var supportedCultures = new[]
-            {
-                new CultureInfo("vi-VN"),
-                new CultureInfo("en-US")
-            };
+            CultureInfo[] supportedCultures;
+            RequestCulture defaultCulture;
 
-            options.DefaultRequestCulture = new RequestCulture("vi-VN");
+            try
+            {
+                supportedCultures =
+                [
+                    new CultureInfo("vi-VN"),
+                    new CultureInfo("en-US")
+                ];
+                defaultCulture = new RequestCulture("vi-VN");
+            }
+            catch (CultureNotFoundException)
+            {
+                // Globalization-invariant mode (e.g. in test environments)
+                supportedCultures = [CultureInfo.InvariantCulture];
+                defaultCulture = new RequestCulture(CultureInfo.InvariantCulture);
+            }
+
+            options.DefaultRequestCulture = defaultCulture;
             options.SupportedCultures = supportedCultures;
             options.SupportedUICultures = supportedCultures;
         });

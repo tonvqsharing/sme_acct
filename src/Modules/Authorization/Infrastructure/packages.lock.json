@@ -23,7 +23,10 @@
         }
       },
       "smeaccounting.domain": {
-        "type": "Project"
+        "type": "Project",
+        "dependencies": {
+          "SmeAccounting.SharedKernel": "[1.0.0, )"
+        }
       },
       "smeaccounting.modules.authorization.application": {
         "type": "Project",

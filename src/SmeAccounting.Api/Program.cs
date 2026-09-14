@@ -46,15 +46,19 @@ var app = builder.Build();
 app.UseForwardedHeaders();
 app.UseRequestLocalization();
 app.UseGlobalExceptionHandler();
+app.UseRouting();
 app.UseHealthInfrastructure();
 
 // Fail fast if model/migrations out of sync
-using (var scope = app.Services.CreateScope())
+if (!app.Environment.IsEnvironment("Testing"))
 {
-    var db = scope.ServiceProvider.GetRequiredService<SmeAccountingDbContext>();
-    if (db.Database.GetPendingMigrations().Any())
+    using (var scope = app.Services.CreateScope())
     {
-        throw new InvalidOperationException("Pending migrations detected. Apply migrations before starting the application.");
+        var db = scope.ServiceProvider.GetRequiredService<SmeAccountingDbContext>();
+        if (db.Database.GetPendingMigrations().Any())
+        {
+            throw new InvalidOperationException("Pending migrations detected. Apply migrations before starting the application.");
+        }
     }
 }
 

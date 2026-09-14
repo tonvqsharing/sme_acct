@@ -158,6 +158,12 @@
         }
       },
       "smeaccounting.domain": {
+        "type": "Project",
+        "dependencies": {
+          "SmeAccounting.SharedKernel": "[1.0.0, )"
+        }
+      },
+      "smeaccounting.sharedkernel": {
         "type": "Project"
       }
     }

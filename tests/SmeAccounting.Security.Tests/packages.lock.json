@@ -799,7 +799,10 @@
         }
       },
       "smeaccounting.domain": {
-        "type": "Project"
+        "type": "Project",
+        "dependencies": {
+          "SmeAccounting.SharedKernel": "[1.0.0, )"
+        }
       },
       "smeaccounting.infrastructure": {
         "type": "Project",

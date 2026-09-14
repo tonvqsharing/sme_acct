@@ -39,7 +39,10 @@
         "contentHash": "cjWrLkJXK0rs4zofsK4bSdg+jhDLTaxrkXu4gS6Y7MAlCvRyNNgwY/lJi5RDlQOnSZweHqoyvgvbdvQsRIW+hg=="
       },
       "smeaccounting.domain": {
-        "type": "Project"
+        "type": "Project",
+        "dependencies": {
+          "SmeAccounting.SharedKernel": "[1.0.0, )"
+        }
       },
       "smeaccounting.sharedkernel": {
         "type": "Project"
