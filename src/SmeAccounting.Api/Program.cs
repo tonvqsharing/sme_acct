@@ -2,6 +2,10 @@ using Microsoft.EntityFrameworkCore;
 using SmeAccounting.Api;
 using SmeAccounting.Application;
 using SmeAccounting.Infrastructure;
+using SmeAccounting.Infrastructure.ErrorHandling;
+using SmeAccounting.Infrastructure.ForwardedHeaders;
+using SmeAccounting.Infrastructure.Health;
+using SmeAccounting.Infrastructure.Localization;
 using SmeAccounting.Infrastructure.Persistence;
 using SmeAccounting.Modules.AccountingPeriod.Infrastructure;
 using SmeAccounting.Modules.Audit.Infrastructure;
@@ -38,6 +42,11 @@ builder.Services.AddModules(
 ]);
 
 var app = builder.Build();
+
+app.UseForwardedHeaders();
+app.UseRequestLocalization();
+app.UseGlobalExceptionHandler();
+app.UseHealthInfrastructure();
 
 // Fail fast if model/migrations out of sync
 using (var scope = app.Services.CreateScope())
