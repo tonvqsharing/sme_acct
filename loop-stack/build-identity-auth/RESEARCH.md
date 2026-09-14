@@ -148,3 +148,229 @@ Add to `SmeAccounting.Modules.Identity.Infrastructure.csproj`:
 | Source (Infrastructure) | Target (Module Infrastructure) |
 |---|---|
 | `SmeAccounting.Infrastructure.Identity` | `SmeAccounting.Modules.Identity.Infrastructure` |
+
+## Task-Specific Research — Task 4
+
+### Source files to copy
+
+#### ApplicationUser.cs (`src/SmeAccounting.Infrastructure/Identity/ApplicationUser.cs`)
+- Extends `IdentityUser<long>` (Microsoft.AspNetCore.Identity)
+- Custom properties: `DisplayName` (string), `BranchId` (long?), `IsEnabled` (bool, default true), `CreatedAtUtc` (DateTime, default UtcNow), `LastLoginAtUtc` (DateTime?)
+- Namespace: `SmeAccounting.Infrastructure.Identity` → `SmeAccounting.Modules.Identity.Infrastructure`
+- Simple copy, only namespace changes
+
+#### ApplicationRole.cs (`src/SmeAccounting.Infrastructure/Identity/ApplicationRole.cs`)
+- Extends `IdentityRole<long>` (Microsoft.AspNetCore.Identity)
+- Custom properties: `Description` (string), `DisplayOrder` (int)
+- Namespace: `SmeAccounting.Infrastructure.Identity` → `SmeAccounting.Modules.Identity.Infrastructure`
+- Simple copy, only namespace changes
+
+### Domain entities to map TO
+
+#### User.cs (`src/Modules/Identity/Domain/User.cs`)
+- Extends `BaseEntity` (SharedKernel) — `long Id` from base
+- Properties: `DisplayName`, `Email`, `UserName`, `BranchId` (long?), `IsEnabled` (bool), `CreatedAtUtc` (DateTime), `LastLoginAtUtc` (DateTime?), `PasswordHash` (string?), `FailedLoginAttempts` (int), `LockedUntilUtc` (DateTimeOffset?)
+- Computed: `IsLockedOut` (bool)
+- Methods: `RecordSuccessfulLogin`, `RecordFailedLogin`, `Lock`, `Unlock`, `SetPasswordHash`, `Deactivate`, `Activate`
+- Protected parameterless constructor
+
+#### Role.cs (`src/Modules/Identity/Domain/Role.cs`)
+- Extends `BaseEntity` (SharedKernel) — `long Id` from base
+- Properties: `Name`, `NormalizedName`, `Description`, `DisplayOrder` (int)
+- Protected parameterless constructor
+
+### Mapper design (ApplicationUserMapper.cs)
+
+**To create**: `src/Modules/Identity/Infrastructure/ApplicationUserMapper.cs`
+
+#### `static User ToDomain(ApplicationUser appUser)` mapping:
+| ApplicationUser (IdentityUser<long> + custom) | Domain User (BaseEntity + custom) | Notes |
+|---|---|---|
+| `appUser.Id` | `user.Id` | From `IdentityUser<long>` base |
+| `appUser.DisplayName` | `user.DisplayName` | Custom property |
+| `appUser.Email` | `user.Email` | From `IdentityUser<long>` base |
+| `appUser.UserName` | `user.UserName` | From `IdentityUser<long>` base |
+| `appUser.BranchId` | `user.BranchId` | Custom property |
+| `appUser.IsEnabled` | `user.IsEnabled` | Custom property |
+| `appUser.CreatedAtUtc` | `user.CreatedAtUtc` | Custom property |
+| `appUser.LastLoginAtUtc` | `user.LastLoginAtUtc` | Custom property |
+
+**Not mapped** (Identity-managed, domain has its own):
+- `PasswordHash` — domain `User` stores it separately via `SetPasswordHash()`
+- `FailedLoginAttempts`, `LockedUntilUtc` — domain manages lockout state via methods
+- `IsLockedOut` — computed from `LockedUntilUtc`
+
+#### `static Role ToDomain(ApplicationRole appRole)` mapping:
+| ApplicationRole (IdentityRole<long> + custom) | Domain Role (BaseEntity + custom) |
+|---|---|
+| `appRole.Id` | `role.Id` |
+| `appRole.Name` | `role.Name` |
+| `appRole.NormalizedName` | `role.NormalizedName` |
+| `appRole.Description` | `role.Description` |
+| `appRole.DisplayOrder` | `role.DisplayOrder` |
+
+### Mapper creates new domain entities (not updating existing)
+- Domain entities have protected parameterless constructors — mapper calls `new User()` and `new Role()`
+- Mapper is static, stateless — no DI needed
+- Uses `SmeAccounting.Modules.Identity.Domain` namespace for return types
+- Uses `SmeAccounting.Modules.Identity.Infrastructure` namespace for source types
+
+### Dependencies check
+- Infrastructure csproj already has ProjectReference to Domain (Task 3)
+- Infrastructure csproj already has FrameworkReference to Microsoft.AspNetCore.App (Task 3)
+- No new packages needed
+- No new project references needed
+
+### Files to create (3 total)
+1. `src/Modules/Identity/Infrastructure/ApplicationUser.cs` — copy, change namespace
+2. `src/Modules/Identity/Infrastructure/ApplicationRole.cs` — copy, change namespace
+3. `src/Modules/Identity/Infrastructure/ApplicationUserMapper.cs` — new static mapper class
+
+### csproj changes
+- None needed (all references already in place from Task 3)
+
+### Build impact
+- After this task: IdentityDbContext.cs compiles (ApplicationUser/ApplicationRole now defined)
+- Remaining build errors should be zero (unless Task 5 items still pending)
+
+## Task-Specific Research — Task 5
+
+### Overview
+Wire DI, add seeders, remove old centralized identity code. Depends on Tasks 2+4 (all Application and Infrastructure types exist).
+
+### Files to copy (2)
+
+#### RoleSeeder.cs (`src/SmeAccounting.Infrastructure/Identity/RoleSeeder.cs`)
+- 58 lines, static class `RoleSeeder`
+- `StandardRoles` array: 5 roles (Admin, ChiefAccountant, Accountant, Viewer, Auditor) with permission lists
+- `SeedAsync(RoleManager<ApplicationRole>, ILogger)` — creates roles + permission claims
+- Uses `Permissions` (from `SmeAccounting.Modules.Identity.Application` — Task 2)
+- Uses `ApplicationRole` (same Infrastructure namespace — Task 4)
+- **Namespace change**: `SmeAccounting.Infrastructure.Identity` → `SmeAccounting.Modules.Identity.Infrastructure`
+- **Using add**: `using SmeAccounting.Modules.Identity.Application;` (for `Permissions`)
+- Target: `src/Modules/Identity/Infrastructure/RoleSeeder.cs`
+
+#### UserSeeder.cs (`src/SmeAccounting.Infrastructure/Identity/UserSeeder.cs`)
+- 44 lines, static class `UserSeeder`
+- `SeedAsync(UserManager<ApplicationUser>, RoleManager<ApplicationRole>, ILogger, string?)` — creates admin user
+- Uses `ApplicationUser` and `ApplicationRole` (same namespace after copy)
+- **Namespace change**: `SmeAccounting.Infrastructure.Identity` → `SmeAccounting.Modules.Identity.Infrastructure`
+- Target: `src/Modules/Identity/Infrastructure/UserSeeder.cs`
+
+### IdentityModule.cs — rewrite
+
+Current state (12 lines): only MediatR registration via `IdentityApplicationMarker`.
+
+New design:
+```csharp
+public sealed class IdentityModule : IModule
+{
+    private readonly IConfiguration _configuration;
+
+    public IdentityModule(IConfiguration configuration)
+        => _configuration = configuration;
+
+    public IServiceCollection AddModule(IServiceCollection services)
+    {
+        // Identity DbContext
+        services.AddDbContext<IdentityDbContext>(options =>
+            options.UseNpgsql(_configuration.GetConnectionString("DefaultConnection")));
+
+        // ASP.NET Identity
+        services.AddIdentity<ApplicationUser, ApplicationRole>(options => { ... })
+            .AddEntityFrameworkStores<IdentityDbContext>()
+            .AddDefaultTokenProviders();
+
+        // Cookie policy
+        services.ConfigureApplicationCookie(options => { ... });
+
+        // Permission authorization
+        services.AddSingleton<IAuthorizationPolicyProvider, PermissionPolicyProvider>();
+        services.AddScoped<IAuthorizationHandler, PermissionAuthorizationHandler>();
+
+        // MediatR
+        services.AddMediatR(cfg => cfg.RegisterServicesFromAssemblyContaining<IdentityApplicationMarker>());
+
+        return services;
+    }
+}
+```
+
+Key decisions:
+- `IConfiguration` injected via constructor (not `IServiceProvider` — avoids building provider early)
+- All Identity config from `IdentityServiceExtensions.AddIdentityInfrastructure()` moves here verbatim
+- Seeders NOT executed in `AddModule` — that runs during DI composition (too early for scoped services). Seeders should run at app startup via a separate mechanism (e.g., `IHostedService` or middleware). Plan says "call during AddModule" but that's incorrect for scoped `UserManager`/`RoleManager`. Better: add a static `SeedAsync` method that can be called from Program.cs after build, or use a scoped service. **Executor should resolve this.**
+
+### IdentityModuleExtensions.cs — update
+
+Current: `AddIdentityModule()` no args.
+New: `AddIdentityModule(IConfiguration configuration)` passes config to constructor.
+
+### IConfiguration parameter threading
+
+`IModule.AddModule(IServiceCollection)` doesn't accept `IConfiguration`. Options:
+1. **Constructor injection** (chosen) — `new IdentityModule(builder.Configuration)` in Program.cs
+2. `IServiceProvider` in `AddModule` — bad practice (building provider early)
+
+Program.cs change: `new IdentityModule()` → `new IdentityModule(builder.Configuration)`
+
+### Files to delete (11) from `src/SmeAccounting.Infrastructure/Identity/`
+
+| File | Reason |
+|---|---|
+| `ApplicationRole.cs` | Moved to Module Infrastructure (Task 4) |
+| `ApplicationUser.cs` | Moved to Module Infrastructure (Task 4) |
+| `ClaimsPrincipalExtensions.cs` | Moved to Module Application (Task 2) |
+| `IdentityDbContext.cs` | Moved to Module Infrastructure (Task 3) |
+| `IdentityDbContextFactory.cs` | Moved to Module Infrastructure (Task 3) |
+| `IdentityServiceExtensions.cs` | Logic absorbed into IdentityModule.cs |
+| `PermissionAuthorizationHandler.cs` | Moved to Module Application (Task 2) |
+| `PermissionPolicyProvider.cs` | Moved to Module Application (Task 2) |
+| `Permissions.cs` | Moved to Module Application (Task 2) |
+| `RoleSeeder.cs` | Moving to Module Infrastructure (Task 5) |
+| `UserSeeder.cs` | Moving to Module Infrastructure (Task 5) |
+
+### DependencyInjection.cs changes
+
+Remove from `src/SmeAccounting.Infrastructure/DependencyInjection.cs`:
+- Line 9: `using SmeAccounting.Infrastructure.Identity;`
+- Line 47: `services.AddIdentityInfrastructure(configuration);`
+
+After removal, no remaining code in base Infrastructure references the Identity namespace.
+
+### Base Infrastructure csproj cleanup
+
+`src/SmeAccounting.Infrastructure/SmeAccounting.Infrastructure.csproj` has:
+- `<PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" />` — can remove (no remaining Identity code in base Infrastructure)
+
+Verify: grep confirms all `IdentityDbContext`/`UserManager`/`RoleManager` refs are within `Identity/` subfolder only.
+
+### AccountsController.cs — using update required
+
+`src/SmeAccounting.Api/Controllers/AccountsController.cs` (line 5):
+- `using SmeAccounting.Infrastructure.Identity;` → `using SmeAccounting.Modules.Identity.Infrastructure;`
+- Uses `ApplicationUser` in `SignInManager<ApplicationUser>` and `UserManager<ApplicationUser>` constructor params
+
+### Program.cs changes
+
+`src/SmeAccounting.Api/Program.cs` line 30:
+- `new IdentityModule()` → `new IdentityModule(builder.Configuration)`
+
+### Dependency chain summary
+
+| Action | File | What changes |
+|---|---|---|
+| CREATE | `Modules/Identity/Infrastructure/RoleSeeder.cs` | Copy + namespace + using |
+| CREATE | `Modules/Identity/Infrastructure/UserSeeder.cs` | Copy + namespace |
+| REWRITE | `Modules/Identity/Infrastructure/IdentityModule.cs` | Full Identity setup + IConfiguration ctor |
+| UPDATE | `Modules/Identity/Infrastructure/IdentityModuleExtensions.cs` | Accept IConfiguration |
+| UPDATE | `SmeAccounting.Api/Program.cs` | Pass config to IdentityModule |
+| UPDATE | `SmeAccounting.Api/Controllers/AccountsController.cs` | Using namespace change |
+| UPDATE | `SmeAccounting.Infrastructure/DependencyInjection.cs` | Remove Identity using + call |
+| UPDATE | `SmeAccounting.Infrastructure/SmeAccounting.Infrastructure.csproj` | Remove Identity.EntityFrameworkCore pkg |
+| DELETE | `SmeAccounting.Infrastructure/Identity/*` (11 files) | All moved or absorbed |
+
+### Build risk
+- After deleting old Identity files + updating using statements, build should succeed IF all namespace changes are correct
+- Missing namespace change in AccountsController would cause CS0246 (type not found)
+- Missing IConfiguration in IdentityModule constructor would cause runtime DI error, not build error

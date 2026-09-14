@@ -34,7 +34,7 @@ yes
   - `IdentityDbContext.cs` — copy from `src/SmeAccounting.Infrastructure/Identity/IdentityDbContext.cs` → `src/Modules/Identity/Infrastructure/IdentityDbContext.cs`. Change namespace to `SmeAccounting.Modules.Identity.Infrastructure`.
   - `IdentityDbContextFactory.cs` — copy from `src/SmeAccounting.Infrastructure/Identity/IdentityDbContextFactory.cs` → `src/Modules/Identity/Infrastructure/IdentityDbContextFactory.cs`. Change namespace to `SmeAccounting.Modules.Identity.Infrastructure`.
 
-- [ ] [G3] **Task 4: Infrastructure — ApplicationUser, ApplicationRole, and mapper**
+- [x] [G3] **Task 4: Infrastructure — ApplicationUser, ApplicationRole, and mapper**
   Create Identity types and the mapper to/from domain entities. Depends on Task 1 (Domain entities) and Task 3 (Infrastructure project setup).
   - `ApplicationUser.cs` — copy from `src/SmeAccounting.Infrastructure/Identity/ApplicationUser.cs` → `src/Modules/Identity/Infrastructure/ApplicationUser.cs`. Change namespace to `SmeAccounting.Modules.Identity.Infrastructure`.
   - `ApplicationRole.cs` — copy from `src/SmeAccounting.Infrastructure/Identity/ApplicationRole.cs` → `src/Modules/Identity/Infrastructure/ApplicationRole.cs`. Change namespace to `SmeAccounting.Modules.Identity.Infrastructure`.
