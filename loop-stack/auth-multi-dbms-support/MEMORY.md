@@ -16,4 +16,5 @@ Updated continuously by all agents as they discover things.
 - Package references hard-coded to Npgsql.EntityFrameworkCore.PostgreSQL in Infrastructure and Identity.Infrastructure csproj
 - Snake_case naming is provider-agnostic; ToSnakeCase duplicated in SmeAccountingDbContext and IdentityDbContext
 - Audit report written to docs/audit-identity-infrastructure-di.md
+- 2026-09-14: Verified audit report exists at docs/audit-identity-infrastructure-di.md with BLOCK findings; MEMORY and STATUS updated; no code changes per audit task
 
