@@ -7,7 +7,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace SmeAccounting.Infrastructure.Migrations
 {
     /// <inheritdoc />
-    public partial class InitialFoundationSeed : Migration
+    public partial class InitialFoundationXminV3 : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
@@ -35,7 +35,8 @@ namespace SmeAccounting.Infrastructure.Migrations
                     updated_by = table.Column<Guid>(type: "uuid", nullable: true),
                     is_deleted = table.Column<bool>(type: "boolean", nullable: false),
                     deleted_at_utc = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
-                    deleted_by = table.Column<Guid>(type: "uuid", nullable: true)
+                    deleted_by = table.Column<Guid>(type: "uuid", nullable: true),
+                    xmin = table.Column<uint>(type: "xid", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -62,7 +63,8 @@ namespace SmeAccounting.Infrastructure.Migrations
                     created_at_utc = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
                     created_by = table.Column<Guid>(type: "uuid", nullable: true),
                     updated_at_utc = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
-                    updated_by = table.Column<Guid>(type: "uuid", nullable: true)
+                    updated_by = table.Column<Guid>(type: "uuid", nullable: true),
+                    xmin = table.Column<uint>(type: "xid", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -84,7 +86,8 @@ namespace SmeAccounting.Infrastructure.Migrations
                     updated_by = table.Column<Guid>(type: "uuid", nullable: true),
                     is_deleted = table.Column<bool>(type: "boolean", nullable: false),
                     deleted_at_utc = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
-                    deleted_by = table.Column<Guid>(type: "uuid", nullable: true)
+                    deleted_by = table.Column<Guid>(type: "uuid", nullable: true),
+                    xmin = table.Column<uint>(type: "xid", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -107,7 +110,8 @@ namespace SmeAccounting.Infrastructure.Migrations
                     updated_by = table.Column<Guid>(type: "uuid", nullable: true),
                     is_deleted = table.Column<bool>(type: "boolean", nullable: false),
                     deleted_at_utc = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
-                    deleted_by = table.Column<Guid>(type: "uuid", nullable: true)
+                    deleted_by = table.Column<Guid>(type: "uuid", nullable: true),
+                    xmin = table.Column<uint>(type: "xid", nullable: false)
                 },
                 constraints: table =>
                 {

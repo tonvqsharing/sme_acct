@@ -96,6 +96,11 @@ namespace SmeAccounting.Infrastructure.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("updated_by");
 
+                    b.Property<uint>("Xmin")
+                        .IsConcurrencyToken()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
                     b.HasKey("Id");
 
                     b.HasIndex("ParentId");
@@ -154,6 +159,11 @@ namespace SmeAccounting.Infrastructure.Migrations
                     b.Property<Guid?>("UpdatedBy")
                         .HasColumnType("uuid")
                         .HasColumnName("updated_by");
+
+                    b.Property<uint>("Xmin")
+                        .IsConcurrencyToken()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
 
                     b.HasKey("Id");
 
@@ -215,6 +225,11 @@ namespace SmeAccounting.Infrastructure.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("updated_by");
 
+                    b.Property<uint>("Xmin")
+                        .IsConcurrencyToken()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
                     b.HasKey("Id");
 
                     b.HasIndex("CompanyId");
@@ -230,7 +245,8 @@ namespace SmeAccounting.Infrastructure.Migrations
                             CreatedAtUtc = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
                             IsActive = true,
                             IsDeleted = false,
-                            Name = "Head Office"
+                            Name = "Head Office",
+                            Xmin = 0u
                         });
                 });
 
@@ -285,6 +301,11 @@ namespace SmeAccounting.Infrastructure.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("updated_by");
 
+                    b.Property<uint>("Xmin")
+                        .IsConcurrencyToken()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
                     b.HasKey("Id");
 
                     b.ToTable("companies");
@@ -297,7 +318,8 @@ namespace SmeAccounting.Infrastructure.Migrations
                             CreatedAtUtc = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
                             IsActive = true,
                             IsDeleted = false,
-                            Name = "Demo Company"
+                            Name = "Demo Company",
+                            Xmin = 0u
                         });
                 });
 

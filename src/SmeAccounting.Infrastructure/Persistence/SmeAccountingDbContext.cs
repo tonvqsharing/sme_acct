@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata;
 using System.Linq.Expressions;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using SmeAccounting.Infrastructure.Persistence.Entities;
@@ -34,6 +35,18 @@ public class SmeAccountingDbContext : DbContext
             if (typeof(BaseEntity).IsAssignableFrom(clrType) && entityType.FindProperty("Id")?.ClrType == typeof(long))
             {
                 entityType.FindProperty("Id")!.SetAnnotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn);
+            }
+
+            // Add xmin shadow property as concurrency token for PostgreSQL
+            if (typeof(BaseEntity).IsAssignableFrom(clrType))
+            {
+                var xminShadow = entityType.AddProperty("Xmin", typeof(uint));
+                xminShadow.SetColumnName("xmin");
+                xminShadow.SetColumnType("xid");
+                xminShadow.IsConcurrencyToken = true;
+                // xmin is a PostgreSQL system column - exclude from INSERT/UPDATE, only read for concurrency
+                xminShadow.SetBeforeSaveBehavior(PropertySaveBehavior.Ignore);
+                xminShadow.SetAfterSaveBehavior(PropertySaveBehavior.Ignore);
             }
         }
 
@@ -74,30 +87,41 @@ public class SmeAccountingDbContext : DbContext
     {
         var now = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
 
+        // Use anonymous types to include shadow property Xmin
         modelBuilder.Entity<Company>().HasData(
-            new Company
+            new
             {
-                Id = 1,
+                Id = 1L,
                 Name = "Demo Company",
                 Code = "DEMO",
                 IsActive = true,
                 CreatedAtUtc = now,
-                CreatedBy = null,
-                IsDeleted = false
+                CreatedBy = (Guid?)null,
+                UpdatedAtUtc = (DateTime?)null,
+                UpdatedBy = (Guid?)null,
+                IsDeleted = false,
+                DeletedAtUtc = (DateTime?)null,
+                DeletedBy = (Guid?)null,
+                Xmin = 0u
             }
         );
 
         modelBuilder.Entity<Branch>().HasData(
-            new Branch
+            new
             {
-                Id = 1,
-                CompanyId = 1,
+                Id = 1L,
+                CompanyId = 1L,
                 Name = "Head Office",
                 Code = "HO",
                 IsActive = true,
                 CreatedAtUtc = now,
-                CreatedBy = null,
-                IsDeleted = false
+                CreatedBy = (Guid?)null,
+                UpdatedAtUtc = (DateTime?)null,
+                UpdatedBy = (Guid?)null,
+                IsDeleted = false,
+                DeletedAtUtc = (DateTime?)null,
+                DeletedBy = (Guid?)null,
+                Xmin = 0u
             }
         );
     }
