@@ -1,7 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata;
 using System.Linq.Expressions;
-using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using SmeAccounting.Infrastructure.Persistence.Entities;
 using SmeAccounting.SharedKernel;
 
@@ -23,42 +22,53 @@ public class SmeAccountingDbContext : DbContext
     {
         base.OnModelCreating(modelBuilder);
 
-        modelBuilder.HasPostgresExtension("uuid-ossp");
+        var providerName = modelBuilder.Model.FindAnnotation("Relational:ProviderName")?.GetValue<string>() ?? "";
+
         ApplySnakeCaseNamingConvention(modelBuilder);
 
         // modelBuilder.UseSnakeCaseNamingConvention(); // requires Npgsql EF Core 9 convention extension
 
-        // Configure default identity for long keys
+        // Configure default identity for long keys per provider
         foreach (var entityType in modelBuilder.Model.GetEntityTypes())
         {
             var clrType = entityType.ClrType;
             if (typeof(BaseEntity).IsAssignableFrom(clrType) && entityType.FindProperty("Id")?.ClrType == typeof(long))
             {
-                entityType.FindProperty("Id")!.SetAnnotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn);
-            }
-
-            // Add xmin shadow property as concurrency token for PostgreSQL
-            if (typeof(BaseEntity).IsAssignableFrom(clrType))
-            {
-                var xminShadow = entityType.AddProperty("Xmin", typeof(uint));
-                xminShadow.SetColumnName("xmin");
-                xminShadow.SetColumnType("xid");
-                xminShadow.IsConcurrencyToken = true;
-                // xmin is a PostgreSQL system column - exclude from INSERT/UPDATE, only read for concurrency
-                xminShadow.SetBeforeSaveBehavior(PropertySaveBehavior.Ignore);
-                xminShadow.SetAfterSaveBehavior(PropertySaveBehavior.Ignore);
+                var idProp = entityType.FindProperty("Id");
+                if (idProp != null)
+                {
+                    if (providerName.Contains("Npgsql") || providerName.Contains("PostgreSQL"))
+                    {
+                        // PostgreSQL uses identity by default
+                    }
+                    else if (providerName.Contains("MySql") || providerName.Contains("MariaDb"))
+                    {
+                        idProp.SetValueGeneratedOnAdd();
+                    }
+                    else if (providerName.Contains("Sqlite"))
+                    {
+                        idProp.SetValueGeneratedOnAdd();
+                    }
+                    else if (providerName.Contains("SqlServer"))
+                    {
+                        idProp.SetValueGeneratedOnAdd();
+                    }
+                }
             }
         }
 
         // Conventions
         foreach (var entityType in modelBuilder.Model.GetEntityTypes())
         {
-            // Decimal precision default
+            // Decimal precision default per provider
             foreach (var property in entityType.GetProperties())
             {
                 if (property.ClrType == typeof(decimal) || property.ClrType == typeof(decimal?))
                 {
-                    property.SetColumnType("numeric(18,2)");
+                    if (providerName.Contains("Npgsql") || providerName.Contains("PostgreSQL") || providerName.Contains("MySql") || providerName.Contains("Sqlite") || providerName.Contains("SqlServer"))
+                    {
+                        property.SetColumnType("numeric(18,2)");
+                    }
                 }
             }
         }
@@ -87,7 +97,6 @@ public class SmeAccountingDbContext : DbContext
     {
         var now = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
 
-        // Use anonymous types to include shadow property Xmin
         modelBuilder.Entity<Company>().HasData(
             new
             {
@@ -101,8 +110,7 @@ public class SmeAccountingDbContext : DbContext
                 UpdatedBy = (Guid?)null,
                 IsDeleted = false,
                 DeletedAtUtc = (DateTime?)null,
-                DeletedBy = (Guid?)null,
-                Xmin = 0u
+                DeletedBy = (Guid?)null
             }
         );
 
@@ -120,8 +128,7 @@ public class SmeAccountingDbContext : DbContext
                 UpdatedBy = (Guid?)null,
                 IsDeleted = false,
                 DeletedAtUtc = (DateTime?)null,
-                DeletedBy = (Guid?)null,
-                Xmin = 0u
+                DeletedBy = (Guid?)null
             }
         );
     }

@@ -26,17 +26,16 @@ public static class DependencyInjection
         services.AddHttpContextAccessor();
 
         // Persistence
-        var connectionString = configuration.GetConnectionString("DefaultConnection")
-            ?? "Host=localhost;Port=5432;Database=smeaccounting;Username=postgres;Password=postgres";
+        var provider = DbProviderSelector.Resolve(configuration);
+        var connectionString = DbProviderSelector.ResolveConnectionString(configuration, provider);
 
         services.AddDbContext<SmeAccountingDbContext>(options =>
-        {
-            options.UseNpgsql(connectionString, npgsqlOptions =>
-            {
-                npgsqlOptions.EnableRetryOnFailure(3);
-                npgsqlOptions.CommandTimeout(30);
-            });
-        });
+            DbProviderSelector.Configure(
+                options,
+                provider,
+                connectionString,
+                configuration.GetValue("Database:EnableRetryOnFailure", 3),
+                configuration.GetValue("Database:CommandTimeoutSeconds", 30)));
 
         // Providers
         services.AddSingleton<IDateTimeProvider, SystemDateTimeProvider>();

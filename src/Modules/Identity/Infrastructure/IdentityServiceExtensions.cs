@@ -6,14 +6,17 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using SmeAccounting.Infrastructure.Persistence;
 using SmeAccounting.Modules.Identity.Application;
 
 public static class IdentityServiceExtensions
 {
     public static IServiceCollection AddIdentityInfrastructure(this IServiceCollection services, IConfiguration configuration)
     {
+        var provider = DbProviderSelector.Resolve(configuration);
+        var connectionString = DbProviderSelector.ResolveConnectionString(configuration, provider);
         services.AddDbContext<IdentityDbContext>(options =>
-            options.UseNpgsql(configuration.GetConnectionString("DefaultConnection")));
+            DbProviderSelector.Configure(options, provider, connectionString, configuration.GetValue("Database:EnableRetryOnFailure", 3), configuration.GetValue("Database:CommandTimeoutSeconds", 30)));
 
         services.AddIdentity<ApplicationUser, ApplicationRole>(options =>
             {

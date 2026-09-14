@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
+using Microsoft.Extensions.Configuration;
 
 namespace SmeAccounting.Infrastructure.Persistence;
 
@@ -7,12 +8,15 @@ public class DesignTimeDbContextFactory : IDesignTimeDbContextFactory<SmeAccount
 {
     public SmeAccountingDbContext CreateDbContext(string[] args)
     {
+        var configuration = new ConfigurationBuilder()
+            .AddEnvironmentVariables()
+            .Build();
+
+        var provider = DbProviderSelector.Resolve(configuration);
+        var connectionString = DbProviderSelector.ResolveConnectionString(configuration, provider);
+
         var optionsBuilder = new DbContextOptionsBuilder<SmeAccountingDbContext>();
-        var connectionString = Environment.GetEnvironmentVariable("SME_ACCT_CONNECTION_STRING")
-            ?? "Host=localhost;Port=5432;Database=smeaccounting;Username=postgres;Password=postgres";
-
-        optionsBuilder.UseNpgsql(connectionString, o => o.EnableRetryOnFailure());
-
+        DbProviderSelector.Configure(optionsBuilder, provider, connectionString, 3, 30);
         return new SmeAccountingDbContext(optionsBuilder.Options);
     }
 }
