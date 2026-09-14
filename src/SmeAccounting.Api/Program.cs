@@ -1,6 +1,8 @@
+using Microsoft.EntityFrameworkCore;
 using SmeAccounting.Api;
 using SmeAccounting.Application;
 using SmeAccounting.Infrastructure;
+using SmeAccounting.Infrastructure.Persistence;
 using SmeAccounting.Modules.AccountingPeriod.Infrastructure;
 using SmeAccounting.Modules.Audit.Infrastructure;
 using SmeAccounting.Modules.Authorization.Infrastructure;
@@ -36,6 +38,16 @@ builder.Services.AddModules(
 ]);
 
 var app = builder.Build();
+
+// Fail fast if model/migrations out of sync
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<SmeAccountingDbContext>();
+    if (db.Database.GetPendingMigrations().Any())
+    {
+        throw new InvalidOperationException("Pending migrations detected. Apply migrations before starting the application.");
+    }
+}
 
 app.MapStaticAssets();
 app.MapControllerRoute(
