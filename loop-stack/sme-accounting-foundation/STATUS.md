@@ -2,7 +2,7 @@
 ## State
 IN_PROGRESS
 ## Current Task
-Task 3 [G3] Database Strategy & Persistence (PostgreSQL 16.14 + EF Core 10 + Npgsql) — IN PROGRESS. Research validation for DB platform change completed 2026-09-11.
+Task 3 [G3] Database Strategy & Persistence (PostgreSQL 16.14 + EF Core 9 + Npgsql) — IN PROGRESS. Infrastructure scaffold completed, PK strategy bigint identity, naming snake_case decided (pending convention implementation).
 ## Task Progress
 2 / 7 complete
 ## Attempts On Current Task
