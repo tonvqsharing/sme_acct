@@ -791,7 +791,11 @@
       "smeaccounting.modules.identity.infrastructure": {
         "type": "Project",
         "dependencies": {
-          "SmeAccounting.Modules.Identity.Application": "[1.0.0, )"
+          "Microsoft.AspNetCore.Identity.EntityFrameworkCore": "[10.0.12, )",
+          "Microsoft.EntityFrameworkCore": "[10.0.12, )",
+          "Npgsql.EntityFrameworkCore.PostgreSQL": "[10.0.3, )",
+          "SmeAccounting.Modules.Identity.Application": "[1.0.0, )",
+          "SmeAccounting.Modules.Identity.Domain": "[1.0.0, )"
         }
       },
       "smeaccounting.modules.journal.application": {

@@ -42,7 +42,7 @@ yes
     - `static User ToDomain(ApplicationUser appUser)` — maps `Id`, `DisplayName`, `Email`, `UserName`, `BranchId`, `IsEnabled`, `CreatedAtUtc`, `LastLoginAtUtc` to `SmeAccounting.Modules.Identity.Domain.User`
     - `static Role ToDomain(ApplicationRole appRole)` — maps `Id`, `Name`, `NormalizedName`, `Description`, `DisplayOrder` to `SmeAccounting.Modules.Identity.Domain.Role`
 
-- [ ] [G3] **Task 5: Infrastructure — seeders, module wiring, and cleanup**
+- [x] [G3] **Task 5: Infrastructure — seeders, module wiring, and cleanup** ✅ VERIFIED_PASS
   Wire DI, add seeders, and remove old centralized identity code. Depends on Tasks 2+4 (all Application and Infrastructure types).
   - `RoleSeeder.cs` — copy from `src/SmeAccounting.Infrastructure/Identity/RoleSeeder.cs` → `src/Modules/Identity/Infrastructure/RoleSeeder.cs`. Change namespace to `SmeAccounting.Modules.Identity.Infrastructure`. Update `using` for `Permissions` to `SmeAccounting.Modules.Identity.Application`.
   - `UserSeeder.cs` — copy from `src/SmeAccounting.Infrastructure/Identity/UserSeeder.cs` → `src/Modules/Identity/Infrastructure/UserSeeder.cs`. Change namespace to `SmeAccounting.Modules.Identity.Infrastructure`.

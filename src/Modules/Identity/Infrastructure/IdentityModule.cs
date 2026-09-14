@@ -7,6 +7,10 @@ using SmeAccounting.Modules.Identity.Application;
 
 public sealed class IdentityModule : IModule
 {
-    public IServiceCollection AddModule(IServiceCollection services) => services
-        .AddMediatR(cfg => cfg.RegisterServicesFromAssemblyContaining<IdentityApplicationMarker>());
+    public IServiceCollection AddModule(IServiceCollection services)
+    {
+        services.AddMediatR(cfg => cfg.RegisterServicesFromAssemblyContaining<IdentityApplicationMarker>());
+
+        return services;
+    }
 }

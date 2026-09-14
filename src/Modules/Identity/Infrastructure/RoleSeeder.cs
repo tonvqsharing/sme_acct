@@ -1,24 +1,24 @@
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Logging;
 
-namespace SmeAccounting.Infrastructure.Identity;
+namespace SmeAccounting.Modules.Identity.Infrastructure;
 
 public static class RoleSeeder
 {
     public static readonly (string Name, string Description, IReadOnlyList<string> Permissions)[] StandardRoles =
     [
         ("Admin", "System administrator with full access",
-            [.. Permissions.All]),
+            [.. SmeAccounting.Modules.Identity.Application.Permissions.All]),
         ("ChiefAccountant", "Head of accounting department",
-            [.. Permissions.Accounts.All, .. Permissions.Journal.All, .. Permissions.Reports.All, .. Permissions.Settings.All]),
+            [.. SmeAccounting.Modules.Identity.Application.Permissions.Accounts.All, .. SmeAccounting.Modules.Identity.Application.Permissions.Journal.All, .. SmeAccounting.Modules.Identity.Application.Permissions.Reports.All, .. SmeAccounting.Modules.Identity.Application.Permissions.Settings.All]),
         ("Accountant", "Regular accountant user",
-            [Permissions.Accounts.View, Permissions.Accounts.Create, Permissions.Accounts.Edit,
-             Permissions.Journal.View, Permissions.Journal.Create, Permissions.Journal.Edit,
-             Permissions.Reports.View]),
+            [SmeAccounting.Modules.Identity.Application.Permissions.Accounts.View, SmeAccounting.Modules.Identity.Application.Permissions.Accounts.Create, SmeAccounting.Modules.Identity.Application.Permissions.Accounts.Edit,
+             SmeAccounting.Modules.Identity.Application.Permissions.Journal.View, SmeAccounting.Modules.Identity.Application.Permissions.Journal.Create, SmeAccounting.Modules.Identity.Application.Permissions.Journal.Edit,
+             SmeAccounting.Modules.Identity.Application.Permissions.Reports.View]),
         ("Viewer", "Read-only access",
-            [Permissions.Accounts.View, Permissions.Journal.View, Permissions.Reports.View, Permissions.Audit.View]),
+            [SmeAccounting.Modules.Identity.Application.Permissions.Accounts.View, SmeAccounting.Modules.Identity.Application.Permissions.Journal.View, SmeAccounting.Modules.Identity.Application.Permissions.Reports.View, SmeAccounting.Modules.Identity.Application.Permissions.Audit.View]),
         ("Auditor", "Audit and compliance review access",
-            [Permissions.Audit.View, Permissions.Accounts.View, Permissions.Journal.View, Permissions.Reports.View, Permissions.Reports.Export])
+            [SmeAccounting.Modules.Identity.Application.Permissions.Audit.View, SmeAccounting.Modules.Identity.Application.Permissions.Accounts.View, SmeAccounting.Modules.Identity.Application.Permissions.Journal.View, SmeAccounting.Modules.Identity.Application.Permissions.Reports.View, SmeAccounting.Modules.Identity.Application.Permissions.Reports.Export])
     ];
 
     public static async Task SeedAsync(RoleManager<ApplicationRole> roleManager, ILogger logger)

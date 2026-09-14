@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Logging;
 
-namespace SmeAccounting.Infrastructure.Identity;
+namespace SmeAccounting.Modules.Identity.Infrastructure;
 
 public static class UserSeeder
 {

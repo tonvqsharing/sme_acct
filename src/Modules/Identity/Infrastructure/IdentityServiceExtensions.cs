@@ -1,17 +1,16 @@
+namespace SmeAccounting.Modules.Identity.Infrastructure;
+
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-
-namespace SmeAccounting.Infrastructure.Identity;
+using SmeAccounting.Modules.Identity.Application;
 
 public static class IdentityServiceExtensions
 {
-    public static IServiceCollection AddIdentityInfrastructure(
-        this IServiceCollection services,
-        IConfiguration configuration)
+    public static IServiceCollection AddIdentityInfrastructure(this IServiceCollection services, IConfiguration configuration)
     {
         services.AddDbContext<IdentityDbContext>(options =>
             options.UseNpgsql(configuration.GetConnectionString("DefaultConnection")));

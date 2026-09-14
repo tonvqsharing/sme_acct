@@ -1,4 +1,5 @@
-using SmeAccounting.Infrastructure.Identity;
+using SmeAccounting.Modules.Identity.Application;
+using SmeAccounting.Modules.Identity.Infrastructure;
 using System.Reflection;
 
 namespace SmeAccounting.Security.Tests;

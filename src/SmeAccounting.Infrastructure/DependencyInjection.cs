@@ -6,7 +6,6 @@ using Microsoft.Extensions.DependencyInjection;
 using SmeAccounting.Infrastructure.Audit;
 using SmeAccounting.Infrastructure.ForwardedHeaders;
 using SmeAccounting.Infrastructure.Health;
-using SmeAccounting.Infrastructure.Identity;
 using SmeAccounting.Infrastructure.Localization;
 using SmeAccounting.Infrastructure.Logging;
 using SmeAccounting.Infrastructure.Options;
@@ -42,9 +41,6 @@ public static class DependencyInjection
         // Providers
         services.AddSingleton<IDateTimeProvider, SystemDateTimeProvider>();
         services.AddScoped<ICurrentUserProvider, HttpContextCurrentUserProvider>();
-
-        // Identity
-        services.AddIdentityInfrastructure(configuration);
 
         // Logging
         services.AddSerilogInfrastructure(configuration);

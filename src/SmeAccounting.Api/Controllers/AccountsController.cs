@@ -2,7 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using SmeAccounting.Api.ViewModels;
-using SmeAccounting.Infrastructure.Identity;
+using SmeAccounting.Modules.Identity.Infrastructure;
 
 namespace SmeAccounting.Api.Controllers;
 
