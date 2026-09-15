@@ -721,3 +721,138 @@ Extend `SmeAccounting.Security.Tests` with Authorization catalog/roles-map/valid
 
 ### Prior Attempt Analysis
 - No prior G3-Tests attempts. STATUS shows current task still "[G3] Create migrations and seed" at 0 attempts — executor should confirm whether tests task runs before seed wiring lands (seed-dependent integration tests need Identity MigrateAsync in harness regardless, so independent).
+
+## Task-Specific Research — [G4] Docs
+
+### Documentation Inventory — What Exists vs What's Stale
+
+| Doc File | Exists? | Needs Update? | What to Change |
+|----------|---------|---------------|----------------|
+| `docs/authorization.md` | **NO** | **CREATE NEW** | New doc describing Authorization module: structure, permissions catalog, roles, RBAC pipeline, CQRS surface, RolesController endpoints |
+| `docs/security.md` | YES | **UPDATE RBAC section** | Lines 49, 62, 76-78 reference `src/SmeAccounting.Infrastructure/Identity/` paths — stale canonical source. Add note that Authorization module is now canonical for permissions/roles/RBAC. Keep Identity paths as "legacy/reference" |
+| `docs/modules.md` | YES | **UPDATE status** | Line 8: Authorization status says "Scaffolded" → should say "Implemented". Line 57 isolation rule #3 says "Module Domain must not reference Infrastructure" — this is still correct for Authorization (Domain is static catalog, no infra ref) |
+| `README.md` | YES | **MINOR** | Line 74: "Roles, permissions" for Authorization — expand to "Roles, permissions, RBAC policy engine" or similar. Line 95: docs table needs new `authorization.md` entry |
+| `docs/architecture.md` | YES | **NO CHANGE** | Line 35 lists Authorization module — accurate. No authorization-specific architecture details needed beyond what exists |
+| `docs/database.md` | YES | **NO CHANGE** | Identity tables managed by IdentityDbContext (line 157-158 accurate). Authorization adds NO new tables, NO migrations — nothing to document in DB doc |
+| `docs/testing.md` | YES | **NO CHANGE** | Tests are in Security.Tests — no new test project to document. Existing test table accurate |
+
+### Files That Must Be Untouched (Karpathy Rule #3: Surgical Changes)
+
+- `docs/architecture.md` — layer rules, module system, SharedKernel, request pipeline all correct and unrelated to Authorization changes
+- `docs/database.md` — DB schema, migrations, seeds, entities all correct; Authorization adds zero tables/migrations
+- `docs/deployment.md` — env vars, Docker, migration commands all provider-agnostic and correct
+- `docs/testing.md` — test project list accurate; new tests go in existing Security.Tests, no new project
+
+### docs/security.md — Precise Edits Required
+
+**Current stale references to fix:**
+
+1. **Line 49**: `src/SmeAccounting.Infrastructure/Identity/Permissions.cs` → now canonical at `src/Modules/Authorization/Domain/Permissions.cs`. Add note: "Canonical location: `src/Modules/Authorization/Domain/Permissions.cs`. Identity copy retained for backward compatibility."
+
+2. **Line 62**: `src/SmeAccounting.Infrastructure/Identity/RoleSeeder.cs` → seeding now wired via `AuthorizationRoleSeeder` at `src/Modules/Authorization/Infrastructure/Seeding/AuthorizationRoleSeeder.cs`. Add note about Program.cs startup seed invocation.
+
+3. **Lines 76-78**: Policy provider/handler paths → now at `src/Modules/Authorization/Application/Authorization/PermissionPolicyProvider.cs` and `PermissionAuthorizationHandler.cs`. Add note: "Ported to Authorization module; Identity copies retained."
+
+4. **Add new subsection** under RBAC: "### Authorization Module" explaining:
+   - Module path: `src/Modules/Authorization/`
+   - Domain: `Permissions.cs` (19 constants), `Roles.cs` (5 constants), `RolePermissionMap.cs` (role→permissions mapping)
+   - Application: CQRS commands/queries, validators, ported policy types
+   - Infrastructure: RoleService, PermissionService, AuthorizationRoleSeeder
+   - RolesController: MVC controller, 8 endpoints, `[Authorize(Policy="Permission:users.manage_roles")]`
+   - Registration: `AddAuthorizationModule()` in Program.cs + `UseAuthentication()` added
+
+### docs/modules.md — Precise Edits Required
+
+1. **Line 8**: Change `| 2 | **Authorization** | ✅ Scaffolded |` to `| 2 | **Authorization** | ✅ Implemented |`
+
+2. **No other changes** — module structure section (lines 22-60) accurately describes the pattern Authorization follows.
+
+### README.md — Precise Edits Required
+
+1. **Line 74**: `| Authorization | Roles, permissions |` → `| Authorization | Roles, permissions, RBAC policy engine |`
+
+2. **Line 95 area**: Add row to docs table: `| [Authorization](docs/authorization.md) | Authorization module: roles, permissions, RBAC pipeline |`
+
+3. **No other changes** — tech stack, architecture, quick start all accurate.
+
+### New docs/authorization.md — Content Structure
+
+The new doc should cover:
+
+```markdown
+# Authorization
+
+## Overview
+Authorization module for role-based access control (RBAC).
+
+## Module Structure
+src/Modules/Authorization/
+├── Domain/      # Permissions.cs, Roles.cs, RolePermissionMap.cs
+├── Application/ # CQRS commands/queries, validators, policy types
+└── Infrastructure/ # RoleService, PermissionService, seeder, module registration
+
+## Permissions
+19 permissions across 6 groups (table format matching security.md)
+
+## Roles
+5 built-in roles with permission mappings (table format)
+
+## RBAC Pipeline
+PermissionPolicyProvider → PermissionRequirement → PermissionAuthorizationHandler
+Admin bypass via users.manage_roles
+
+## CQRS Surface
+Commands: CreateRole, DeleteRole, AssignPermission, RevokePermission, AssignRoleToUser, RemoveRoleFromUser
+Queries: ListRoles, GetRolePermissions, GetUserPermissions
+
+## API Endpoints
+RolesController — 8 MVC endpoints under [Authorize(Policy="Permission:users.manage_roles")]
+
+## Seeding
+AuthorizationRoleSeeder runs at startup (Program.cs), reconciles role claims
+
+## Known Issues
+- Guid userId vs long Identity PKs (Assign/Remove/GetPermissions silently miss)
+- Dual auth stack (static 19 policies + dynamic PermissionPolicyProvider)
+- Cross-module Infrastructure→Identity.Infrastructure reference (concrete type requirement)
+```
+
+### Review Checklist — From code-review-and-quality Skill
+
+The executor must run a five-axis review before handoff. Key items for this task:
+
+**Correctness:**
+- [ ] docs/authorization.md created with accurate content matching actual code
+- [ ] docs/security.md RBAC section paths updated to reflect Authorization module
+- [ ] docs/modules.md Authorization status updated to "Implemented"
+- [ ] README.md docs table includes authorization.md link
+- [ ] No stale references to `src/SmeAccounting.Infrastructure/Identity/Permissions.cs` as canonical
+
+**Readability:**
+- [ ] New doc follows existing doc style (tables, code blocks, headings)
+- [ ] No duplicate content between docs (security.md stays authoritative for Identity; authorization.md covers Authorization module)
+
+**Architecture:**
+- [ ] No prod code changes — docs only
+- [ ] Authorization module isolation rules still accurately described
+
+**Security:**
+- [ ] No secrets or credentials in docs
+- [ ] Default password (Admin@12345) noted as dev-only with env var override
+
+**Performance:**
+- N/A for documentation task
+
+### Handoff Requirements
+
+1. Git commit with clear message: "docs: add authorization module docs, update security/modules/readme"
+2. RESEARCH.md updated with this section
+3. STATUS.md updated with final state
+4. All docs cross-referenced and consistent
+5. No prod code touched — documentation only
+
+### Quality Standards
+
+- **Good**: New doc matches security.md style (tables, code blocks, clear headings), cross-references existing docs, covers all Authorization module components, known issues documented honestly
+- **Merely functional**: Missing known issues section, stale paths not updated, no cross-references
+- **Anti-patterns**: Rewriting entire security.md, changing architecture/database docs, adding prod code in docs commit, creating docs that contradict actual code paths

@@ -81,4 +81,13 @@ Updated continuously by all agents as they discover things.
   - No module-to-module project references
   - FrameworkReference Microsoft.AspNetCore.App required for ASP.NET Core services in net10.0 libs
   - Permissions catalog must match docs/security.md 19 permissions, 5 roles
+### [G4] Documentation - Discovery 2026-09-15
+- Created docs/authorization.md (217 lines): permission catalog, built-in roles, role-permission mapping, claim storage model, RBAC pipeline, how to add permission, how to attach policy, CQRS surface (6 commands + 3 queries), API endpoints (8 RolesController actions), seeding, ported policy types, known issues (Guid-vs-long, dual auth stack, cross-module ref), source locations table
+- Updated docs/modules.md: Authorization status "Scaffolded" → "Implemented"
+- Updated README.md: expanded Authorization description to "RBAC policy engine", added authorization.md link to docs table
+- Updated docs/security.md: paths now point to Authorization module canonical locations (Permissions.cs, PermissionPolicyProvider, PermissionAuthorizationHandler, ClaimsPrincipalExtensions), added "Authorization Module" subsection describing module structure/components, noted Identity copies retained for backward compatibility
+- Review: no code changes, no silent edits to architecture.md/database.md/deployment.md/testing.md. Commit be944f4
+### [G4] Handoff - Execution 2026-09-15
+- Created HANDOFF.md (217 lines): full implementation summary, permission catalog + role mapping as shipped, attach-policy guide, add-permission-end-to-end guide, skills-per-step table, docs/security.md contradictions found and fixed, tests skipped (Postgres needs Docker, Guid-vs-long integration), follow-up work (caching, hierarchical roles, tenant-scoped perms, audit trail, UpdateRole command, IPermissionService Result types, query validators)
+- Git commit: "loop: [G4] handoff"
 
