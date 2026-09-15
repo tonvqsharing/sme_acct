@@ -8,6 +8,14 @@ Updated continuously by all agents as they discover things.
 - Domain csproj references verified: only SmeAccounting.Domain and SmeAccounting.SharedKernel, no EF or ASP.NET Core refs
 - No Permission entity created, Permission remains static catalog as per design
 - Files follow Identity.Application.Permissions pattern, namespace SmeAccounting.Modules.Authorization.Domain
+### [G2] Implement Application layer - Discovery 2026-09-15
+- Application csproj now mirrors Identity.Application: FrameworkReference Microsoft.AspNetCore.App + versionless FluentValidation + MediatR; locked-mode restore passes, project builds 0 warnings
+- Ported Identity policy types locally (PermissionRequirement separate file, PermissionAuthorizationHandler, PermissionPolicyProvider, ClaimsPrincipalExtensions) under SmeAccounting.Modules.Authorization.Application.Authorization, rewired to Domain.Permissions; sealed handler/provider classes; no module-to-module reference
+- Abstractions: IPermissionService (GetPermissionsAsync/HasPermissionAsync) + IRoleService (6 command methods + GetRolePermissionsAsync/ListRolesAsync returning Result<T>) — query methods added beyond spec minimum so ListRoles/GetRolePermissions handlers have a service to delegate to
+- 6 commands as sealed IRequest<Result> records with thin handlers delegating to IRoleService; 3 queries returning Result<IReadOnlyList<string>> (GetUserPermissions via IPermissionService direct + Result.Create wrap, others via IRoleService passthrough)
+- 6 FluentValidation validators: role name NotEmpty/Max256/Regex ^[A-Za-z0-9_.-]+$, permission Must(p => Domain.Permissions.All.Contains(p)), UserId NotEmpty; no new pipeline behavior (global ValidationBehaviour reused)
+- Full-solution build has PRE-EXISTING failures unrelated to this task: NU1010 (Sqlite/SqlServer/Pomelo versions missing in Directory.Packages.props) + Identity.Infrastructure CS0234 (SmeAccounting.Infrastructure namespace missing); Authorization.Application builds clean in isolation
+- Lock side effect: adding direct FluentValidation ref dropped Microsoft.Extensions.DependencyInjection.Abstractions transitive entries from Application lock (now via FrameworkReference) and added FV transitively to Infrastructure lock; both locks in sync via --locked-mode restore
 ### [G1] Discover module structure and design domain entities - Discovery 2026-09-14
 - Authorization module path verified: src/Modules/Authorization/
 - Structure mirrors Identity module: Domain/Application/Infrastructure sub-projects

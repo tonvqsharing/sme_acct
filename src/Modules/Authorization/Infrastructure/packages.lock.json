@@ -31,6 +31,7 @@
       "smeaccounting.modules.authorization.application": {
         "type": "Project",
         "dependencies": {
+          "FluentValidation": "[12.1.1, )",
           "MediatR": "[12.5.0, )",
           "SmeAccounting.Application": "[1.0.0, )",
           "SmeAccounting.Modules.Authorization.Domain": "[1.0.0, )",
