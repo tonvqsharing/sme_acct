@@ -26,6 +26,7 @@ builder.Services.AddControllersWithViews();
 builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddIdentityModule(builder.Configuration);
+builder.Services.AddAuthorizationModule();
 builder.Services.AddModules(
 [
     new IdentityModule(),
@@ -68,6 +69,7 @@ app.MapControllerRoute(
     name: "default",
     pattern: "{controller=Home}/{action=Index}/{id?}").WithStaticAssets();
 
+app.UseAuthentication();
 app.UseAuthorization();
 
 app.Run();

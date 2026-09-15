@@ -6,7 +6,12 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="../Application/SmeAccounting.Modules.Authorization.Application.csproj" />
+    <ProjectReference Include="../../Identity/Infrastructure/SmeAccounting.Modules.Identity.Infrastructure.csproj" />
   </ItemGroup>
 
 </Project>
