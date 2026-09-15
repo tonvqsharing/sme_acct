@@ -46,7 +46,7 @@ Separate `IdentityDbContext` (`src/SmeAccounting.Infrastructure/Identity/Identit
 
 ### Permissions
 
-19 permissions defined in `src/SmeAccounting.Infrastructure/Identity/Permissions.cs`:
+19 permissions defined in `src/Modules/Authorization/Domain/Permissions.cs` (canonical; Identity copy at `src/SmeAccounting.Infrastructure/Identity/Permissions.cs` retained for backward compatibility):
 
 | Group | Permissions |
 |-------|------------|
@@ -59,7 +59,7 @@ Separate `IdentityDbContext` (`src/SmeAccounting.Infrastructure/Identity/Identit
 
 ### Roles
 
-5 roles seeded by `RoleSeeder` (`src/SmeAccounting.Infrastructure/Identity/RoleSeeder.cs`):
+5 roles seeded by `RoleSeeder` (`src/Modules/Identity/Infrastructure/RoleSeeder.cs`) and reconciled by `AuthorizationRoleSeeder` (`src/Modules/Authorization/Infrastructure/Seeding/AuthorizationRoleSeeder.cs`) at startup:
 
 | Role | Description | Permissions |
 |------|-------------|-------------|
@@ -73,19 +73,31 @@ Permissions stored as `"permission"` claims on roles.
 
 ### Authorization Pipeline
 
-1. `PermissionPolicyProvider` (`src/SmeAccounting.Infrastructure/Identity/PermissionPolicyProvider.cs`) — intercepts policy names starting with `"Permission:"` and creates `PermissionRequirement`
-2. `PermissionAuthorizationHandler` (`src/SmeAccounting.Infrastructure/Identity/PermissionAuthorizationHandler.cs`) — checks user's `permission` claims; also grants access to `users.manage_roles` holders
+1. `PermissionPolicyProvider` (`src/Modules/Authorization/Application/Authorization/PermissionPolicyProvider.cs`) — intercepts policy names starting with `"Permission:"` and creates `PermissionRequirement`
+2. `PermissionAuthorizationHandler` (`src/Modules/Authorization/Application/Authorization/PermissionAuthorizationHandler.cs`) — checks user's `permission` claims; also grants access to `users.manage_roles` holders
 3. Usage in controllers: `[Authorize(Policy = "Permission:accounts.view")]`
+
+Identity copies at `src/Modules/Identity/Application/` retained for backward compatibility.
 
 ### Claims Principal Extensions
 
-`src/SmeAccounting.Infrastructure/Identity/ClaimsPrincipalExtensions.cs`:
+`src/Modules/Authorization/Application/Authorization/ClaimsPrincipalExtensions.cs`:
 
 - `GetUserId()` — parses `ClaimTypes.NameIdentifier`
 - `GetDisplayName()` — reads `display_name` claim
 - `GetBranchId()` — reads `branch_id` claim
 - `GetPermissions()` — returns all `permission` claims
 - `HasPermission(string)` — checks specific permission
+
+### Authorization Module
+
+The Authorization module (`src/Modules/Authorization/`) implements self-contained RBAC:
+
+- **Domain**: `Permissions.cs` (19 constants), `Roles.cs` (5 constants), `RolePermissionMap.cs` (role→permissions mapping)
+- **Application**: CQRS commands/queries with FluentValidation, ported policy types (`PermissionPolicyProvider`, `PermissionAuthorizationHandler`, `PermissionRequirement`, `ClaimsPrincipalExtensions`)
+- **Infrastructure**: `RoleService` (role CRUD via `RoleManager`), `PermissionService` (permission aggregation via claims), `AuthorizationRoleSeeder` (claim reconciliation at startup)
+- **Controller**: `RolesController` — 8 MVC endpoints under `[Authorize(Policy = "Permission:users.manage_roles")]`
+- **Registration**: `AddAuthorizationModule()` in `Program.cs` + `UseAuthentication()` middleware added
 
 ## Default Seeded User
 

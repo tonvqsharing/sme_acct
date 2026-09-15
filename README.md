@@ -71,7 +71,7 @@ dotnet test
 | Module | Purpose |
 |--------|---------|
 | Identity | User management, login |
-| Authorization | Roles, permissions |
+| Authorization | Roles, permissions, RBAC policy engine |
 | Organization | Company, branch hierarchy |
 | MasterData | Reference data |
 | Audit | Change tracking |
@@ -93,6 +93,7 @@ See [docs/modules.md](docs/modules.md) for full module map.
 | [Modules](docs/modules.md) | Module map, ownership, isolation rules |
 | [Database](docs/database.md) | PostgreSQL conventions, migrations, seeds |
 | [Security](docs/security.md) | Identity, RBAC, headers, data protection |
+| [Authorization](docs/authorization.md) | Roles, permissions, RBAC pipeline |
 | [Deployment](docs/deployment.md) | Linux, Docker, secrets, zero-downtime |
 | [Testing](docs/testing.md) | Test tiers, running tests, CI |
 | [ADR-001](docs/adr/001-naming-and-pk-strategy.md) | DB naming + PK strategy decision |

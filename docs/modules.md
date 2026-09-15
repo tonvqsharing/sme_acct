@@ -5,7 +5,7 @@
 | # | Module | Status | Purpose |
 |---|--------|--------|---------|
 | 1 | **Identity** | ✅ Scaffolded | User management, login, profile |
-| 2 | **Authorization** | ✅ Scaffolded | Roles, permissions, access control |
+| 2 | **Authorization** | ✅ Implemented | Roles, permissions, RBAC policy engine |
 | 3 | **Organization** | ✅ Scaffolded | Company, branch hierarchy |
 | 4 | **MasterData** | ✅ Scaffolded | Chart of accounts, fiscal periods |
 | 5 | **Audit** | ✅ Scaffolded | Audit trail, change tracking |
