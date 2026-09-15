@@ -1,4 +1,6 @@
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using SmeAccounting.Api;
 using SmeAccounting.Application;
 using SmeAccounting.Infrastructure;
@@ -13,6 +15,7 @@ using SmeAccounting.Modules.Authorization.Infrastructure;
 using SmeAccounting.Modules.ChartOfAccounts.Infrastructure;
 using SmeAccounting.Modules.FinancialReporting.Infrastructure;
 using SmeAccounting.Modules.GeneralLedger.Infrastructure;
+using SmeAccounting.Modules.Authorization.Infrastructure.Seeding;
 using SmeAccounting.Modules.Identity.Infrastructure;
 using SmeAccounting.Modules.Journal.Infrastructure;
 using SmeAccounting.Modules.MasterData.Infrastructure;
@@ -51,7 +54,7 @@ app.UseGlobalExceptionHandler();
 app.UseRouting();
 app.UseHealthInfrastructure();
 
-// Fail fast if model/migrations out of sync
+// Fail fast if model/migrations out of sync, then ensure Identity schema + seed roles/users
 if (!app.Environment.IsEnvironment("Testing"))
 {
     using (var scope = app.Services.CreateScope())
@@ -61,6 +64,18 @@ if (!app.Environment.IsEnvironment("Testing"))
         {
             throw new InvalidOperationException("Pending migrations detected. Apply migrations before starting the application.");
         }
+
+        var identityDb = scope.ServiceProvider.GetRequiredService<IdentityDbContext>();
+        await identityDb.Database.EnsureCreatedAsync();
+
+        var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<ApplicationRole>>();
+        var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+        var logger = scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("StartupSeed");
+        var adminPassword = Environment.GetEnvironmentVariable("ADMIN_PASSWORD");
+
+        await RoleSeeder.SeedAsync(roleManager, logger);
+        await UserSeeder.SeedAsync(userManager, roleManager, logger, adminPassword);
+        await AuthorizationRoleSeeder.SeedAsync(roleManager, userManager, logger);
     }
 }
 
