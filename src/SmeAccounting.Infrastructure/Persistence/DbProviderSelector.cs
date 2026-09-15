@@ -3,7 +3,7 @@ namespace SmeAccounting.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 
-internal static class DbProviderSelector
+public static class DbProviderSelector
 {
     public static DatabaseProvider Resolve(IConfiguration configuration)
     {

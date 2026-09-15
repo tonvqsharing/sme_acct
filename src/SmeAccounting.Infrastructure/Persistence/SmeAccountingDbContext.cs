@@ -22,7 +22,7 @@ public class SmeAccountingDbContext : DbContext
     {
         base.OnModelCreating(modelBuilder);
 
-        var providerName = modelBuilder.Model.FindAnnotation("Relational:ProviderName")?.GetValue<string>() ?? "";
+        var providerName = modelBuilder.Model.FindAnnotation("Relational:ProviderName")?.Value as string ?? "";
 
         ApplySnakeCaseNamingConvention(modelBuilder);
 
@@ -43,15 +43,15 @@ public class SmeAccountingDbContext : DbContext
                     }
                     else if (providerName.Contains("MySql") || providerName.Contains("MariaDb"))
                     {
-                        idProp.SetValueGeneratedOnAdd();
+                        idProp.ValueGenerated = ValueGenerated.OnAdd;
                     }
                     else if (providerName.Contains("Sqlite"))
                     {
-                        idProp.SetValueGeneratedOnAdd();
+                        idProp.ValueGenerated = ValueGenerated.OnAdd;
                     }
                     else if (providerName.Contains("SqlServer"))
                     {
-                        idProp.SetValueGeneratedOnAdd();
+                        idProp.ValueGenerated = ValueGenerated.OnAdd;
                     }
                 }
             }

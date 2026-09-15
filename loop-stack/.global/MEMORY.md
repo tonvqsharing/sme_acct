@@ -64,3 +64,4 @@ Shared across all loops in this project.
 
 ### Effective working patterns
 - **Smoke-test pattern**: build → `dotnet sln list` (expect exact project count) → launch built dll directly → curl `/` expect 200 → kill-by-PID (NOT `pkill -f <name>` — self-matching footgun). `StaticFileMiddleware[16] WebRootPath not found` is benign env artifact when content-root ≠ Api dir; silence with `wwwroot/.gitkeep`.
+- [auth-module-roles, task G2] IRoleService Guid userId vs Identity long PKs makes FindByIdAsync(userId.ToString()) never match real users (Assign/Remove/GetPermissions silently miss) — align service userId type with Identity PK or centralize conversion; also ported PermissionPolicyProvider is dead code unless registered and eager 19 static Permission policies are redundant vs dynamic provider, so settle single auth-registration site.

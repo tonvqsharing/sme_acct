@@ -2,6 +2,7 @@
 Updated continuously by all agents as they discover things.
 ## Learnings
 - Audit completed for hard-coded Npgsql/PostgreSQL in Identity and Infrastructure DI
+- Provider code map created at docs/provider-code-map.md
 - Hard-coded UseNpgsql found in:
   - src/SmeAccounting.Infrastructure/DependencyInjection.cs:32-39
   - src/Modules/Identity/Infrastructure/IdentityServiceExtensions.cs:15-16

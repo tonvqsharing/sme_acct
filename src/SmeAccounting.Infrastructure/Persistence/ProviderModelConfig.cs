@@ -6,11 +6,11 @@ public static class ProviderModelConfig
 {
     public static void ApplyProviderSpecificConventions(ModelBuilder modelBuilder)
     {
-        var providerName = modelBuilder.Model.FindAnnotation("Relational:ProviderName")?.GetValue<string>() ?? "";
+        var providerName = modelBuilder.Model.FindAnnotation("Relational:ProviderName")?.Value as string ?? "";
 
         foreach (var entityType in modelBuilder.Model.GetEntityTypes())
         {
-            if (entityType.ClrType.Name.EndsWith("Entity") || entityType.ClrType.FullName?.Contains("BaseEntity") == true)
+            if (entityType.ClrType.Name.EndsWith("Entity", StringComparison.Ordinal) || entityType.ClrType.FullName?.Contains("BaseEntity") == true)
             {
                 // Identity generation handled in DbContext
             }

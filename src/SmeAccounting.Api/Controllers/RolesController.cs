@@ -5,10 +5,11 @@ using SmeAccounting.Modules.Authorization.Application.Commands;
 using SmeAccounting.Modules.Authorization.Application.Queries;
 using SmeAccounting.Modules.Authorization.Domain;
 using SmeAccounting.SharedKernel;
+using AuthPermissions = SmeAccounting.Modules.Authorization.Domain.Permissions;
 
 namespace SmeAccounting.Api.Controllers;
 
-[Authorize(Policy = "Permission:" + Permissions.Users.ManageRoles)]
+[Authorize(Policy = "Permission:" + AuthPermissions.Users.ManageRoles)]
 public class RolesController : Controller
 {
     private readonly IMediator _mediator;

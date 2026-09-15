@@ -4,7 +4,7 @@
     <OutputType>Exe</OutputType>
     <UseAppHost>true</UseAppHost>
     <IsPackable>false</IsPackable>
-    <NoWarn>$(NoWarn);CA1707</NoWarn>
+    <NoWarn>$(NoWarn);CA1707;xUnit1051</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
@@ -16,6 +16,9 @@
     <PackageReference Include="NSubstitute" />
     <PackageReference Include="AwesomeAssertions" />
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" />
+    <PackageReference Include="Testcontainers.PostgreSql" />
+    <PackageReference Include="Testcontainers.XunitV3" />
   </ItemGroup>
 
   <ItemGroup>

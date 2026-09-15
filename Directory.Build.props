@@ -12,6 +12,10 @@
     <UseArtifactsOutput>true</UseArtifactsOutput>
     <!-- Microsoft.Testing.Platform 2.3.3 ships locale resources (ru, cs, ...) .NET does not recognize -->
     <NoWarn>$(NoWarn);NETSDK1188;CA1000;IDE0161;CA1861;CA1848;CA1873</NoWarn>
+    <!-- Pomelo 9.0.0 (latest, no EF Core 10 release) constrains Relational to 9.x while CPM pins EF 10.0.12.
+         Downgrade warning to non-fatal: PostgreSql/Sqlite/SqlServer paths unaffected; MariaDb runtime
+         compat with EF 10 remains a known pre-existing risk, not a restore blocker. -->
+    <WarningsNotAsErrors>$(WarningsNotAsErrors);NU1608</WarningsNotAsErrors>
   </PropertyGroup>
 
 </Project>

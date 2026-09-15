@@ -19,6 +19,7 @@
   <ItemGroup>
     <ProjectReference Include="../Application/SmeAccounting.Modules.Identity.Application.csproj" />
     <ProjectReference Include="../Domain/SmeAccounting.Modules.Identity.Domain.csproj" />
+    <ProjectReference Include="../../../SmeAccounting.Infrastructure/SmeAccounting.Infrastructure.csproj" />
   </ItemGroup>
 
 </Project>
