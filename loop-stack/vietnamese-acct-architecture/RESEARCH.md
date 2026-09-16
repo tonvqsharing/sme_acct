@@ -1290,3 +1290,748 @@ Circular 99 Art. 28(c) — "prevent intentional interference"
 ---
 
 *Research completed: Sep 16 2026. Sources: KPMG Vietnam, Grant Thornton Vietnam, RSM Vietnam, VN Law Firm, Thuvienphapluat, VATupdate, Fonoa, Edicom, MADR project, architecture-decision-record project.*
+
+---
+
+## Task-Specific Research — Application and Infrastructure Layers
+
+### 1. MediatR Patterns for Commands/Queries
+
+**Package**: MediatR 14.2.0 (already referenced in Application.csproj)
+
+**Command Pattern** (write side):
+- Commands are C# `record` types implementing `IRequest<TResult>`
+- Return a result type (ID, DTO, or `Unit` for void-like operations)
+- Named as imperative verbs: `CreateAccountCommand`, `PostJournalEntryCommand`
+- Carries only input data needed for the write operation
+- One handler per command: `IRequestHandler<TCommand, TResult>`
+
+```csharp
+// Command definition
+public record CreateAccountCommand(
+    string Code, string Name, AccountType AccountType, int Level = 1, long? ParentId = null)
+    : IRequest<long>;  // returns created Account.Id
+
+// Handler
+public class CreateAccountCommandHandler : IRequestHandler<CreateAccountCommand, long>
+{
+    private readonly IAccountRepository _repository;
+    private readonly IUnitOfWork _unitOfWork;
+
+    public CreateAccountCommandHandler(IAccountRepository repository, IUnitOfWork unitOfWork)
+    {
+        _repository = repository;
+        _unitOfWork = unitOfWork;
+    }
+
+    public async Task<long> Handle(CreateAccountCommand request, CancellationToken ct)
+    {
+        var code = new AccountCode(request.Code);
+        var account = new Account(code, request.Name, request.AccountType, request.Level, request.ParentId);
+        await _repository.AddAsync(account, ct);
+        await _unitOfWork.SaveChangesAsync(ct);
+        return account.Id;
+    }
+}
+```
+
+**Query Pattern** (read side):
+- Queries are C# `record` types implementing `IRequest<TResult>`
+- Return DTOs (not domain entities)
+- Query handlers use `AsNoTracking()` for performance — skip EF Core change detection
+- Query handlers may inject `DbContext` directly (not via repository) for LINQ projections
+- Repositories add value on write side (aggregate boundaries); queries benefit from direct DbContext access for projections
+
+```csharp
+// Query definition
+public record GetAccountQuery(long Id) : IRequest<AccountDto?>;
+
+// Handler — queries can use DbContext directly for projections
+public class GetAccountQueryHandler : IRequestHandler<GetAccountQuery, AccountDto?>
+{
+    private readonly SmeAccountingDbContext _context;
+
+    public GetAccountQueryHandler(SmeAccountingDbContext context) => _context = context;
+
+    public async Task<AccountDto?> Handle(GetAccountQuery request, CancellationToken ct)
+    {
+        return await _context.Accounts
+            .AsNoTracking()
+            .Where(a => a.Id == request.Id)
+            .Select(a => new AccountDto(a.Id, a.Code.Value, a.Name, a.AccountType.ToString(), a.Level, a.IsActive))
+            .FirstOrDefaultAsync(ct);
+    }
+}
+```
+
+**MediatR Registration** (in Application layer DI extension):
+```csharp
+services.AddMediatR(cfg =>
+{
+    cfg.RegisterServicesFromAssembly(typeof(DependencyInjection).Assembly);
+    cfg.AddOpenBehavior(typeof(ValidationBehavior<,>));
+});
+```
+
+**Key conventions**:
+- Use `ISender` (not `IMediator`) in handlers/endpoints when only Send is needed
+- Use `IMediator` when also publishing domain events as MediatR notifications
+- Commands/queries organized by feature folder: `Features/Accounts/Commands/CreateAccount/`
+- CancellationToken propagated from controller → MediatR → handler → EF Core
+
+**Source**: NippySoft CQRS article, csharp-coder.com guide, codingdroplets template, codewithmukesh.com guide, ADR-002 already accepted.
+
+---
+
+### 2. FluentValidation Patterns
+
+**Package**: FluentValidation 12.1.0 + FluentValidation.DependencyInjectionExtensions 12.1.0 (already referenced)
+
+**Validator Pattern**:
+- Validators inherit `AbstractValidator<T>` where T is the command/query
+- One validator per command (not per entity)
+- Validators live in Application layer alongside commands
+- Fluent API: `RuleFor(x => x.Property).NotEmpty().MaximumLength(200)`
+
+```csharp
+public class CreateAccountCommandValidator : AbstractValidator<CreateAccountCommand>
+{
+    public CreateAccountCommandValidator()
+    {
+        RuleFor(x => x.Code)
+            .NotEmpty().WithMessage("Account code is required.")
+            .Matches(@"^\d{4,}$").WithMessage("Account code must be numeric, at least 4 digits.");
+
+        RuleFor(x => x.Name)
+            .NotEmpty().WithMessage("Account name is required.")
+            .MaximumLength(200).WithMessage("Account name cannot exceed 200 characters.");
+
+        RuleFor(x => x.AccountType)
+            .IsInEnum().WithMessage("Invalid account type.");
+    }
+}
+```
+
+**ValidationBehavior Pipeline** (MediatR pipeline behavior):
+- Intercepts every command/query before handler execution
+- Runs all registered `IValidator<TRequest>` instances in parallel via `Task.WhenAll`
+- Throws `ValidationException` on failure — handler never executes
+- Registered via `cfg.AddOpenBehavior(typeof(ValidationBehavior<,>))`
+
+```csharp
+public class ValidationBehavior<TRequest, TResponse>(
+    IEnumerable<IValidator<TRequest>> validators)
+    : IPipelineBehavior<TRequest, TResponse>
+    where TRequest : IRequest<TResponse>
+{
+    public async Task<TResponse> Handle(
+        TRequest request,
+        RequestHandlerDelegate<TResponse> next,
+        CancellationToken cancellationToken)
+    {
+        if (!validators.Any())
+            return await next(cancellationToken);
+
+        var context = new ValidationContext<TRequest>(request);
+        var results = await Task.WhenAll(
+            validators.Select(v => v.ValidateAsync(context, cancellationToken)));
+        var failures = results
+            .SelectMany(r => r.Errors)
+            .Where(f => f is not null)
+            .ToList();
+
+        if (failures.Count != 0)
+            throw new ValidationException(failures);
+
+        return await next(cancellationToken);
+    }
+}
+```
+
+**DI Registration**:
+```csharp
+services.AddValidatorsFromAssembly(typeof(DependencyInjection).Assembly);
+```
+
+**Key conventions**:
+- Validators for input shape/format checks (not business rules)
+- Business rules (uniqueness, period-open) belong in handlers/domain
+- Async validators (`MustAsync`) for DB checks — but prefer handler for complex business rules
+- `ValidationException` type should be defined in Application layer
+
+**Source**: FluentValidation official docs, NippySoft FluentValidation article, Learnixo article, SEMastery article.
+
+---
+
+### 3. DTO Mapping Patterns
+
+**Approach**: Manual mapping with C# records (no AutoMapper for this project)
+
+**Rationale**: AutoMapper adds runtime reflection overhead, configuration complexity, and obscures mapping logic. With C# records and primary constructors, manual mapping is concise and type-safe.
+
+**DTO Definition** (Application layer, plain records):
+```csharp
+public record AccountDto(long Id, string Code, string Name, string AccountType, int Level, bool IsActive);
+public record MoneyDto(decimal Amount, string Currency);
+public record JournalEntryDto(long Id, string EntryNumber, DateTimeOffset Date, long PeriodId, string? Description, bool IsPosted, DateTimeOffset? PostedAt);
+public record JournalEntryLineDto(long Id, long AccountId, MoneyDto Debit, MoneyDto Credit, string? Description);
+public record FiscalPeriodDto(long Id, long YearId, int Month, string Status, DateTimeOffset? OpenedAt, DateTimeOffset? ClosedAt);
+public record BalanceSheetDto(/* fields per B01-DN */);
+public record IncomeStatementDto(/* fields per B02-DN */);
+```
+
+**Entity → DTO Mapping** (in query handlers via LINQ Select):
+```csharp
+.Select(a => new AccountDto(a.Id, a.Code.Value, a.Name, a.AccountType.ToString(), a.Level, a.IsActive))
+```
+
+**DTO → Entity Mapping** (in command handlers via constructor):
+```csharp
+var code = new AccountCode(request.Code);
+var account = new Account(code, request.Name, request.AccountType, request.Level, request.ParentId);
+```
+
+**Key conventions**:
+- DTOs are in `SmeAccounting.Application.DTOs` namespace
+- DTOs have no domain entity references (no navigation properties)
+- Money value objects map to `MoneyDto(decimal Amount, string Currency)`
+- Enums map to strings via `.ToString()` in DTOs (not raw enum values)
+- DTOs are records for value equality and immutability
+- No shared kernel DTOs — each layer defines its own shapes
+
+**Source**: NippySoft CQRS article (DTOs as records), codingdroplets template (ProductDto pattern), csharp-coder.com guide.
+
+---
+
+### 4. EF Core Configuration Patterns
+
+**Package**: Microsoft.EntityFrameworkCore 10.0.4, Npgsql.EntityFrameworkCore.PostgreSQL 10.0.3 (already in Infrastructure.csproj)
+
+**DbContext Setup**:
+```csharp
+public class SmeAccountingDbContext : DbContext
+{
+    public DbSet<Account> Accounts => Set<Account>();
+    public DbSet<AccountGroup> AccountGroups => Set<AccountGroup>();
+    public DbSet<JournalEntry> JournalEntries => Set<JournalEntry>();
+    public DbSet<JournalEntryLine> JournalEntryLines => Set<JournalEntryLine>();
+    public DbSet<FiscalYear> FiscalYears => Set<FiscalYear>();
+    public DbSet<FiscalPeriod> FiscalPeriods => Set<FiscalPeriod>();
+    public DbSet<PostingReference> PostingReferences => Set<PostingReference>();
+
+    public SmeAccountingDbContext(DbContextOptions<SmeAccountingDbContext> options)
+        : base(options) { }
+
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
+    {
+        modelBuilder.ApplyConfigurationsFromAssembly(typeof(SmeAccountingDbContext).Assembly);
+        base.OnModelCreating(modelBuilder);
+    }
+}
+```
+
+**Entity Configuration** (one per entity, `IEntityTypeConfiguration<T>`):
+```csharp
+internal sealed class AccountConfiguration : IEntityTypeConfiguration<Account>
+{
+    public void Configure(EntityTypeBuilder<Account> builder)
+    {
+        builder.ToTable("accounts");
+        builder.HasKey(e => e.Id);
+
+        builder.Property(e => e.Id)
+            .HasColumnName("id")
+            .ValueGeneratedOnAdd();
+
+        builder.Property(e => e.Name)
+            .HasColumnName("name")
+            .IsRequired()
+            .HasMaxLength(200);
+
+        builder.Property(e => e.Level)
+            .HasColumnName("level");
+
+        builder.Property(e => e.ParentId)
+            .HasColumnName("parent_id");
+
+        builder.Property(e => e.AccountType)
+            .HasColumnName("account_type")
+            .HasConversion<string>();
+
+        builder.Property(e => e.IsActive)
+            .HasColumnName("is_active");
+
+        // Value object: AccountCode as owned type
+        builder.OwnsOne(e => e.Code, codeBuilder =>
+        {
+            codeBuilder.Property(c => c.Value)
+                .HasColumnName("code")
+                .IsRequired()
+                .HasMaxLength(20);
+        });
+
+        // Self-referencing hierarchy
+        builder.HasOne<Account>()
+            .WithMany(a => a.Children)
+            .HasForeignKey(e => e.ParentId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasIndex(e => e.ParentId);
+    }
+}
+```
+
+**Snake-case naming convention** (PostgreSQL):
+```csharp
+// In AddDbContext registration:
+options.UseNpgsql(connectionString)
+    .UseSnakeCaseNamingConvention();  // Requires EFCore.NamingConventions package
+```
+
+**Note**: The Infrastructure.csproj does NOT currently reference `EFCore.NamingConventions`. Either add it or configure snake-case manually in each `IEntityTypeConfiguration`. Since we already have `UseSnakeCaseNamingConvention` as a common pattern, recommend adding the package.
+
+**Value Objects as Owned Types**:
+- `Money` → `OwnsOne(e => e.Debit)` with `HasColumnName("debit_amount")`, `HasColumnName("debit_currency")`
+- `AccountCode` → `OwnsOne(e => e.Code)` with `HasColumnName("code")`
+- PostgreSQL: owned type columns are prefixed by default; use explicit `HasColumnName` to control
+
+**Concurrency Tokens** (xmin for PostgreSQL):
+```csharp
+builder.Property<uint>("xmin")
+    .IsRowVersion()
+    .HasColumnName("xmin");
+```
+
+**Private Parameterless Constructors**: All entities already have `private Entity() { }` — EF Core uses these for materialization. No explicit configuration needed.
+
+**Query Filters** (for soft delete):
+```csharp
+// In AccountConfiguration:
+builder.HasQueryFilter(e => e.IsActive);
+```
+
+**Source**: ronnythedev EF Core configuration skill, OpenBaseNETPostgres template, shadykhblog tutorial, LucasBonato template, PostgreSQL best practices skill.
+
+---
+
+### 5. Repository Implementation Patterns
+
+**Pattern**: Repositories implement Domain port interfaces. Write-side repositories only track changes — `SaveChangesAsync` is called by `IUnitOfWork` in the handler, NOT inside the repository.
+
+**EfAccountRepository**:
+```csharp
+public class EfAccountRepository : IAccountRepository
+{
+    private readonly SmeAccountingDbContext _context;
+
+    public EfAccountRepository(SmeAccountingDbContext context) => _context = context;
+
+    public async Task<Account?> GetByIdAsync(long id, CancellationToken ct = default)
+    {
+        return await _context.Accounts
+            .Include(a => a.Children)
+            .FirstOrDefaultAsync(a => a.Id == id, ct);
+    }
+
+    public async Task<IReadOnlyList<Account>> GetAllAsync(CancellationToken ct = default)
+    {
+        return await _context.Accounts
+            .AsNoTracking()
+            .OrderBy(a => a.Code.Value)
+            .ToListAsync(ct);
+    }
+
+    public async Task AddAsync(Account account, CancellationToken ct = default)
+    {
+        await _context.Accounts.AddAsync(account, ct);
+        // NO SaveChangesAsync —UnitOfWork handles commit
+    }
+
+    public async Task UpdateAsync(Account account, CancellationToken ct = default)
+    {
+        _context.Accounts.Update(account);
+        // NO SaveChangesAsync —UnitOfWork handles commit
+    }
+}
+```
+
+**EfJournalEntryRepository**:
+```csharp
+public class EfJournalEntryRepository : IJournalEntryRepository
+{
+    private readonly SmeAccountingDbContext _context;
+
+    public EfJournalEntryRepository(SmeAccountingDbContext context) => _context = context;
+
+    public async Task<JournalEntry?> GetByIdAsync(long id, CancellationToken ct = default)
+    {
+        return await _context.JournalEntries
+            .Include(e => e.Lines)
+            .FirstOrDefaultAsync(e => e.Id == id, ct);
+    }
+
+    public async Task<IReadOnlyList<JournalEntry>> GetAllAsync(CancellationToken ct = default)
+    {
+        return await _context.JournalEntries
+            .AsNoTracking()
+            .OrderByDescending(e => e.Date)
+            .ToListAsync(ct);
+    }
+
+    public async Task AddAsync(JournalEntry entry, CancellationToken ct = default)
+    {
+        await _context.JournalEntries.AddAsync(entry, ct);
+    }
+}
+```
+
+**Key rules**:
+- Repositories NEVER call `SaveChangesAsync` —UnitOfWork owns the commit
+- Read methods use `AsNoTracking()` for performance
+- Write methods use `Add`/`Update`/`Remove` on DbContext (tracked)
+- Include navigation properties only when needed (aggregate loading)
+- CancellationToken propagated through all async methods
+
+**Source**: Milan Jovanović Unit of Work article, Woodruff UoW article, Rodrigo Bercocano article, codingdroplets template.
+
+---
+
+### 6. Unit of Work Implementation
+
+**Approach**: `SmeAccountingDbContext` implements `IUnitOfWork` directly — no separate class needed.
+
+```csharp
+// In SmeAccountingDbContext:
+public class SmeAccountingDbContext : DbContext, IUnitOfWork
+{
+    // ... DbSets and configuration ...
+
+    public async Task<int> SaveChangesAsync(CancellationToken ct = default)
+    {
+        return await base.SaveChangesAsync(ct);
+    }
+}
+```
+
+**Registration** (factory method ensuring same scoped instance):
+```csharp
+services.AddDbContext<SmeAccountingDbContext>(options =>
+    options.UseNpgsql(connectionString)
+        .UseSnakeCaseNamingConvention());
+
+services.AddScoped<IUnitOfWork>(sp =>
+    sp.GetRequiredService<SmeAccountingDbContext>());
+```
+
+**Critical**: Both `SmeAccountingDbContext` and `IUnitOfWork` resolve to the SAME scoped instance. Repositories and UoW share the same change tracker.
+
+**Usage in handler**:
+```csharp
+public async Task<long> Handle(CreateAccountCommand request, CancellationToken ct)
+{
+    var code = new AccountCode(request.Code);
+    var account = new Account(code, request.Name, request.AccountType);
+    await _repository.AddAsync(account, ct);
+    await _unitOfWork.SaveChangesAsync(ct);  // ONE commit for all tracked changes
+    return account.Id;
+}
+```
+
+**When NOT to use explicit UoW**: If handlers use `DbContext` directly (common in query handlers), the DbContext itself is already the UoW. Only expose `IUnitOfWork` for write-side handlers that use repositories.
+
+**Source**: Milan Jovanović UoW article, Milan Jovanović Transactions article, StackLesson UoW article.
+
+---
+
+### 7. External Adapter Stubs
+
+**Pattern**: Port interfaces defined in Domain layer; stub implementations in Infrastructure throw `NotImplementedException` (architecture placeholder per PLAN.md).
+
+**BankExchangeRateProvider**:
+```csharp
+public class BankExchangeRateProvider : IForeignExchangeRateProvider
+{
+    public Task<Money> ConvertAsync(Money amount, string targetCurrency, DateTimeOffset date)
+    {
+        // Stub: return mock rate for development
+        if (amount.Currency == targetCurrency)
+            return Task.FromResult(amount);
+
+        // TODO: Integrate with real bank exchange rate API
+        var mockRate = amount.Currency == "VND" && targetCurrency == "USD" ? 25000m : 1m;
+        var converted = amount.Amount / mockRate;
+        return Task.FromResult(new Money(converted, targetCurrency));
+    }
+}
+```
+
+**EInvoiceProviderAdapter**:
+```csharp
+public class EInvoiceProviderAdapter : IEInvoiceProvider
+{
+    // IEInvoiceProvider is an Application-layer port (defined in Application, not Domain)
+    // per EInvoice-integration.md: IEInvoiceProvider.SubmitAsync(EInvoiceRequest) → EInvoiceResponse
+    public Task<object> SubmitAsync(object request, CancellationToken ct = default)
+    {
+        throw new NotImplementedException("E-invoice TVAN provider integration — architecture placeholder.");
+    }
+}
+```
+
+**Note**: `IEInvoiceProvider` needs to be defined. Per PLAN.md it belongs in Application layer (as a port), not Domain. Create it in `SmeAccounting.Application.Ports` or `SmeAccounting.Application.Common.Interfaces`.
+
+**DigitalSignatureAdapter**:
+```csharp
+public class DigitalSignatureAdapter : IDigitalSignatureService
+{
+    public Task<byte[]> SignAsync(byte[] data, CancellationToken ct = default)
+    {
+        throw new NotImplementedException("Digital signature HSM/USB token integration — architecture placeholder.");
+    }
+}
+```
+
+**AuditLogger**:
+```csharp
+public class AuditLogger : IAuditLogger
+{
+    public async Task LogAsync(string action, string entity, long entityId, string details)
+    {
+        // Stub: console logging for development
+        Console.WriteLine($"[AUDIT] {action} on {entity}:{entityId} — {details}");
+        // TODO: Append-only audit log storage
+        await Task.CompletedTask;
+    }
+}
+```
+
+**SystemClock**:
+```csharp
+public class SystemClock : IClock
+{
+    public DateTimeOffset Now => DateTimeOffset.UtcNow;
+}
+```
+
+**Key conventions**:
+- External adapters throw `NotImplementedException` (stub per PLAN.md acceptance criteria)
+- `BankExchangeRateProvider` returns mock data (functional stub, not exception stub)
+- `AuditLogger` and `SystemClock` are simple implementations (not stubs)
+- All adapters implement Domain/Application port interfaces
+- Adapters live in `SmeAccounting.Infrastructure/Adapters/` or `SmeAccounting.Infrastructure/Services/`
+
+**Source**: codingdroplets template (ProductRepository NotImplementedException pattern), Stripe Systems article (adapter pattern), ardalis/CleanArchitecture (infrastructure adapters).
+
+---
+
+### 8. DI Registration Patterns
+
+**Application Layer** (`DependencyInjection.cs`):
+```csharp
+namespace SmeAccounting.Application;
+
+public static class DependencyInjection
+{
+    public static IServiceCollection AddApplication(this IServiceCollection services)
+    {
+        services.AddMediatR(cfg =>
+        {
+            cfg.RegisterServicesFromAssembly(typeof(DependencyInjection).Assembly);
+            cfg.AddOpenBehavior(typeof(ValidationBehavior<,>));
+        });
+
+        services.AddValidatorsFromAssembly(typeof(DependencyInjection).Assembly);
+
+        return services;
+    }
+}
+```
+
+**Infrastructure Layer** (`DependencyInjection.cs`):
+```csharp
+namespace SmeAccounting.Infrastructure;
+
+public static class DependencyInjection
+{
+    public static IServiceCollection AddInfrastructure(
+        this IServiceCollection services,
+        IConfiguration configuration)
+    {
+        var connectionString = configuration.GetConnectionString("DefaultConnection")
+            ?? throw new InvalidOperationException("Connection string 'DefaultConnection' not found.");
+
+        services.AddDbContext<SmeAccountingDbContext>(options =>
+            options.UseNpgsql(connectionString)
+                .UseSnakeCaseNamingConvention());
+
+        // Unit of Work — same scoped instance as DbContext
+        services.AddScoped<IUnitOfWork>(sp =>
+            sp.GetRequiredService<SmeAccountingDbContext>());
+
+        // Repositories
+        services.AddScoped<IAccountRepository, EfAccountRepository>();
+        services.AddScoped<IJournalEntryRepository, EfJournalEntryRepository>();
+
+        // External adapters
+        services.AddSingleton<IClock, SystemClock>();
+        services.AddScoped<IAuditLogger, AuditLogger>();
+        services.AddScoped<IForeignExchangeRateProvider, BankExchangeRateProvider>();
+
+        // TODO: Register when IEInvoiceProvider is defined
+        // services.AddScoped<IEInvoiceProvider, EInvoiceProviderAdapter>();
+
+        return services;
+    }
+}
+```
+
+**API Layer** (`Program.cs`):
+```csharp
+var builder = WebApplication.CreateBuilder(args);
+
+builder.Services
+    .AddApplication()
+    .AddInfrastructure(builder.Configuration);
+
+var app = builder.Build();
+
+app.UseHttpsRedirection();
+app.UseStaticFiles();
+app.UseRouting();
+app.UseAuthorization();
+
+app.MapControllerRoute(
+    name: "default",
+    pattern: "{controller=Home}/{action=Index}/{id?}");
+
+app.Run();
+```
+
+**Key conventions**:
+- Each layer exposes one `Add{Layer}()` extension method on `IServiceCollection`
+- Application registers MediatR, FluentValidation, pipeline behaviors
+- Infrastructure registers DbContext, repositories, adapters
+- API composes: `AddApplication().AddInfrastructure(config)`
+- `IClock` as Singleton (no state), everything else Scoped
+- Repositories registered as `I{Repository}` → `Ef{Repository}` (scoped)
+- `IUnitOfWork` resolved via factory to same DbContext instance
+
+**Source**: Milan Jovanović dependency rule article, Luong Hong Thuan Clean Architecture article, ekolsoft article, codingdroplets template.
+
+---
+
+### 9. File/Folder Structure for Application and Infrastructure
+
+**Application Layer**:
+```
+src/SmeAccounting.Application/
+├── SmeAccounting.Application.csproj
+├── Common/
+│   ├── Behaviors/
+│   │   └── ValidationBehavior.cs
+│   └── Exceptions/
+│       └── ValidationException.cs
+├── DTOs/
+│   ├── AccountDto.cs
+│   ├── JournalEntryDto.cs
+│   ├── JournalEntryLineDto.cs
+│   ├── FiscalPeriodDto.cs
+│   ├── FiscalYearDto.cs
+│   ├── MoneyDto.cs
+│   ├── BalanceSheetDto.cs
+│   └── IncomeStatementDto.cs
+├── Features/
+│   ├── Accounts/
+│   │   ├── Commands/
+│   │   │   ├── CreateAccount/
+│   │   │   │   ├── CreateAccountCommand.cs
+│   │   │   │   ├── CreateAccountCommandHandler.cs
+│   │   │   │   └── CreateAccountCommandValidator.cs
+│   │   │   └── DeprecateAccount/
+│   │   │       ├── DeprecateAccountCommand.cs
+│   │   │       ├── DeprecateAccountCommandHandler.cs
+│   │   │       └── DeprecateAccountCommandValidator.cs
+│   │   └── Queries/
+│   │       ├── GetAccount/
+│   │       │   ├── GetAccountQuery.cs
+│   │       │   └── GetAccountQueryHandler.cs
+│   │       └── GetAccountsByGroup/
+│   │           ├── GetAccountsByGroupQuery.cs
+│   │           └── GetAccountsByGroupQueryHandler.cs
+│   ├── JournalEntries/
+│   │   ├── Commands/
+│   │   │   ├── CreateJournalEntry/
+│   │   │   │   ├── CreateJournalEntryCommand.cs
+│   │   │   │   ├── CreateJournalEntryCommandHandler.cs
+│   │   │   │   └── CreateJournalEntryCommandValidator.cs
+│   │   │   └── PostJournalEntry/
+│   │   │       ├── PostJournalEntryCommand.cs
+│   │   │       ├── PostJournalEntryCommandHandler.cs
+│   │   │       └── PostJournalEntryCommandValidator.cs
+│   │   └── Queries/
+│   │       ├── GetJournalEntry/
+│   │       │   ├── GetJournalEntryQuery.cs
+│   │       │   └── GetJournalEntryQueryHandler.cs
+│   │       └── GetBalanceSheet/
+│   │           ├── GetBalanceSheetQuery.cs
+│   │           └── GetBalanceSheetQueryHandler.cs
+│   └── FiscalPeriods/
+│       ├── Commands/
+│       │   ├── OpenFiscalPeriod/
+│       │   │   ├── OpenFiscalPeriodCommand.cs
+│       │   │   ├── OpenFiscalPeriodCommandHandler.cs
+│       │   │   └── OpenFiscalPeriodCommandValidator.cs
+│       │   └── CloseFiscalPeriod/
+│       │       ├── CloseFiscalPeriodCommand.cs
+│       │       ├── CloseFiscalPeriodCommandHandler.cs
+│       │       └── CloseFiscalPeriodCommandValidator.cs
+│       └── Queries/
+│           └── GetFiscalPeriods/
+│               ├── GetFiscalPeriodsQuery.cs
+│               └── GetFiscalPeriodsQueryHandler.cs
+├── DependencyInjection.cs
+└── Ports/
+    └── IAccountingReportService.cs
+```
+
+**Infrastructure Layer**:
+```
+src/SmeAccounting.Infrastructure/
+├── SmeAccounting.Infrastructure.csproj
+├── Adapters/
+│   ├── BankExchangeRateProvider.cs
+│   ├── EInvoiceProviderAdapter.cs
+│   └── DigitalSignatureAdapter.cs
+├── DependencyInjection.cs
+├── Persistence/
+│   ├── SmeAccountingDbContext.cs
+│   ├── Configurations/
+│   │   ├── AccountConfiguration.cs
+│   │   ├── AccountGroupConfiguration.cs
+│   │   ├── JournalEntryConfiguration.cs
+│   │   ├── JournalEntryLineConfiguration.cs
+│   │   ├── FiscalYearConfiguration.cs
+│   │   ├── FiscalPeriodConfiguration.cs
+│   │   └── PostingReferenceConfiguration.cs
+│   └── Repositories/
+│       ├── EfAccountRepository.cs
+│       └── EfJournalEntryRepository.cs
+└── Services/
+    ├── AuditLogger.cs
+    └── SystemClock.cs
+```
+
+---
+
+### 10. Additional Package Needed
+
+**EFCore.NamingConventions** — Required for `UseSnakeCaseNamingConvention()`:
+```xml
+<PackageReference Include="EFCore.NamingConventions" Version="10.0.*" />
+```
+
+This package provides PostgreSQL snake_case naming. Add to Infrastructure.csproj alongside Npgsql.
+
+---
+
+*Research completed: Sep 16 2026. Sources: NippySoft, csharp-coder.com, codingdroplets, codewithmukesh.com, FluentValidation docs, Learnixo, SEMastery, ronnythedev skills, OpenBaseNETPostgres, shadykhblog, LucasBonato template, Milan Jovanović, Woodruff, Rodrigo Bercocano, StackLesson, Stripe Systems, ardalis/CleanArchitecture, Luong Hong Thuan, ekolsoft.*

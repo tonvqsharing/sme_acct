@@ -74,10 +74,66 @@ Updated continuously by all agents as they discover things.
 ### NuGet Packages
 - MediatR 14.2.0 (latest stable, netstandard2.0 — works with net10.0)
 - FluentValidation 12.1.0 supports .NET 10; deprecated AspNetCore package — use `DependencyInjectionExtensions` instead
+- EFCore.NamingConventions 10.0.1 for snake_case — required dependency not in original PLAN
 
 ### Architecture Enforcement
 - csproj refs + `NetArchTest.Rules` tests enforce dependency direction
 - Verified: Api → Application only, Application → Domain only, Infrastructure → Application + Domain
+
+## Application Layer Patterns (G2 — Sep 2026)
+
+### MediatR CQRS Contracts
+- Commands/queries as `record` types implementing `IRequest<T>` — MediatR 14.x
+- 6 commands: CreateAccount, CreateJournalEntry, PostJournalEntry, DeprecateAccount, OpenFiscalPeriod, CloseFiscalPeriod
+- 6 queries: GetAccount, GetAccountsByGroup, GetJournalEntry, GetFiscalPeriods, GetBalanceSheet, GetIncomeStatement
+- `CreateJournalEntryCommand` carries `IReadOnlyList<JournalEntryLineInput>` — domain creates Money from inputs
+
+### FluentValidation
+- `AddValidatorsFromAssembly` requires `using FluentValidation.DependencyInjectionExtensions;` — not auto-imported
+- `ValidationBehavior<TRequest, TResponse>` as `IPipelineBehavior` — runs all `IValidator<T>` before handler, throws `ValidationException`
+- 3 validators: CreateAccountCommandValidator, CreateJournalEntryCommandValidator, PostJournalEntryCommandValidator
+
+### DTOs
+- DTOs as plain records — no domain entity references, enums mapped via `.ToString()`
+- 8 DTOs: AccountDto, JournalEntryDto, JournalEntryLineDto, FiscalPeriodDto, FiscalYearDto, BalanceSheetDto, IncomeStatementDto, MoneyDto
+- `BalanceSheetDto` / `IncomeStatementDto` use `AccountGroupTotal(GroupName, Total, Currency)` for grouped totals
+
+### Service Ports
+- `IAccountingReportService` in Application layer — report generation port (Infrastructure implements)
+
+### DI Registration
+- `AddApplication()` extension method — MediatR assembly scan + open validation behavior + validators
+
+## Infrastructure Layer Patterns (G2 — Sep 2026)
+
+### EF Core Configuration
+- EFCore.NamingConventions 10.0.1 provides `UseSnakeCaseNamingConvention()` — requires Npgsql provider
+- `SmeAccountingDbContext` implements `IUnitOfWork` directly — no separate class needed
+- `xmin` concurrency token via `IsRowVersion()` — PostgreSQL system column for optimistic concurrency
+- Domain events dispatched in `SaveChangesAsync` override — collect events before save, publish after
+- Money value objects as EF Core owned types — `OwnsOne(e => e.Debit)` with separate `HasColumnName` for amount/currency
+- `AccountCode` as owned type on Account — `OwnsOne(e => e.Code)` with `HasColumnName("code")`
+- 7 DbSets: Accounts, AccountGroups, JournalEntries, JournalEntryLines, FiscalYears, FiscalPeriods, PostingReferences
+- 7 entity configurations: Account, AccountGroup, JournalEntry, JournalEntryLine, FiscalYear, FiscalPeriod, PostingReference
+
+### Repository Pattern
+- Write repos track changes only, NO SaveChanges — UoW owns commit
+- Read repos use `AsNoTracking()` for performance, write repos use tracked entries
+- UoW registered as factory to same DbContext instance: `services.AddScoped<IUnitOfWork>(sp => sp.GetRequiredService<SmeAccountingDbContext>())`
+- 2 repositories: EfAccountRepository, EfJournalEntryRepository
+
+### External Adapter Stubs
+- `BankExchangeRateProvider` returns mock rates
+- `EInvoiceProviderAdapter` / `DigitalSignatureAdapter` throw `NotImplementedException`
+- Ports (`IEInvoiceProvider`, `IDigitalSignatureService`) not yet defined in Domain — stubs ready for implementation
+
+### Services
+- `SystemClock : IClock` — singleton, returns `DateTimeOffset.UtcNow`
+- `AuditLogger : IAuditLogger` — append-only console log (stub for production)
+
+### DI Registration
+- `AddInfrastructure(Action<DbContextOptionsBuilder>?)` extension method — accepts optional DB configuration action
+- Registers DbContext, UoW, repos, clock, audit, FX provider
 
 ## Patterns to Follow
 

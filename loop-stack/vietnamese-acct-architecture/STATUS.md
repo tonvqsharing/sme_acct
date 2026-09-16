@@ -2,21 +2,23 @@
 ## State
 IN_PROGRESS
 ## Current Task
-[G1] Regulatory Documentation Structure — COMPLETE
+[G3] Presentation Layer — ASP.NET MVC Controllers, Views, and MediatR Wiring
 ## Task Progress
-3 / 7 complete
+6 / 7 complete
 ## Attempts On Current Task
-1
+0
 ## Completed Tasks
 - [G1] Solution Structure and Shared Kernel (commit ready)
 - [G1] Domain Layer — Core Entities, Value Objects, and Port Interfaces (commit ready)
 - [G1] Regulatory Documentation Structure (commit ready)
+- [G2] Application Layer — CQRS Contracts, DTOs, and Validators (VERIFIED_PASS)
+- [G2] Infrastructure Layer — Persistence, EF Core, and External Adapters (VERIFIED_PASS)
 ## Skipped Tasks
 (none)
 ## Last Researcher Result
-Task-specific research complete for G1 (Regulatory Documentation Structure): 26 VAS standards verified with applicability mapping; Circular 99 article structure mapped (Art. 28 software requirements (a)(c)(d)(dd)(e) → architecture layers); Chart of Accounts 9 categories + key codes + extensibility rules documented; Decree 123/2020 e-invoice XML format structure + TVAN provider pattern defined; ADR format (Michael Nygard template) specified; regulatory-to-code-to-test traceability matrix pattern designed; IFRS transition roadmap (Decision 345) abstraction layer sketched — written to RESEARCH.md.
+Task-specific research complete for G2 (Application + Infrastructure Layers): MediatR 14.x CQRS patterns (commands as IRequest<T> records, query handlers with AsNoTracking + direct DbContext projections, ValidationBehavior pipeline); FluentValidation 12.x patterns (AbstractValidator per command, pipeline auto-validation, async rules for DB checks); manual DTO mapping with C# records (no AutoMapper); EF Core 10 configuration (IEntityTypeConfiguration per entity, snake_case via EFCore.NamingConventions, value objects as owned types, xmin concurrency); repository pattern (write repos track only, NO SaveChanges —UnitOfWork owns commit); Unit of Work via DbContext implementing IUnitOfWork with factory DI registration; external adapter stubs (NotImplementedException for EInvoice/DigitalSig, mock for FX rates, console for AuditLogger); DI extension methods (AddApplication + AddInfrastructure) — written to RESEARCH.md.
 ## Last Executor Result
-VERIFICATION COMPLETE: All 3 G1 tasks verified. Task 1 (Solution Structure) VERIFIED_PASS — build 0 errors, 5 projects, deps correct. Task 2 (Domain Layer) VERIFIED_PASS — pure domain, all entities/VOs/ports present, zero infra refs. Task 3 (Regulatory Docs) VERIFIED_PASS — 8 docs, 26 VAS listed, Art. 28 refs complete, ADRs formatted. STATUS.md updated with full verification results.
+G2 VERIFICATION COMPLETE: Both G2 tasks verified. Task 4 (Application Layer) VERIFIED_PASS — build 0 errors, MediatR+FluentValidation only, no EF Core, single Domain reference. Task 5 (Infrastructure Layer) VERIFIED_PASS — build 0 errors, EF Core+Npgsql present, repos implement ports, EInvoice/DigitalSignature adapters throw NotImplementedException, DbContext implements IUnitOfWork with 7 DbSets. STATUS.md updated with full verification results.
 ## Last Audit Result
 
 ### G1 VERIFICATION — All 3 Tasks (2026-09-16)
@@ -87,6 +89,78 @@ VERIFICATION COMPLETE: All 3 G1 tasks verified. Task 1 (Solution Structure) VERI
 | [G1] Regulatory Documentation | **VERIFIED_PASS** | 8 docs, all 26 VAS listed, Art. 28 refs complete, ADRs formatted |
 
 **All 3 G1 tasks VERIFIED_PASS. Ready for G2.**
+
+---
+
+### G2 AUDIT — Both Tasks (2026-09-16) — **VERIFIED_PASS**
+
+---
+
+#### Task 4: [G2] Application Layer — CQRS Contracts, DTOs, and Validators — **VERIFIED_PASS**
+
+| Criterion | Result | Evidence |
+|-----------|--------|----------|
+| `dotnet build Application.csproj` exits 0 | ✅ PASS | 0 errors, 0 warnings |
+| Package list: MediatR, FluentValidation only (no EF Core) | ✅ PASS | MediatR 14.2.0, FluentValidation 12.1.0, FluentValidation.DI.Extensions 12.1.0 |
+| Project references only Domain | ✅ PASS | Single `<ProjectReference>` to `SmeAccounting.Domain.csproj` |
+| Commands/queries implement `IRequest<T>` | ✅ PASS | All 6 commands + 6 queries implement `IRequest<T>` |
+| Validators inherit `AbstractValidator<T>` | ✅ PASS | 3 validators: CreateAccountCommand, CreateJournalEntryCommand, PostJournalEntryCommand |
+| DTOs are plain records | ✅ PASS | 8 DTOs: AccountDto, JournalEntryDto, JournalEntryLineDto, FiscalPeriodDto, FiscalYearDto, BalanceSheetDto, IncomeStatementDto, MoneyDto |
+| AddApplication DI compiles | ✅ PASS | MediatR assembly scan + open ValidationBehavior + validators |
+| No Infrastructure or Api references | ✅ PASS | Only Domain reference in csproj |
+
+**Deliverables verified:**
+- Commands: CreateAccountCommand ✅, CreateJournalEntryCommand ✅, PostJournalEntryCommand ✅, DeprecateAccountCommand ✅, OpenFiscalPeriodCommand ✅, CloseFiscalPeriodCommand ✅
+- Queries: GetAccountQuery ✅, GetAccountsByGroupQuery ✅, GetJournalEntryQuery ✅, GetFiscalPeriodsQuery ✅, GetBalanceSheetQuery ✅, GetIncomeStatementQuery ✅
+- Validators: CreateAccountCommandValidator ✅, CreateJournalEntryCommandValidator ✅, PostJournalEntryCommandValidator ✅
+- DTOs: AccountDto ✅, JournalEntryDto ✅, JournalEntryLineDto ✅, FiscalPeriodDto ✅, FiscalYearDto ✅, BalanceSheetDto ✅ (with AccountGroupTotal), IncomeStatementDto ✅, MoneyDto ✅
+- Services: IAccountingReportService ✅
+- Behaviors: ValidationBehavior<TRequest, TResponse> ✅ (IPipelineBehavior)
+- DI: AddApplication() ✅ (MediatR + Validators + open behavior)
+
+**Minor deviations (acceptable):**
+- `JournalEntryLineInput` defined in CreateJournalEntryCommand.cs (not a separate DTO file) — consistent placement
+
+---
+
+#### Task 5: [G2] Infrastructure Layer — Persistence, EF Core, and External Adapters — **VERIFIED_PASS**
+
+| Criterion | Result | Evidence |
+|-----------|--------|----------|
+| `dotnet build Infrastructure.csproj` exits 0 | ✅ PASS | 0 errors, 0 warnings |
+| Package list: EF Core + Npgsql | ✅ PASS | EF Core 10.0.4, Npgsql.EFCore.PostgreSQL 10.0.3, EFCore.NamingConventions 10.0.1, M.E.DI 10.0.12 |
+| Repositories implement correct interfaces | ✅ PASS | EfAccountRepository : IAccountRepository, EfJournalEntryRepository : IJournalEntryRepository |
+| DbContext implements IUnitOfWork | ✅ PASS | SmeAccountingDbContext : DbContext, IUnitOfWork |
+| External adapters throw NotImplementedException | ✅ PASS | EInvoiceProviderAdapter ✅, DigitalSignatureAdapter ✅ |
+| AddInfrastructure compiles | ✅ PASS | Registers DbContext, UoW, repos, clock, audit, FX provider |
+| No business logic in infrastructure | ✅ PASS | Repos are thin, adapters are stubs, services are pure implementations |
+
+**Deliverables verified:**
+- DbContext: SmeAccountingDbContext ✅ (7 DbSets: Accounts, AccountGroups, JournalEntries, JournalEntryLines, FiscalYears, FiscalPeriods, PostingReferences)
+- Configurations: AccountConfiguration ✅, AccountGroupConfiguration ✅, JournalEntryConfiguration ✅, JournalEntryLineConfiguration ✅, FiscalYearConfiguration ✅, FiscalPeriodConfiguration ✅, PostingReferenceConfiguration ✅
+- Repositories: EfAccountRepository ✅, EfJournalEntryRepository ✅
+- Adapters: BankExchangeRateProvider ✅ (mock rates), EInvoiceProviderAdapter ✅ (NotImplementedException stub), DigitalSignatureAdapter ✅ (NotImplementedException stub)
+- Services: AuditLogger ✅ (Console.WriteLine), SystemClock ✅ (DateTimeOffset.UtcNow)
+- DI: AddInfrastructure() ✅ (DbContext + UoW factory + repos + services)
+
+**Minor deviations (acceptable):**
+- `EFCore.NamingConventions` package not in PLAN but required for snake-case naming convention (PLAN deliverable) — necessary dependency
+- `EInvoiceProviderAdapter` / `DigitalSignatureAdapter` don't implement port interfaces — no `IEInvoiceProvider` / `IDigitalSignatureService` ports exist in Domain (not in G1 deliverables). Stubs stand alone, ready to implement when ports are defined.
+- `SystemClock.Now` property (not `UtcNow`) — same functional result via `DateTimeOffset.UtcNow`
+
+---
+
+### Summary
+
+| Task | Verdict | Notes |
+|------|---------|-------|
+| [G2] Application Layer | **VERIFIED_PASS** | All criteria met, build passes, clean CQRS contracts |
+| [G2] Infrastructure Layer | **VERIFIED_PASS** | All criteria met, build passes, proper adapter pattern |
+
+**Dependency direction verified:** Api → Application → Domain ← Infrastructure → Application ✅
+**No business logic in infrastructure.** Repositories are thin, adapters are stubs.
+**All G2 tasks VERIFIED_PASS. Ready for G3 (Presentation Layer).**
+
 ## Active Heartbeats
 (none)
 ## Blocked Reason

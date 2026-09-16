@@ -34,3 +34,13 @@ Shared across all loops in this project.
 - ADR format: Michael Nygard (Status/Context/Decision/Consequences)
 - Traceability matrices in docs link regulations → architecture components → tests
 - All entities: private parameterless constructors (EF Core) + public constructors with required params
+
+### Application Layer Patterns (Sep 2026)
+- `AddValidatorsFromAssembly` requires `using FluentValidation.DependencyInjectionExtensions;` — not auto-imported
+- Commands/queries as `record` types implementing `IRequest<T>` — MediatR 14.x
+- `ValidationBehavior<TRequest, TResponse>` as `IPipelineBehavior` — runs all `IValidator<T>` before handler, throws `ValidationException`
+- DTOs as plain records — no domain entity references, enums mapped via `.ToString()`
+- `BalanceSheetDto` / `IncomeStatementDto` use `AccountGroupTotal(GroupName, Total, Currency)` for grouped totals
+- `IAccountingReportService` in Application layer — report generation port (Infrastructure implements)
+- `CreateJournalEntryCommand` carries `IReadOnlyList<JournalEntryLineInput>` — domain creates Money from inputs
+- DI registration: `AddApplication()` extension method — MediatR assembly scan + open validation behavior + validators

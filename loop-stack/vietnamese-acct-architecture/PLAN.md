@@ -114,7 +114,7 @@ Create the documentation skeleton for VAS compliance, Circular 99 mapping, and r
 
 ---
 
-### [G2] Application Layer — CQRS Contracts, DTOs, and Validators
+- [x] - [x] ### [G2] Application Layer — CQRS Contracts, DTOs, and Validators
 Create the application layer with MediatR command/query contracts, DTOs, validators, and the application-level posting service interface. Depends only on Domain.
 
 **Deliverables:**
@@ -158,7 +158,7 @@ Create the application layer with MediatR command/query contracts, DTOs, validat
 
 ---
 
-### [G2] Infrastructure Layer — Persistence, EF Core, and External Adapters
+- [x] ### [G2] Infrastructure Layer — Persistence, EF Core, and External Adapters
 Create the infrastructure layer implementing all port interfaces from Domain/Application. EF Core for persistence, external service adapters as stubs.
 
 **Deliverables:**
