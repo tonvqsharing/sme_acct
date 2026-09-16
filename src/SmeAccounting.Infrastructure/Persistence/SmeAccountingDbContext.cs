@@ -20,6 +20,12 @@ public class SmeAccountingDbContext : DbContext, IUnitOfWork
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        modelBuilder.Ignore<DomainEvent>();
+        modelBuilder.Ignore<AccountCreated>();
+        modelBuilder.Ignore<AccountDeprecated>();
+        modelBuilder.Ignore<JournalEntryPosted>();
+        modelBuilder.Ignore<PeriodClosed>();
+
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(SmeAccountingDbContext).Assembly);
         base.OnModelCreating(modelBuilder);
     }

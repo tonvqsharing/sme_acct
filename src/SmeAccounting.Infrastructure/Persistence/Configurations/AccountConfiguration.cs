@@ -19,6 +19,9 @@ internal sealed class AccountConfiguration : IEntityTypeConfiguration<Account>
         builder.Property(e => e.Level)
             .HasColumnName("level");
 
+        builder.Property(e => e.Name)
+            .HasColumnName("name");
+
         builder.Property(e => e.ParentId)
             .HasColumnName("parent_id");
 
@@ -46,7 +49,6 @@ internal sealed class AccountConfiguration : IEntityTypeConfiguration<Account>
             .OnDelete(DeleteBehavior.Restrict);
 
         builder.HasIndex(e => e.ParentId);
-        builder.HasIndex(e => e.Code.Value);
 
         builder.Property<uint>("xmin")
             .IsRowVersion()
