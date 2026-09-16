@@ -184,3 +184,28 @@ Updated continuously by all agents as they discover things.
 - **String over FK for currency codes**: Money VO uses `string Currency` — entity stores FromCurrencyCode/ToCurrencyCode as string, not FK to Currency entity
 - **Backwards-compatible method expansion**: When expanding constructors/methods, keep existing params in same order, add new params at end with defaults — no callers broken
 - **Event minimalism**: Domain events carry entity ID + company ID only — avoid duplicating entity data in events
+
+---
+
+## T6 Discoveries (Sep 2026)
+
+### EF Core Migration
+- Single migration `AccountingFoundation` covers all T1-T5 changes (6 new tables, 5 altered tables)
+- Migration naming: `AccountingFoundation` (not per-task) — appropriate since all G1/G2 work is one cohesive feature
+- Snake_case naming applied correctly via `EFCore.NamingConventions` — all tables/columns lowercase with underscores
+- `xmin` concurrency tokens on new tables (companies, currencies, exchange_rates, departments, cost_centers, projects) — row versioning
+- FK delete behavior: `Restrict` for company-scoped entities, `SetNull` for optional dimension FKs on journal_entry_lines
+- Down migration correctly reverses all changes (drops FKs, drops tables, drops columns, drops indexes)
+- `defaultValue: 0L` for non-nullable `company_id` columns on altered tables (existing rows get 0 — must be backfilled in production)
+
+### Build Environment
+- Memory-constrained environment (3.8GB) — zombie MSBuild processes from prior runs cause OOM
+- `pkill MSBuild` frees memory when build hangs
+- `--maxcpucount:1` helps but not sufficient alone — must kill zombies first
+- Build time: ~90s with clean memory, >10min with zombie processes
+
+### Migration SQL Correctness
+- All new table PKs use `NpgsqlValueGenerationStrategy.IdentityByDefaultColumn` (PostgreSQL SERIAL)
+- `rate` column: `numeric(10,6)` — matches ExchangeRate configuration
+- Unique indexes: composite for per-company uniqueness, single-column for companies.tax_code and currencies.code
+- JournalEntryLine dimension FKs: nullable long, SetNull delete — line data preserved if dimension deleted

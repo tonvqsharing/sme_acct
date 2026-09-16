@@ -147,7 +147,7 @@ yes
 
 ---
 
-### [G3] T6 — EF Core Migration + Build Verification
+- [x] ### [G3] T6 — EF Core Migration + Build Verification
 **Parallel Group:** G3 (sequential — depends on T1–T5)
 **Depends On:** T1, T2, T3, T4, T5
 
