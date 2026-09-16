@@ -2,9 +2,11 @@
 
   <ItemGroup>
     <ProjectReference Include="..\SmeAccounting.Application\SmeAccounting.Application.csproj" />
+    <ProjectReference Include="..\SmeAccounting.Infrastructure\SmeAccounting.Infrastructure.csproj" />
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="FluentValidation" Version="12.1.0" />
     <PackageReference Include="MediatR" Version="14.2.0" />
     <PackageReference Include="Swashbuckle.AspNetCore" Version="10.2.3" />
   </ItemGroup>

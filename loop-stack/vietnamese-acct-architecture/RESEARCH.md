@@ -2035,3 +2035,634 @@ This package provides PostgreSQL snake_case naming. Add to Infrastructure.csproj
 ---
 
 *Research completed: Sep 16 2026. Sources: NippySoft, csharp-coder.com, codingdroplets, codewithmukesh.com, FluentValidation docs, Learnixo, SEMastery, ronnythedev skills, OpenBaseNETPostgres, shadykhblog, LucasBonato template, Milan Jovanović, Woodruff, Rodrigo Bercocano, StackLesson, Stripe Systems, ardalis/CleanArchitecture, Luong Hong Thuan, ekolsoft.*
+
+---
+
+## Task-Specific Research — Presentation Layer
+
+### 1. Razor Pages → MVC Migration (Current State)
+
+**Current state**: Api project uses `dotnet new webapp` template (Razor Pages):
+- `Program.cs`: `builder.Services.AddRazorPages()` + `app.MapRazorPages()`
+- Files in `Pages/` folder: `Index.cshtml`, `Privacy.cshtml`, `Error.cshtml`
+- `_Layout.cshtml` in `Pages/Shared/`
+- `_ViewImports.cshtml` in `Pages/` with `@namespace SmeAccounting.Api.Pages`
+
+**Required state**: ASP.NET MVC with Controllers + Views:
+- `Program.cs`: `builder.Services.AddControllersWithViews()` + `app.MapControllerRoute()`
+- Files in `Controllers/` folder + `Views/{Controller}/{Action}.cshtml`
+- `_Layout.cshtml` in `Views/Shared/`
+- `_ViewImports.cshtml` in `Views/` with `@using SmeAccounting.Api.ViewModels`
+
+**Migration steps**:
+1. Delete `Pages/` folder (Razor Pages files)
+2. Create `Controllers/` folder
+3. Create `Views/` folder with `Shared/`, `_ViewImports.cshtml`, `_ViewStart.cshtml`
+4. Update `Program.cs` from Razor Pages to MVC routing
+5. Move `wwwroot/` static files (already present, keep as-is)
+
+---
+
+### 2. Controller Patterns for ASP.NET MVC
+
+**Core principle**: Controllers are thin HTTP adapters — map request → MediatR command/query → map result → HTTP response. Zero business logic.
+
+**Controller structure**:
+```csharp
+namespace SmeAccounting.Api.Controllers;
+
+public class HomeController : Controller
+{
+    public IActionResult Index() => View();
+    public IActionResult About() => View();
+}
+```
+
+**MediatR dispatch pattern** (from StackLesson, csharp-coder.com, codingdroplets):
+```csharp
+public class ChartOfAccountsController : Controller
+{
+    private readonly IMediator _mediator;
+
+    public ChartOfAccountsController(IMediator mediator)
+    {
+        _mediator = mediator;
+    }
+
+    [HttpGet]
+    public async Task<IActionResult> Index(CancellationToken ct)
+    {
+        var accounts = await _mediator.Send(new GetAccountsByGroupQuery(null), ct);
+        return View(accounts);
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> Create(CreateAccountCommand command, CancellationToken ct)
+    {
+        var result = await _mediator.Send(command, ct);
+        return RedirectToAction(nameof(Index));
+    }
+}
+```
+
+**Key conventions**:
+- Inject `IMediator` (or `ISender`) via constructor
+- Pass `CancellationToken` through to `_mediator.Send()`
+- `[ValidateAntiForgeryToken]` on POST actions (anti-XSS)
+- `[HttpGet]` / `[HttpPost]` explicit attributes on actions
+- ` RedirectToAction(nameof(Index))` after successful POST (PRG pattern)
+- `View(model)` for GET actions returning views
+- `return NotFound()` when entity not found
+- Controllers have zero `using SmeAccounting.Domain.Entities` statements
+- Controllers have zero `using SmeAccounting.Domain.Repositories` statements
+
+**Source**: StackLesson Clean Architecture ch86, csharp-coder.com CQRS guide, codingdroplets template, SatyaKarki CQRS article, CodeOpinion thin controllers.
+
+---
+
+### 3. Controller Dispatch to MediatR
+
+**Pattern**: Every controller action constructs a command or query record and sends it via `IMediator.Send()`.
+
+**Write actions (commands)**:
+```csharp
+[HttpPost]
+[ValidateAntiForgeryToken]
+public async Task<IActionResult> Create(CreateAccountCommand command, CancellationToken ct)
+{
+    try
+    {
+        var result = await _mediator.Send(command, ct);
+        return RedirectToAction(nameof(Details), new { id = result.Id });
+    }
+    catch (ValidationException ex)
+    {
+        foreach (var error in ex.Errors)
+            ModelState.AddModelError(error.PropertyName, error.ErrorMessage);
+        return View(command);
+    }
+}
+```
+
+**Read actions (queries)**:
+```csharp
+[HttpGet]
+public async Task<IActionResult> Details(long id, CancellationToken ct)
+{
+    var account = await _mediator.Send(new GetAccountQuery(id), ct);
+    if (account is null) return NotFound();
+    return View(account);
+}
+```
+
+**ValidationException handling**: The `ValidationBehavior` pipeline throws `ValidationException` when FluentValidation fails. Controllers catch it and map to `ModelState` errors.
+
+**Critical rule**: Controllers never call repositories, DbContext, or domain services directly. Only `_mediator.Send()`.
+
+---
+
+### 4. Razor View Patterns
+
+**Folder structure** (ASP.NET MVC convention):
+```
+Views/
+├── _ViewImports.cshtml        ← global tag helpers + namespaces
+├── _ViewStart.cshtml          ← default layout
+├── Shared/
+│   ├── _Layout.cshtml         ← master template (navbar, footer)
+│   └── _ValidationScriptsPartial.cshtml  ← jQuery validation
+├── Home/
+│   └── Index.cshtml
+├── ChartOfAccounts/
+│   ├── Index.cshtml           ← account list
+│   └── Create.cshtml          ← create form
+├── JournalEntry/
+│   ├── Index.cshtml
+│   └── Create.cshtml
+├── FiscalPeriod/
+│   └── Index.cshtml
+└── Reporting/
+    ├── BalanceSheet.cshtml
+    └── IncomeStatement.cshtml
+```
+
+**View file conventions**:
+- `@model` directive at top: `@model IReadOnlyList<AccountDto>`
+- `@{ Layout = "_Layout"; }` — inherited from `_ViewStart.cshtml`
+- Tag Helpers: `asp-for`, `asp-action`, `asp-controller`, `asp-validation-for`
+- Bootstrap 5 classes for layout and styling
+
+**Form pattern** (from wshaddix dotnet-skills Bootstrap5 reference):
+```html
+@model CreateAccountViewModel
+
+<form asp-action="Create" method="post">
+    <div asp-validation-summary="ModelOnly" class="text-danger"></div>
+    
+    <div class="mb-3">
+        <label asp-for="Code" class="form-label"></label>
+        <input asp-for="Code" class="form-control" />
+        <span asp-validation-for="Code" class="text-danger"></span>
+    </div>
+    
+    <button type="submit" class="btn btn-primary">Create</button>
+    <a asp-action="Index" class="btn btn-secondary">Cancel</a>
+</form>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}
+```
+
+**Table/list pattern**:
+```html
+@model IReadOnlyList<AccountDto>
+
+<table class="table table-striped">
+    <thead>
+        <tr>
+            <th>Code</th>
+            <th>Name</th>
+            <th>Type</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var account in Model)
+        {
+            <tr>
+                <td>@account.Code</td>
+                <td>@account.Name</td>
+                <td>@account.AccountType</td>
+                <td>
+                    <a asp-action="Edit" asp-route-id="@account.Id" class="btn btn-sm btn-outline-primary">Edit</a>
+                </td>
+            </tr>
+        }
+    </tbody>
+</table>
+```
+
+**Source**: Microsoft Learn Layout docs (aspnetcore-10.0), wshaddix Bootstrap5 Razor integration reference, codingeasypeasy Bootstrap 5 SSR guide, CSharpCorner Razor understanding article.
+
+---
+
+### 5. Layout Structure
+
+**`Views/Shared/_Layout.cshtml`** — master template:
+
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@ViewData["Title"] - SME Accounting</title>
+    <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+</head>
+<body>
+    <header>
+        <nav class="navbar navbar-expand-sm navbar-dark bg-dark border-bottom box-shadow mb-3">
+            <div class="container">
+                <a class="navbar-brand" asp-controller="Home" asp-action="Index">SME Accounting</a>
+                <button class="navbar-toggler" type="button" data-bs-toggle="collapse" 
+                        data-bs-target=".navbar-collapse" aria-controls="navbarSupportedContent"
+                        aria-expanded="false" aria-label="Toggle navigation">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+                <div class="navbar-collapse collapse d-sm-inline-flex justify-content-between">
+                    <ul class="navbar-nav flex-grow-1">
+                        <li class="nav-item">
+                            <a class="nav-link" asp-controller="Home" asp-action="Index">Home</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" asp-controller="ChartOfAccounts" asp-action="Index">Chart of Accounts</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" asp-controller="JournalEntry" asp-action="Index">Journal Entries</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" asp-controller="FiscalPeriod" asp-action="Index">Fiscal Periods</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" asp-controller="Reporting" asp-action="BalanceSheet">Reports</a>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </nav>
+    </header>
+    <div class="container">
+        <main role="main" class="pb-3">
+            @RenderBody()
+        </main>
+    </div>
+    <footer class="border-top footer text-muted">
+        <div class="container">
+            &copy; 2026 - SME Accounting
+        </div>
+    </footer>
+    <script src="~/lib/jquery/dist/jquery.min.js"></script>
+    <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="~/js/site.js" asp-append-version="true"></script>
+    @await RenderSectionAsync("Scripts", required: false)
+</body>
+</html>
+```
+
+**Key differences from Razor Pages layout**:
+- Tag Helpers use `asp-controller` + `asp-action` (not `asp-page`)
+- Navigation links: `asp-controller="ChartOfAccounts" asp-action="Index"`
+- Anti-forgery tokens: `<form asp-action="Create">` (auto-included by tag helper)
+
+**`Views/_ViewImports.cshtml`**:
+```cshtml
+@using SmeAccounting.Api
+@using SmeAccounting.Api.ViewModels
+@addTagHelper *, Microsoft.AspNetCore.Mvc.TagHelpers
+```
+
+**`Views/_ViewStart.cshtml`**:
+```cshtml
+@{
+    Layout = "_Layout";
+}
+```
+
+---
+
+### 6. Swashbuckle Configuration for .NET 10
+
+**Critical**: Swashbuckle.AspNetCore 10.x (already in csproj at v10.2.3) requires `using Microsoft.OpenApi;` — NOT `using Microsoft.OpenApi.Models;`. The `Microsoft.OpenApi.Models` namespace was removed in the Microsoft.OpenApi v2.x dependency.
+
+**Program.cs configuration**:
+```csharp
+using Microsoft.OpenApi;
+
+builder.Services.AddSwaggerGen(options =>
+{
+    options.SwaggerDoc("v1", new OpenApiInfo
+    {
+        Title = "SME Accounting API",
+        Version = "v1",
+        Description = "Vietnamese Enterprise Accounting System — ASP.NET MVC + CQRS + MediatR"
+    });
+});
+
+// ... later in app pipeline:
+if (app.Environment.IsDevelopment())
+{
+    app.UseSwagger();
+    app.UseSwaggerUI(options =>
+    {
+        options.SwaggerEndpoint("/swagger/v1/swagger.json", "SME Accounting API v1");
+    });
+}
+```
+
+**Swashbuckle v10 breaking changes** (from migration guide):
+1. `using Microsoft.OpenApi.Models;` → `using Microsoft.OpenApi;`
+2. `AddSecurityRequirement(req)` → `AddSecurityRequirement(doc => req)` (delegate-based)
+3. `OpenApiSchema` type may need cast from `IOpenApiSchema`
+4. `schema.Type = "string"` → `schema.Type = JsonSchemaType.String` (flags enum)
+
+**LaunchSettings.json** update:
+```json
+"launchUrl": "swagger"
+```
+
+**For this project**: No auth security schemes needed yet (no JWT/Bearer). Just basic SwaggerDoc registration. Keep it simple.
+
+**Source**: Swashbuckle.AspNetCore v10 migration guide (GitHub), Microsoft Q&A .NET 10 OpenApi issues, medium.com Swagger in .NET 10 guide, roundthecode.com Swagger missing in .NET 10.
+
+---
+
+### 7. ViewModels Needed
+
+**ViewModels** are presentation-layer classes that shape data for views. They differ from Application-layer DTOs — ViewModels contain display-specific concerns (validation attributes, display names, formatting).
+
+**ViewModels to create** (in `ViewModels/` folder):
+
+```csharp
+namespace SmeAccounting.Api.ViewModels;
+
+// Chart of Accounts views
+public record ChartOfAccountsViewModel(
+    IReadOnlyList<AccountDto> Accounts,
+    string? SelectedGroupFilter);
+
+public record CreateAccountViewModel
+{
+    public string Code { get; init; } = string.Empty;
+    public string Name { get; init; } = string.Empty;
+    public string AccountType { get; init; } = string.Empty;
+    public long? ParentId { get; init; }
+    public long? AccountGroupId { get; init; }
+}
+
+// Journal Entry views
+public record JournalEntryViewModel(
+    IReadOnlyList<JournalEntryDto> Entries);
+
+public record CreateJournalEntryViewModel
+{
+    public DateTimeOffset Date { get; init; } = DateTimeOffset.UtcNow;
+    public long PeriodId { get; init; }
+    public string? Description { get; init; }
+    public List<JournalEntryLineInput> Lines { get; init; } = [];
+}
+
+// Fiscal Period views
+public record FiscalPeriodViewModel(
+    IReadOnlyList<FiscalPeriodDto> Periods);
+
+// Reporting views (use DTOs directly — no extra ViewModel needed)
+// BalanceSheetDto and IncomeStatementDto serve as view models
+```
+
+**Mapping ViewModel ↔ Command/Query**: ViewModels map directly to MediatR commands/queries. The controller constructs the command from ViewModel properties.
+
+**Validation**: Use DataAnnotations on ViewModels for client-side validation (complementary to FluentValidation on commands):
+```csharp
+public record CreateAccountViewModel
+{
+    [Required(ErrorMessage = "Account code is required")]
+    [RegularExpression(@"^\d{4,}$", ErrorMessage = "Must be numeric, at least 4 digits")]
+    public string Code { get; init; } = string.Empty;
+
+    [Required(ErrorMessage = "Account name is required")]
+    [StringLength(200)]
+    public string Name { get; init; } = string.Empty;
+}
+```
+
+**Key rule**: ViewModels have no domain entity references. They reference Application-layer DTOs and primitive types.
+
+---
+
+### 8. Program.cs Configuration
+
+**Full Program.cs for MVC + MediatR + Swagger**:
+
+```csharp
+using SmeAccounting.Application;
+using SmeAccounting.Infrastructure;
+using Microsoft.OpenApi;
+
+var builder = WebApplication.CreateBuilder(args);
+
+// MVC with Views (NOT Razor Pages)
+builder.Services.AddControllersWithViews();
+
+// Application layer (MediatR + FluentValidation)
+builder.Services.AddApplication();
+
+// Infrastructure layer (EF Core + Repositories + Adapters)
+builder.Services.AddInfrastructure(options =>
+{
+    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")
+        ?? "Host=localhost;Database=sme_accounting;Username=postgres;Password=postgres");
+});
+
+// Swagger / OpenAPI (Swashbuckle 10.x)
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen(options =>
+{
+    options.SwaggerDoc("v1", new OpenApiInfo
+    {
+        Title = "SME Accounting API",
+        Version = "v1"
+    });
+});
+
+var app = builder.Build();
+
+if (!app.Environment.IsDevelopment())
+{
+    app.UseExceptionHandler("/Home/Error");
+    app.UseHsts();
+}
+
+app.UseHttpsRedirection();
+app.UseStaticFiles();
+app.UseRouting();
+app.UseAuthorization();
+
+// Swagger (dev only)
+if (app.Environment.IsDevelopment())
+{
+    app.UseSwagger();
+    app.UseSwaggerUI(options =>
+    {
+        options.SwaggerEndpoint("/swagger/v1/swagger.json", "SME Accounting API v1");
+    });
+}
+
+// MVC routing (conventional, not attribute)
+app.MapControllerRoute(
+    name: "default",
+    pattern: "{controller=Home}/{action=Index}/{id?}");
+
+app.Run();
+```
+
+**Key configuration points**:
+- `AddControllersWithViews()` — NOT `AddRazorPages()`, NOT `AddControllers()`
+- `AddApplication()` — registers MediatR assembly scan + FluentValidation + ValidationBehavior pipeline
+- `AddInfrastructure(options => ...)` — registers DbContext + repos + adapters (accepts optional DB config)
+- `MapControllerRoute("default", "{controller=Home}/{action=Index}/{id?}")` — conventional routing
+- `UseSwagger()` + `UseSwaggerUI()` — Swashbuckle 10.x configuration
+- Swagger endpoint: `/swagger/v1/swagger.json`
+- Swagger UI: `/swagger`
+- `UseStaticFiles()` before `UseRouting()` — required for Bootstrap/jQuery/wwwroot
+- `UseAuthorization()` after `UseRouting()` — standard middleware order
+
+**Middleware order** (from Microsoft docs):
+1. ExceptionHandler/Hsts
+2. UseHttpsRedirection
+3. UseStaticFiles
+4. UseRouting
+5. UseAuthorization
+6. UseEndpoints (MapControllerRoute)
+
+---
+
+### 9. Existing Application Layer Commands/Queries for Controller Mapping
+
+**Commands available** (from `Application/Commands/`):
+| Command | Input | Result | Controller Action |
+|---------|-------|--------|-------------------|
+| `CreateAccountCommand` | Code, Name, AccountType, ParentId?, AccountGroupId? | `CreateAccountResult(long Id)` | `ChartOfAccountsController.Create` POST |
+| `CreateJournalEntryCommand` | Date, PeriodId, Description?, SourceType?, SourceId?, Lines[] | `CreateJournalEntryResult(long Id, string EntryNumber)` | `JournalEntryController.Create` POST |
+| `PostJournalEntryCommand` | JournalEntryId | `PostJournalEntryResult(long JournalEntryId, DateTimeOffset PostedAt)` | `JournalEntryController.Post` POST |
+| `DeprecateAccountCommand` | AccountId | `DeprecateAccountResult(long AccountId)` | `ChartOfAccountsController.Deprecate` POST |
+| `OpenFiscalPeriodCommand` | YearId, Month | `OpenFiscalPeriodResult(long PeriodId)` | `FiscalPeriodController.Open` POST |
+| `CloseFiscalPeriodCommand` | PeriodId | `CloseFiscalPeriodResult(long PeriodId, DateTimeOffset ClosedAt)` | `FiscalPeriodController.Close` POST |
+
+**Queries available** (from `Application/Queries/`):
+| Query | Input | Result | Controller Action |
+|-------|-------|--------|-------------------|
+| `GetAccountQuery` | AccountId | `AccountDto?` | `ChartOfAccountsController.Details` GET |
+| `GetAccountsByGroupQuery` | AccountGroupId? | `IReadOnlyList<AccountDto>` | `ChartOfAccountsController.Index` GET |
+| `GetJournalEntryQuery` | JournalEntryId | `JournalEntryDto?` | `JournalEntryController.Details` GET |
+| `GetFiscalPeriodsQuery` | YearId? | `IReadOnlyList<FiscalPeriodDto>` | `FiscalPeriodController.Index` GET |
+| `GetBalanceSheetQuery` | PeriodId | `BalanceSheetDto` | `ReportingController.BalanceSheet` GET |
+| `GetIncomeStatementQuery` | PeriodId | `IncomeStatementDto` | `ReportingController.IncomeStatement` GET |
+
+**Controller → MediatR mapping pattern**:
+```csharp
+// GET action — query
+public async Task<IActionResult> Index(CancellationToken ct)
+{
+    var result = await _mediator.Send(new GetAccountsByGroupQuery(null), ct);
+    return View(result);
+}
+
+// POST action — command
+[HttpPost]
+[ValidateAntiForgeryToken]
+public async Task<IActionResult> Create(CreateAccountViewModel model, CancellationToken ct)
+{
+    if (!ModelState.IsValid) return View(model);
+    
+    var command = new CreateAccountCommand(model.Code, model.Name, ...);
+    var result = await _mediator.Send(command, ct);
+    return RedirectToAction(nameof(Details), new { id = result.Id });
+}
+```
+
+---
+
+### 10. File/Folder Structure for Api Layer
+
+```
+src/SmeAccounting.Api/
+├── SmeAccounting.Api.csproj
+├── Program.cs
+├── appsettings.json
+├── Properties/
+│   └── launchSettings.json
+├── Controllers/
+│   ├── HomeController.cs              ← index, about
+│   ├── ChartOfAccountsController.cs   ← list, create, details, deprecate
+│   ├── JournalEntryController.cs      ← list, create, details, post
+│   ├── FiscalPeriodController.cs      ← list, open, close
+│   ├── ReportingController.cs         ← balance sheet, income statement
+│   └── SettingsController.cs          ← placeholder
+├── ViewModels/
+│   ├── ChartOfAccountsViewModel.cs
+│   ├── CreateAccountViewModel.cs
+│   ├── JournalEntryViewModel.cs
+│   ├── CreateJournalEntryViewModel.cs
+│   └── FiscalPeriodViewModel.cs
+├── Views/
+│   ├── _ViewImports.cshtml
+│   ├── _ViewStart.cshtml
+│   ├── Shared/
+│   │   ├── _Layout.cshtml
+│   │   └── _ValidationScriptsPartial.cshtml
+│   ├── Home/
+│   │   └── Index.cshtml
+│   ├── ChartOfAccounts/
+│   │   ├── Index.cshtml
+│   │   ├── Create.cshtml
+│   │   └── Details.cshtml
+│   ├── JournalEntry/
+│   │   ├── Index.cshtml
+│   │   ├── Create.cshtml
+│   │   └── Details.cshtml
+│   ├── FiscalPeriod/
+│   │   └── Index.cshtml
+│   └── Reporting/
+│       ├── BalanceSheet.cshtml
+│       └── IncomeStatement.cshtml
+├── wwwroot/
+│   ├── css/site.css
+│   ├── js/site.js
+│   ├── favicon.ico
+│   └── lib/                          ← Bootstrap 5, jQuery (already present)
+│       ├── bootstrap/
+│       ├── jquery/
+│       └── jquery-validation/
+└── Pages/                            ← DELETE (Razor Pages, not needed)
+    ├── Index.cshtml
+    ├── Privacy.cshtml
+    ├── Error.cshtml
+    └── Shared/_Layout.cshtml
+```
+
+**Critical**: Delete `Pages/` folder entirely. MVC and Razor Pages cannot coexist in the same project cleanly — they use different routing, different view discovery, and different conventions.
+
+---
+
+### 11. NuGet Package Changes for Api Project
+
+**Current Api.csproj packages**:
+```xml
+<PackageReference Include="MediatR" Version="14.2.0" />
+<PackageReference Include="Swashbuckle.AspNetCore" Version="10.2.3" />
+```
+
+**No additional packages needed**. MediatR is already referenced (for `IMediator` injection). Swashbuckle is already referenced (for Swagger). `Microsoft.AspNetCore.App` framework reference provides MVC, Razor views, and tag helpers.
+
+**Note**: Do NOT add `Microsoft.AspNetCore.OpenApi` — it conflicts with Swashbuckle 10.x. The csproj already has Swashbuckle; use it.
+
+---
+
+### 12. Anti-Patterns to Avoid
+
+1. **Don't use `AddControllers()`** — use `AddControllersWithViews()`. `AddControllers()` is for Web API only (no Razor views).
+2. **Don't use `AddRazorPages()`** — that's for page-based routing, not MVC controllers.
+3. **Don't mix Razor Pages and MVC** — delete `Pages/` folder, use `Views/` folder exclusively.
+4. **Don't use `Microsoft.OpenApi.Models` namespace** — Swashbuckle 10.x uses `Microsoft.OpenApi` (no `.Models`).
+5. **Don't inject DbContext or repositories into controllers** — only inject `IMediator`.
+6. **Don't put business logic in controllers** — send command/query via MediatR, let handler handle it.
+7. **Don't forget `[ValidateAntiForgeryToken]` on POST actions** — prevents CSRF attacks.
+8. **Don't forget `CancellationToken`** — pass through to `_mediator.Send()`.
+9. **Don't use `asp-page` tag helper** — use `asp-controller` + `asp-action` for MVC.
+
+---
+
+*Research completed: Sep 16 2026. Sources: Microsoft Learn (Layout 10.0, Razor Pages 10.0, Tag Helpers), Swashbuckle.AspNetCore v10 migration guide, StackLesson Clean Architecture, csharp-coder.com CQRS guide, codingdroplets template, wshaddix Bootstrap5 Razor reference, codingeasypeasy Bootstrap 5 SSR guide, CSharpCorner Razor understanding, shawnbellazan.net API layer, c-sharpcorner.com CQRS MediatR, Simone Negro Mobishare analysis, roundthecode.com Swagger in .NET 10, medium.com Swagger setup guide, Shalvin Swagger Web API 10.*

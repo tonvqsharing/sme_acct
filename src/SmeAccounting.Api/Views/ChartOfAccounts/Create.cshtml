@@ -1,0 +1,57 @@
+@model CreateAccountViewModel
+
+@{
+    ViewData["Title"] = "Thêm tài khoản mới";
+}
+
+<h1>Thêm tài khoản mới</h1>
+
+<div class="row">
+    <div class="col-md-6">
+        <form asp-action="Create" method="post">
+            <div asp-validation-summary="ModelOnly" class="text-danger"></div>
+
+            <div class="mb-3">
+                <label asp-for="Code" class="form-label"></label>
+                <input asp-for="Code" class="form-control" placeholder="VD: 1110" />
+                <span asp-validation-for="Code" class="text-danger"></span>
+            </div>
+
+            <div class="mb-3">
+                <label asp-for="Name" class="form-label"></label>
+                <input asp-for="Name" class="form-control" placeholder="VD: Tiền mặt" />
+                <span asp-validation-for="Name" class="text-danger"></span>
+            </div>
+
+            <div class="mb-3">
+                <label asp-for="AccountType" class="form-label"></label>
+                <select asp-for="AccountType" class="form-select">
+                    <option value="">-- Chọn loại --</option>
+                    <option value="Asset">Tài sản</option>
+                    <option value="Liability">Nợ phải trả</option>
+                    <option value="Equity">Vốn chủ sở hữu</option>
+                    <option value="Revenue">Doanh thu</option>
+                    <option value="Expense">Chi phí</option>
+                </select>
+                <span asp-validation-for="AccountType" class="text-danger"></span>
+            </div>
+
+            <div class="mb-3">
+                <label asp-for="ParentId" class="form-label"></label>
+                <input asp-for="ParentId" class="form-control" placeholder="ID tài khoản cha (tùy chọn)" />
+            </div>
+
+            <div class="mb-3">
+                <label asp-for="AccountGroupId" class="form-label"></label>
+                <input asp-for="AccountGroupId" class="form-control" placeholder="ID nhóm tài khoản (tùy chọn)" />
+            </div>
+
+            <button type="submit" class="btn btn-primary">Tạo</button>
+            <a asp-action="Index" class="btn btn-secondary">Hủy</a>
+        </form>
+    </div>
+</div>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}

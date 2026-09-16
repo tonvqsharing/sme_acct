@@ -1,0 +1,64 @@
+@model JournalEntryViewModel
+
+@{
+    ViewData["Title"] = "Phiếu kế toán";
+}
+
+<h1>Phiếu kế toán</h1>
+
+<p>
+    <a asp-action="Create" class="btn btn-primary">Tạo phiếu mới</a>
+</p>
+
+<table class="table table-striped table-hover">
+    <thead class="table-dark">
+        <tr>
+            <th>Số phiếu</th>
+            <th>Ngày</th>
+            <th>Diễn giải</th>
+            <th>Trạng thái</th>
+            <th>Ngày hạch toán</th>
+            <th>Thao tác</th>
+        </tr>
+    </thead>
+    <tbody>
+        @if (Model.Entries.Any())
+        {
+            @foreach (var entry in Model.Entries)
+            {
+                <tr>
+                    <td>@entry.EntryNumber</td>
+                    <td>@entry.Date.ToString("dd/MM/yyyy")</td>
+                    <td>@entry.Description</td>
+                    <td>
+                        @if (entry.IsPosted)
+                        {
+                            <span class="badge bg-success">Đã ghi sổ</span>
+                        }
+                        else
+                        {
+                            <span class="badge bg-warning text-dark">Chưa ghi sổ</span>
+                        }
+                    </td>
+                    <td>@(entry.PostedAt?.ToString("dd/MM/yyyy HH:mm") ?? "-")</td>
+                    <td>
+                        @if (!entry.IsPosted)
+                        {
+                            <form asp-action="Post" asp-route-id="@entry.Id" method="post" style="display:inline">
+                                @Html.AntiForgeryToken()
+                                <button type="submit" class="btn btn-sm btn-outline-success"
+                                        onclick="return confirm('Ghi sổ phiếu này?')">Ghi sổ</button>
+                            </form>
+                        }
+                    </td>
+                </tr>
+            }
+        }
+        else
+        {
+            <tr>
+                <td colspan="6" class="text-center text-muted">Chưa có phiếu kế toán nào.</td>
+            </tr>
+        }
+    </tbody>
+</table>

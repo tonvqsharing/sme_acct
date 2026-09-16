@@ -1,0 +1,91 @@
+@model BalanceSheetDto
+
+@{
+    ViewData["Title"] = "Bảng cân đối kế toán (B01-DN)";
+}
+
+<h1>Bảng cân đối kế toán (B01-DN)</h1>
+
+<div class="row">
+    <div class="col-md-4">
+        <h4>Tài sản</h4>
+        <table class="table table-bordered">
+            <thead class="table-light">
+                <tr>
+                    <th>Nhóm</th>
+                    <th class="text-end">Tổng</th>
+                </tr>
+            </thead>
+            <tbody>
+                @if (Model.Assets.Any())
+                {
+                    @foreach (var item in Model.Assets)
+                    {
+                        <tr>
+                            <td>@item.GroupName</td>
+                            <td class="text-end">@item.Total.ToString("N0") @item.Currency</td>
+                        </tr>
+                    }
+                }
+                else
+                {
+                    <tr><td colspan="2" class="text-center text-muted">Chưa có dữ liệu.</td></tr>
+                }
+            </tbody>
+        </table>
+    </div>
+    <div class="col-md-4">
+        <h4>Nợ phải trả</h4>
+        <table class="table table-bordered">
+            <thead class="table-light">
+                <tr>
+                    <th>Nhóm</th>
+                    <th class="text-end">Tổng</th>
+                </tr>
+            </thead>
+            <tbody>
+                @if (Model.Liabilities.Any())
+                {
+                    @foreach (var item in Model.Liabilities)
+                    {
+                        <tr>
+                            <td>@item.GroupName</td>
+                            <td class="text-end">@item.Total.ToString("N0") @item.Currency</td>
+                        </tr>
+                    }
+                }
+                else
+                {
+                    <tr><td colspan="2" class="text-center text-muted">Chưa có dữ liệu.</td></tr>
+                }
+            </tbody>
+        </table>
+    </div>
+    <div class="col-md-4">
+        <h4>Vốn chủ sở hữu</h4>
+        <table class="table table-bordered">
+            <thead class="table-light">
+                <tr>
+                    <th>Nhóm</th>
+                    <th class="text-end">Tổng</th>
+                </tr>
+            </thead>
+            <tbody>
+                @if (Model.Equity.Any())
+                {
+                    @foreach (var item in Model.Equity)
+                    {
+                        <tr>
+                            <td>@item.GroupName</td>
+                            <td class="text-end">@item.Total.ToString("N0") @item.Currency</td>
+                        </tr>
+                    }
+                }
+                else
+                {
+                    <tr><td colspan="2" class="text-center text-muted">Chưa có dữ liệu.</td></tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>

@@ -153,3 +153,43 @@ Updated continuously by all agents as they discover things.
 - Don't let Domain layer reference any NuGet packages — port interfaces only
 - Don't hard-delete entities with audit requirements — use soft-delete pattern
 - Don't assume `TreatWarningsAsErrors` catches all warnings — NuGet locale warnings slip through
+
+## Presentation Layer Patterns (G3 — Sep 2026)
+
+### MVC vs Razor Pages
+- `dotnet new webapp` creates Razor Pages (`AddRazorPages()` + `Pages/` folder)
+- MVC requires `AddControllersWithViews()` + `Controllers/` + `Views/` folders
+- DELETE `Pages/` folder before creating MVC structure — Razor Pages and MVC cannot coexist
+- Tag helpers: `asp-controller` + `asp-action` (MVC) vs `asp-page` (Razor Pages)
+
+### Program.cs Configuration
+- `AddControllersWithViews()` — NOT `AddRazorPages()`, NOT `AddControllers()`
+- `AddApplication()` — MediatR assembly scan + FluentValidation + ValidationBehavior pipeline
+- `AddInfrastructure(IConfiguration)` — DbContext + repos + adapters (reads connection string from config)
+- `MapControllerRoute("default", "{controller=Home}/{action=Index}/{id?}")` — conventional routing
+- Swashbuckle 10.x: `using Microsoft.OpenApi;` NOT `Microsoft.OpenApi.Models`
+- `UseNpgsql()` is in Infrastructure assembly — Api should NOT reference Npgsql directly
+
+### Controller Patterns
+- Inject `IMediator` via constructor — zero domain/infrastructure references
+- `[ValidateAntiForgeryToken]` on all POST actions
+- Pass `CancellationToken` through to `_mediator.Send()`
+- Catch `FluentValidation.ValidationException` → map to `ModelState` errors
+- `SmeAccounting.Domain.ValueObjects.AccountType` used via fully qualified name (no `using` statement)
+
+### Architecture Decision: Infrastructure Reference
+- Api csproj references both Application AND Infrastructure (for DI wiring in Program.cs)
+- Controllers only reference Application types (DTOs, commands, queries, ViewModels)
+- Architecture tests should verify: no `using SmeAccounting.Domain.Entities` in controllers
+- The `using SmeAccounting.Domain` constraint applies to using statements, not fully qualified names
+
+### ViewModels
+- ViewModels in `Api/ViewModels/` — reference Application DTOs and primitives only
+- DataAnnotations on ViewModels for client-side validation
+- ViewModels map directly to MediatR commands/queries — controller constructs command from VM
+
+### Views
+- `_ViewImports.cshtml` — `@using SmeAccounting.Application.DTOs` + tag helpers
+- `_Layout.cshtml` — Bootstrap 5, Vietnamese labels, `asp-controller`/`asp-action` navigation
+- Tables render empty state when no data — views work without database
+- jQuery validation scripts via `_ValidationScriptsPartial`

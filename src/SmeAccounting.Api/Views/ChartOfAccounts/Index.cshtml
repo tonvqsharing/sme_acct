@@ -1,0 +1,61 @@
+@model ChartOfAccountsViewModel
+
+@{
+    ViewData["Title"] = "Sổ cái chi tiết";
+}
+
+<h1>Sổ cái chi tiết</h1>
+
+<p>
+    <a asp-action="Create" class="btn btn-primary">Thêm tài khoản mới</a>
+</p>
+
+<table class="table table-striped table-hover">
+    <thead class="table-dark">
+        <tr>
+            <th>Mã</th>
+            <th>Tên</th>
+            <th>Loại</th>
+            <th>Cấp</th>
+            <th>Trạng thái</th>
+            <th>Thao tác</th>
+        </tr>
+    </thead>
+    <tbody>
+        @if (Model.Accounts.Any())
+        {
+            @foreach (var account in Model.Accounts)
+            {
+                <tr>
+                    <td>@account.Code</td>
+                    <td>@account.Name</td>
+                    <td>@account.AccountType</td>
+                    <td>@account.Level</td>
+                    <td>
+                        @if (account.IsActive)
+                        {
+                            <span class="badge bg-success">Hoạt động</span>
+                        }
+                        else
+                        {
+                            <span class="badge bg-secondary">Ngừng hoạt động</span>
+                        }
+                    </td>
+                    <td>
+                        <form asp-action="Deprecate" asp-route-id="@account.Id" method="post" style="display:inline">
+                            @Html.AntiForgeryToken()
+                            <button type="submit" class="btn btn-sm btn-outline-danger"
+                                    onclick="return confirm('Bạn có chắc muốn ngừng tài khoản này?')">Ngừng HĐ</button>
+                        </form>
+                    </td>
+                </tr>
+            }
+        }
+        else
+        {
+            <tr>
+                <td colspan="6" class="text-center text-muted">Chưa có tài khoản nào.</td>
+            </tr>
+        }
+    </tbody>
+</table>

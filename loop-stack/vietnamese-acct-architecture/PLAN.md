@@ -196,7 +196,7 @@ Create the infrastructure layer implementing all port interfaces from Domain/App
 
 ---
 
-### [G3] Presentation Layer — ASP.NET MVC Controllers, Views, and MediatR Wiring
+- [x] ### [G3] Presentation Layer — ASP.NET MVC Controllers, Views, and MediatR Wiring
 Create the ASP.NET MVC presentation layer with thin controllers that dispatch to MediatR, views for key pages, and application startup configuration.
 
 **Deliverables:**

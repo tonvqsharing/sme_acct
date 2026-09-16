@@ -1,0 +1,67 @@
+@model FiscalPeriodViewModel
+
+@{
+    ViewData["Title"] = "Kỳ kế toán";
+}
+
+<h1>Kỳ kế toán</h1>
+
+<table class="table table-striped table-hover">
+    <thead class="table-dark">
+        <tr>
+            <th>Kỳ</th>
+            <th>Tháng</th>
+            <th>Trạng thái</th>
+            <th>Ngày mở</th>
+            <th>Ngày đóng</th>
+            <th>Thao tác</th>
+        </tr>
+    </thead>
+    <tbody>
+        @if (Model.Periods.Any())
+        {
+            @foreach (var period in Model.Periods)
+            {
+                <tr>
+                    <td>@period.YearId</td>
+                    <td>@period.Month</td>
+                    <td>
+                        @switch (period.Status)
+                        {
+                            case "Open":
+                                <span class="badge bg-success">Mở</span>
+                                break;
+                            case "Closing":
+                                <span class="badge bg-warning text-dark">Đang đóng</span>
+                                break;
+                            case "Closed":
+                                <span class="badge bg-secondary">Đã đóng</span>
+                                break;
+                            default:
+                                <span class="badge bg-light text-dark">@period.Status</span>
+                                break;
+                        }
+                    </td>
+                    <td>@(period.OpenedAt?.ToString("dd/MM/yyyy HH:mm") ?? "-")</td>
+                    <td>@(period.ClosedAt?.ToString("dd/MM/yyyy HH:mm") ?? "-")</td>
+                    <td>
+                        @if (period.Status == "Open")
+                        {
+                            <form asp-action="Close" asp-route-id="@period.Id" method="post" style="display:inline">
+                                @Html.AntiForgeryToken()
+                                <button type="submit" class="btn btn-sm btn-outline-danger"
+                                        onclick="return confirm('Đóng kỳ kế toán này? Không thể mở lại.')">Đóng kỳ</button>
+                            </form>
+                        }
+                    </td>
+                </tr>
+            }
+        }
+        else
+        {
+            <tr>
+                <td colspan="6" class="text-center text-muted">Chưa có kỳ kế toán nào.</td>
+            </tr>
+        }
+    </tbody>
+</table>

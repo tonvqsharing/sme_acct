@@ -1,0 +1,75 @@
+@model CreateJournalEntryViewModel
+
+@{
+    ViewData["Title"] = "Tạo phiếu kế toán";
+}
+
+<h1>Tạo phiếu kế toán</h1>
+
+<div class="row">
+    <div class="col-md-8">
+        <form asp-action="Create" method="post">
+            <div asp-validation-summary="ModelOnly" class="text-danger"></div>
+
+            <div class="mb-3">
+                <label asp-for="Date" class="form-label"></label>
+                <input asp-for="Date" class="form-control" type="date" />
+                <span asp-validation-for="Date" class="text-danger"></span>
+            </div>
+
+            <div class="mb-3">
+                <label asp-for="PeriodId" class="form-label"></label>
+                <input asp-for="PeriodId" class="form-control" />
+                <span asp-validation-for="PeriodId" class="text-danger"></span>
+            </div>
+
+            <div class="mb-3">
+                <label asp-for="Description" class="form-label"></label>
+                <input asp-for="Description" class="form-control" placeholder="Diễn giải..." />
+                <span asp-validation-for="Description" class="text-danger"></span>
+            </div>
+
+            <h4>Chi tiết bút toán</h4>
+            <div class="table-responsive">
+                <table class="table table-bordered" id="linesTable">
+                    <thead>
+                        <tr>
+                            <th>Tài khoản</th>
+                            <th>Số tiền nợ</th>
+                            <th>Số tiền có</th>
+                            <th>Diễn giải</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    </tbody>
+                </table>
+            </div>
+
+            <button type="button" class="btn btn-outline-secondary mb-3" onclick="addLine()">Thêm dòng</button>
+
+            <div>
+                <button type="submit" class="btn btn-primary">Tạo phiếu</button>
+                <a asp-action="Index" class="btn btn-secondary">Hủy</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+    <script>
+        var lineIndex = 0;
+        function addLine() {
+            var html = '<tr>' +
+                '<td><input name="Lines[' + lineIndex + '].AccountId" class="form-control form-control-sm" type="number" /></td>' +
+                '<td><input name="Lines[' + lineIndex + '].DebitAmount" class="form-control form-control-sm" type="number" step="0.01" /></td>' +
+                '<td><input name="Lines[' + lineIndex + '].CreditAmount" class="form-control form-control-sm" type="number" step="0.01" /></td>' +
+                '<td><input name="Lines[' + lineIndex + '].Description" class="form-control form-control-sm" /></td>' +
+                '<td><button type="button" class="btn btn-sm btn-outline-danger" onclick="$(this).closest(\'tr\').remove()">Xóa</button></td>' +
+                '</tr>';
+            $('#linesTable tbody').append(html);
+            lineIndex++;
+        }
+    </script>
+}

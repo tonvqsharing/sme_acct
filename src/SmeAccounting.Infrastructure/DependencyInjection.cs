@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using SmeAccounting.Domain.Ports;
 using SmeAccounting.Infrastructure.Adapters;
@@ -12,11 +13,13 @@ public static class DependencyInjection
 {
     public static IServiceCollection AddInfrastructure(
         this IServiceCollection services,
-        Action<DbContextOptionsBuilder>? configureOptions = null)
+        IConfiguration configuration)
     {
         services.AddDbContext<SmeAccountingDbContext>((sp, options) =>
         {
-            configureOptions?.Invoke(options);
+            var connectionString = configuration.GetConnectionString("DefaultConnection")
+                ?? "Host=localhost;Database=sme_accounting;Username=postgres;Password=postgres";
+            options.UseNpgsql(connectionString);
         });
 
         services.AddScoped<IUnitOfWork>(sp =>

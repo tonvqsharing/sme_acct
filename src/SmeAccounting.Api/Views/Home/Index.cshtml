@@ -1,0 +1,38 @@
+@{
+    ViewData["Title"] = "Trang chủ";
+}
+
+<div class="text-center">
+    <h1 class="display-4">Hệ thống kế toán doanh nghiệp vừa và nhỏ</h1>
+    <p class="lead">Quản lý sổ sách kế toán theo Thông tư 99/2025/TT-BTC</p>
+</div>
+
+<div class="row mt-4">
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">Sổ cái chi tiết</h5>
+                <p class="card-text">Quản lý tài khoản, nhóm tài khoản theo quy định.</p>
+                <a asp-controller="ChartOfAccounts" asp-action="Index" class="btn btn-primary">Xem tài khoản</a>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">Phiếu kế toán</h5>
+                <p class="card-text">Hạch toán và theo dõi bút toán.</p>
+                <a asp-controller="JournalEntry" asp-action="Index" class="btn btn-primary">Xem phiếu</a>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">Báo cáo tài chính</h5>
+                <p class="card-text">Bảng cân đối kế toán, kết quả kinh doanh.</p>
+                <a asp-controller="Reporting" asp-action="BalanceSheet" class="btn btn-primary">Xem báo cáo</a>
+            </div>
+        </div>
+    </div>
+</div>
