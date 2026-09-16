@@ -2666,3 +2666,709 @@ src/SmeAccounting.Api/
 ---
 
 *Research completed: Sep 16 2026. Sources: Microsoft Learn (Layout 10.0, Razor Pages 10.0, Tag Helpers), Swashbuckle.AspNetCore v10 migration guide, StackLesson Clean Architecture, csharp-coder.com CQRS guide, codingdroplets template, wshaddix Bootstrap5 Razor reference, codingeasypeasy Bootstrap 5 SSR guide, CSharpCorner Razor understanding, shawnbellazan.net API layer, c-sharpcorner.com CQRS MediatR, Simone Negro Mobishare analysis, roundthecode.com Swagger in .NET 10, medium.com Swagger setup guide, Shalvin Swagger Web API 10.*
+
+---
+
+## Task-Specific Research — Architecture Tests
+
+### 1. NetArchTest.Rules Package Setup
+
+**Package**: `NetArchTest.Rules` **1.3.2** (latest stable, .NET Standard 2.0 — compatible with net10.0)
+**NuGet**: https://www.nuget.org/packages/NetArchTest.Rules
+
+**Test project csproj** (`tests/SmeAccounting.ArchitectureTests/SmeAccounting.ArchitectureTests.csproj`):
+```xml
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" Version="6.0.4" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
+    <PackageReference Include="NetArchTest.Rules" Version="1.3.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\SmeAccounting.Domain\SmeAccounting.Domain.csproj" />
+    <ProjectReference Include="..\..\src\SmeAccounting.Application\SmeAccounting.Application.csproj" />
+    <ProjectReference Include="..\..\src\SmeAccounting.Infrastructure\SmeAccounting.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\SmeAccounting.Api\SmeAccounting.Api.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+</Project>
+```
+
+**Key point**: Test project MUST reference all 4 source projects so NetArchTest can load their assemblies via `Types.InAssembly(typeof(X).Assembly)`.
+
+**Marker types needed** (one per project, for assembly resolution):
+```csharp
+// In Domain: namespace SmeAccounting.Domain;
+public static class DomainMarker { }
+
+// In Application: namespace SmeAccounting.Application;
+public static class ApplicationMarker { }
+
+// In Infrastructure: namespace SmeAccounting.Infrastructure;
+public static class InfrastructureMarker { }
+
+// In Api: namespace SmeAccounting.Api;
+public static class ApiMarker { }
+```
+
+---
+
+### 2. NetArchTest Core API Patterns
+
+#### Loading Types
+```csharp
+// From a specific assembly (preferred — explicit)
+var types = Types.InAssembly(typeof(DomainMarker).Assembly);
+
+// From current domain (all loaded assemblies)
+var types = Types.InCurrentDomain();
+```
+
+#### Predicates (selecting types to test)
+```csharp
+types.That().ResideInNamespace("SmeAccounting.Domain")           // namespace filter
+types.That().AreClasses()                                        // type filter
+types.That().HaveNameEndingWith("Repository")                    // name filter
+types.That().ImplementInterface(typeof(IAccountRepository))      // interface filter
+types.That().HaveDependencyOn("SmeAccounting.Infrastructure")    // dependency filter
+types.That().AreNotAbstract()                                    // exclude abstract
+```
+
+#### Conditions (assertions)
+```csharp
+types.Should().HaveDependencyOn("SmeAccounting.Domain")          // must depend on X
+types.ShouldNot().HaveDependencyOn("SmeAccounting.Infrastructure") // must NOT depend on X
+types.Should().ImplementInterface(typeof(IRepository))           // must implement interface
+types.Should().BePublic()                                        // must be public
+types.Should().BeSealed()                                        // must be sealed
+types.Should().HaveNameStartingWith("I")                         // naming convention
+types.Should().HaveNameEndingWith("Service")                     // naming convention
+types.Should().BeClasses()                                       // must be classes
+```
+
+#### Dependency Rules (critical for Clean Architecture)
+```csharp
+// "HaveDependencyOn" = uses types from that namespace (via using, inheritance, field, parameter, etc.)
+// "OnlyHaveDependencyOn" = dependency list is EXCLUSIVE (no other deps allowed)
+// "HaveDependencyOtherThan" = has deps NOT in the list
+// "NotHaveDependencyOnAny" = none of these deps
+```
+
+#### Custom Rules
+```csharp
+Types.InAssembly(typeof(Domain).Assembly)
+    .That().AreClasses()
+    .Should().MeetCustomRule(MyCustomRule)
+    .GetResult();
+
+static bool MyCustomRule(Type type) => /* return true if compliant */;
+```
+
+---
+
+### 3. Dependency Direction Tests (Clean Architecture Enforcement)
+
+**Target dependency direction**:
+```
+Api → Application → Domain ← Infrastructure → Application
+```
+
+**Test patterns**:
+
+```csharp
+[Fact]
+public void Domain_Should_Not_Depend_On_Application()
+{
+    var result = Types
+        .InAssembly(typeof(DomainMarker).Assembly)
+        .ShouldNot()
+        .HaveDependencyOn("SmeAccounting.Application")
+        .GetResult();
+
+    Assert.True(result.IsSuccessful);
+}
+
+[Fact]
+public void Domain_Should_Not_Depend_On_Infrastructure()
+{
+    var result = Types
+        .InAssembly(typeof(DomainMarker).Assembly)
+        .ShouldNot()
+        .HaveDependencyOn("SmeAccounting.Infrastructure")
+        .GetResult();
+
+    Assert.True(result.IsSuccessful);
+}
+
+[Fact]
+public void Domain_Should_Not_Depend_On_Api()
+{
+    var result = Types
+        .InAssembly(typeof(DomainMarker).Assembly)
+        .ShouldNot()
+        .HaveDependencyOn("SmeAccounting.Api")
+        .GetResult();
+
+    Assert.True(result.IsSuccessful);
+}
+
+[Fact]
+public void Application_Should_Not_Depend_On_Infrastructure()
+{
+    var result = Types
+        .InAssembly(typeof(ApplicationMarker).Assembly)
+        .ShouldNot()
+        .HaveDependencyOn("SmeAccounting.Infrastructure")
+        .GetResult();
+
+    Assert.True(result.IsSuccessful);
+}
+
+[Fact]
+public void Application_Should_Not_Depend_On_Api()
+{
+    var result = Types
+        .InAssembly(typeof(ApplicationMarker).Assembly)
+        .ShouldNot()
+        .HaveDependencyOn("SmeAccounting.Api")
+        .GetResult();
+
+    Assert.True(result.IsSuccessful);
+}
+
+[Fact]
+public void Infrastructure_Should_Not_Depend_On_Api()
+{
+    var result = Types
+        .InAssembly(typeof(InfrastructureMarker).Assembly)
+        .ShouldNot()
+        .HaveDependencyOn("SmeAccounting.Api")
+        .GetResult();
+
+    Assert.True(result.IsSuccessful);
+}
+
+[Fact]
+public void Api_Should_Not_Depend_On_Domain()
+{
+    // Note: Api references Application AND Infrastructure (composition root)
+    // But controllers should NOT reference Domain directly
+    var result = Types
+        .InAssembly(typeof(ApiMarker).Assembly)
+        .That()
+        .ResideInNamespace("SmeAccounting.Api.Controllers")
+        .ShouldNot()
+        .HaveDependencyOn("SmeAccounting.Domain")
+        .GetResult();
+
+    Assert.True(result.IsSuccessful);
+}
+```
+
+**Important**: `HaveDependencyOn("SmeAccounting.Domain")` is a **namespace prefix match** — it catches `SmeAccounting.Domain`, `SmeAccounting.Domain.Entities`, `SmeAccounting.Domain.Ports`, etc. This is the correct behavior for layer separation.
+
+**Known deviation**: `ChartOfAccountsController.cs:38` has `Enum.Parse<SmeAccounting.Domain.ValueObjects.AccountType>(...)` — this is a fully qualified name (not a `using` statement). NetArchTest's `HaveDependencyOn` checks IL references, so this WILL be caught. The test may need an exclusion or the code needs fixing.
+
+---
+
+### 4. Namespace Restriction Tests (Layer Coupling)
+
+**Controllers must not reference Domain namespaces**:
+
+```csharp
+[Fact]
+public void Controllers_Should_Not_Reference_Domain_Entities()
+{
+    var result = Types
+        .InAssembly(typeof(ApiMarker).Assembly)
+        .That()
+        .ResideInNamespace("SmeAccounting.Api.Controllers")
+        .ShouldNot()
+        .HaveDependencyOn("SmeAccounting.Domain.Entities")
+        .GetResult();
+
+    Assert.True(result.IsSuccessful);
+}
+
+[Fact]
+public void Controllers_Should_Not_Reference_Domain_Repositories()
+{
+    var result = Types
+        .InAssembly(typeof(ApiMarker).Assembly)
+        .That()
+        .ResideInNamespace("SmeAccounting.Api.Controllers")
+        .ShouldNot()
+        .HaveDependencyOn("SmeAccounting.Domain.Ports")
+        .GetResult();
+
+    Assert.True(result.IsSuccessful);
+}
+
+[Fact]
+public void Handlers_Should_Not_Reference_Infrastructure()
+{
+    var result = Types
+        .InAssembly(typeof(ApplicationMarker).Assembly)
+        .That()
+        .HaveDependencyOn("MediatR")  // handlers implement IRequestHandler
+        .ShouldNot()
+        .HaveDependencyOn("SmeAccounting.Infrastructure")
+        .GetResult();
+
+    Assert.True(result.IsSuccessful);
+}
+```
+
+**Note on namespace vs assembly**: `HaveDependencyOn` checks by **namespace prefix**, not by assembly. So `HaveDependencyOn("SmeAccounting.Domain")` matches any reference to any type in any sub-namespace of `SmeAccounting.Domain`. This is the correct behavior for layer separation enforcement.
+
+---
+
+### 5. Domain Purity Tests (No NuGet Packages)
+
+**Domain project must have zero NuGet PackageReference elements**.
+
+This CANNOT be enforced by NetArchTest (it inspects types, not csproj). Use **reflection + XML parsing**:
+
+```csharp
+[Fact]
+public void Domain_Should_Have_No_NuGet_PackageReferences()
+{
+    var csprojPath = Path.Combine(
+        AppContext.BaseDirectory,
+        "..", "..", "..", "..", "..",
+        "src", "SmeAccounting.Domain", "SmeAccounting.Domain.csproj");
+
+    var doc = XDocument.Load(csprojPath);
+    var packageRefs = doc.Descendants("PackageReference").ToList();
+
+    Assert.Empty(packageRefs);
+}
+
+[Fact]
+public void Domain_Should_Not_Reference_Microsoft_Packages()
+{
+    var csprojPath = Path.Combine(
+        AppContext.BaseDirectory,
+        "..", "..", "..", "..", "..",
+        "src", "SmeAccounting.Domain", "SmeAccounting.Domain.csproj");
+
+    var doc = XDocument.Load(csprojPath);
+    var forbiddenPrefixes = new[] { "Microsoft.", "Npgsql.", "Serilog.", "EFCore." };
+
+    var violations = doc.Descendants("PackageReference")
+        .Select(x => (string?)x.Attribute("Include") ?? "")
+        .Where(pkg => forbiddenPrefixes.Any(pfx => pkg.StartsWith(pfx, StringComparison.OrdinalIgnoreCase)))
+        .ToList();
+
+    Assert.Empty(violations);
+}
+```
+
+**Alternative approach** (pure NetArchTest — checking type dependencies at assembly level):
+
+```csharp
+[Fact]
+public void Domain_Should_Not_Have_External_Dependency_On_EntityFramework()
+{
+    var result = Types
+        .InAssembly(typeof(DomainMarker).Assembly)
+        .ShouldNot()
+        .HaveDependencyOn("Microsoft.EntityFrameworkCore")
+        .GetResult();
+
+    Assert.True(result.IsSuccessful);
+}
+
+[Fact]
+public void Domain_Should_Not_Have_External_Dependency_On_Npgsql()
+{
+    var result = Types
+        .InAssembly(typeof(DomainMarker).Assembly)
+        .ShouldNot()
+        .HaveDependencyOn("Npgsql")
+        .GetResult();
+
+    Assert.True(result.IsSuccessful);
+}
+
+[Fact]
+public void Domain_Should_Not_Have_External_Dependency_On_MediatR()
+{
+    // Domain events are plain records — no MediatR dependency
+    var result = Types
+        .InAssembly(typeof(DomainMarker).Assembly)
+        .ShouldNot()
+        .HaveDependencyOn("MediatR")
+        .GetResult();
+
+    Assert.True(result.IsSuccessful);
+}
+```
+
+**Current state**: Domain.csproj is empty (only `<Project Sdk="Microsoft.NET.Sdk">`) — so the csproj-based test will pass. But the NetArchTest-based dependency checks are still valuable as safety nets against future regressions.
+
+---
+
+### 6. Naming Convention Tests
+
+**Entity suffix conventions**:
+
+```csharp
+[Fact]
+public void Entities_In_Domain_Should_Reside_In_Correct_Namespace()
+{
+    var result = Types
+        .InAssembly(typeof(DomainMarker).Assembly)
+        .That()
+        .AreClasses()
+        .And().HaveNameEndingWith("Entity")  // or match BaseEntity pattern
+        .Should()
+        .ResideInNamespace("SmeAccounting.Domain.Entities")
+        .GetResult();
+
+    Assert.True(result.IsSuccessful);
+}
+
+[Fact]
+public void Repository_Interfaces_Should_Start_With_I()
+{
+    var result = Types
+        .InAssembly(typeof(DomainMarker).Assembly)
+        .That()
+        .HaveNameEndingWith("Repository")
+        .And().AreInterfaces()
+        .Should()
+        .HaveNameStartingWith("I")
+        .GetResult();
+
+    Assert.True(result.IsSuccessful);
+}
+
+[Fact]
+public void Commands_Should_End_With_Command()
+{
+    var result = Types
+        .InAssembly(typeof(ApplicationMarker).Assembly)
+        .That()
+        .HaveNameContaining("Command")
+        .And().AreClasses()
+        .Should()
+        .HaveNameEndingWith("Command")
+        .GetResult();
+
+    Assert.True(result.IsSuccessful);
+}
+
+[Fact]
+public void Queries_Should_End_With_Query()
+{
+    var result = Types
+        .InAssembly(typeof(ApplicationMarker).Assembly)
+        .That()
+        .HaveNameContaining("Query")
+        .And().AreClasses()
+        .Should()
+        .HaveNameEndingWith("Query")
+        .GetResult();
+
+    Assert.True(result.IsSuccessful);
+}
+
+[Fact]
+public void Validators_Should_End_With_Validator()
+{
+    var result = Types
+        .InAssembly(typeof(ApplicationMarker).Assembly)
+        .That()
+        .ImplementInterface(typeof(IValidator<>))
+        .Should()
+        .HaveNameEndingWith("Validator")
+        .GetResult();
+
+    Assert.True(result.IsSuccessful);
+}
+
+[Fact]
+public void Port_Interfaces_Should_Reside_In_Ports_Namespace()
+{
+    var result = Types
+        .InAssembly(typeof(DomainMarker).Assembly)
+        .That()
+        .AreInterfaces()
+        .And().HaveNameStartingWith("I")
+        .And().HaveNameEndingWith("Repository")
+        .Or().HaveNameEndingWith("Service")
+        .Or().HaveNameEndingWith("Clock")
+        .Or().HaveNameEndingWith("Logger")
+        .Or().HaveNameEndingWith("Provider")
+        .Should()
+        .ResideInNamespace("SmeAccounting.Domain.Ports")
+        .GetResult();
+
+    Assert.True(result.IsSuccessful);
+}
+```
+
+---
+
+### 7. Posting Rule Isolation Tests
+
+**IPostingService must be in Domain assembly (not Application)**:
+
+```csharp
+[Fact]
+public void IPostingService_Should_Reside_In_Domain_Assembly()
+{
+    var type = typeof(IPostingService);
+    Assert.Equal(typeof(DomainMarker).Assembly, type.Assembly);
+}
+
+[Fact]
+public void JournalEntry_Balance_Rule_Should_Be_In_Domain()
+{
+    // Verify the domain entity handles balance validation
+    // (this is a reflection check, not NetArchTest)
+    var journalEntryType = typeof(JournalEntry);
+    Assert.Equal(typeof(DomainMarker).Assembly, journalEntryType.Assembly);
+}
+```
+
+**Journal entry balance rule is enforceable without HTTP/DB**:
+
+```csharp
+[Fact]
+public void Domain_Should_Have_JournalEntry_Type()
+{
+    var type = typeof(JournalEntry);
+    Assert.NotNull(type);
+    Assert.Equal(typeof(DomainMarker).Assembly, type.Assembly);
+}
+
+[Fact]
+public void Domain_Should_Have_Money_ValueObject()
+{
+    var type = typeof(Money);
+    Assert.NotNull(type);
+    Assert.Equal(typeof(DomainMarker).Assembly, type.Assembly);
+}
+```
+
+---
+
+### 8. Test File Structure
+
+```
+tests/SmeAccounting.ArchitectureTests/
+├── SmeAccounting.ArchitectureTests.csproj
+├── DependencyRulesTests.cs        ← Layer dependency direction (6 tests)
+├── LayerCouplingTests.cs          ← Namespace restrictions (4 tests)
+├── NamingConventionsTests.cs      ← Entity/interface naming (6 tests)
+├── DomainPurityTests.cs           ← No NuGet packages in Domain (5 tests)
+└── PostingRuleIsolationTests.cs   ← IPostingService in Domain (3 tests)
+```
+
+**Total**: ~24 tests, all passing in < 1 second (no I/O, pure assembly scanning).
+
+---
+
+### 9. Marker Types — Current State Check
+
+**Current namespaces in source code**:
+- Domain: `SmeAccounting.Domain.Entities`, `SmeAccounting.Domain.ValueObjects`, `SmeAccounting.Domain.Events`, `SmeAccounting.Domain.Ports`, `SmeAccounting.Domain.Exceptions`
+- Application: `SmeAccounting.Application.Commands`, `SmeAccounting.Application.Queries`, `SmeAccounting.Application.DTOs`, `SmeAccounting.Application.Validators`, `SmeAccounting.Application.Behaviors`, `SmeAccounting.Application.Services`
+- Infrastructure: `SmeAccounting.Infrastructure.Persistence`, `SmeAccounting.Infrastructure.Repositories`, `SmeAccounting.Infrastructure.Adapters`, `SmeAccounting.Infrastructure.Services`
+- Api: `SmeAccounting.Api.Controllers`, `SmeAccounting.Api.ViewModels`
+
+**Marker type placement**: Root namespace of each project (e.g., `SmeAccounting.Domain.DomainMarker`). The existing `SmeAccounting.Domain` namespace already has types in sub-namespaces but NO type at the root. Need to add a marker type.
+
+**Alternative to marker types**: Use `typeof(DbContext)` for Infrastructure, `typeof(ControllerBase)` for Api, etc. But explicit markers are clearer and don't depend on framework types.
+
+---
+
+### 10. Failure Reporting
+
+NetArchTest returns `TestResult` with `FailingTypes` — use this for descriptive failure messages:
+
+```csharp
+var result = Types
+    .InAssembly(typeof(DomainMarker).Assembly)
+    .ShouldNot()
+    .HaveDependencyOn("SmeAccounting.Infrastructure")
+    .GetResult();
+
+Assert.True(result.IsSuccessful,
+    $"Domain must not depend on Infrastructure. Violating types: {string.Join(", ", result.FailingTypes.Select(t => t.FullName))}");
+```
+
+This makes test failures immediately actionable — the developer sees exactly which types violate the rule.
+
+---
+
+### 11. Csproj Path Resolution for Domain Purity Tests
+
+The test project is at `tests/SmeAccounting.ArchitectureTests/` and the Domain csproj is at `src/SmeAccounting.Domain/`. The relative path from test output to csproj:
+
+```csharp
+// Test output: bin/Debug/net10.0/
+// Csproj: ../../src/SmeAccounting.Domain/SmeAccounting.Domain.csproj (from project root)
+// From bin output: ../../../../src/SmeAccounting.Domain/SmeAccounting.Domain.csproj
+
+var csprojPath = Path.GetFullPath(Path.Combine(
+    AppContext.BaseDirectory,
+    "..", "..", "..", "..",
+    "src", "SmeAccounting.Domain", "SmeAccounting.Domain.csproj"));
+```
+
+**Or use `PlatformServices`** for more reliable path resolution:
+```csharp
+using Microsoft.Extensions.PlatformAbstractions;
+var basePath = PlatformServices.Default.Application.ApplicationBasePath;
+```
+
+**Simplest approach**: Use `typeof(DomainMarker).Assembly.Location` to find the assembly, then navigate up to the csproj.
+
+---
+
+### 12. Key Gotchas and Pitfalls
+
+1. **`HaveDependencyOn` is namespace-prefix matched**: `HaveDependencyOn("SmeAccounting.Domain")` catches ALL sub-namespaces. This is correct for layer enforcement but means a controller using `SmeAccounting.Domain.ValueObjects.AccountType` via fully-qualified name WILL be caught.
+
+2. **Api csproj references Infrastructure**: Per G3 accepted deviation, Api references Infrastructure for DI wiring. The architecture test should only check CONTROLLERS don't reference Domain — not that the Api project as a whole doesn't reference anything.
+
+3. **Types.InAssembly loads ALL types**: Including compiler-generated types. Filter with `.That().AreClasses()` or `.That().AreNotAbstract()` as needed.
+
+4. **NetArchTest uses Mono.Cecil**: It reads IL metadata, not source code. This means it checks actual compiled dependencies, which is more accurate than `using` statement grep.
+
+5. **Test execution is fast**: Assembly scanning + reflection, no I/O. All 24 tests should run in < 1 second.
+
+6. **Marker types must be public**: NetArchTest needs to resolve the assembly via `typeof(Marker).Assembly`.
+
+7. **csproj path in tests**: Use relative paths from `AppContext.BaseDirectory` or hardcode relative to project root. The test runs from `bin/Debug/net10.0/`.
+
+---
+
+### 13. Complete Test File Skeletons
+
+#### DependencyRulesTests.cs
+```csharp
+using NetArchTest.Rules;
+using SmeAccounting.Domain;
+using SmeAccounting.Application;
+using SmeAccounting.Infrastructure;
+using SmeAccounting.Api;
+using Xunit;
+
+namespace SmeAccounting.ArchitectureTests;
+
+public class DependencyRulesTests
+{
+    [Fact] public void Domain_Should_Not_Depend_On_Application() { /* ... */ }
+    [Fact] public void Domain_Should_Not_Depend_On_Infrastructure() { /* ... */ }
+    [Fact] public void Domain_Should_Not_Depend_On_Api() { /* ... */ }
+    [Fact] public void Application_Should_Not_Depend_On_Infrastructure() { /* ... */ }
+    [Fact] public void Application_Should_Not_Depend_On_Api() { /* ... */ }
+    [Fact] public void Infrastructure_Should_Not_Depend_On_Api() { /* ... */ }
+}
+```
+
+#### LayerCouplingTests.cs
+```csharp
+using NetArchTest.Rules;
+using SmeAccounting.Api;
+using SmeAccounting.Application;
+using Xunit;
+
+namespace SmeAccounting.ArchitectureTests;
+
+public class LayerCouplingTests
+{
+    [Fact] public void Controllers_Should_Not_Reference_Domain_Entities() { /* ... */ }
+    [Fact] public void Controllers_Should_Not_Reference_Domain_Ports() { /* ... */ }
+    [Fact] public void Handlers_Should_Not_Reference_Infrastructure() { /* ... */ }
+    [Fact] public void ViewModels_Should_Not_Reference_Domain() { /* ... */ }
+}
+```
+
+#### NamingConventionsTests.cs
+```csharp
+using NetArchTest.Rules;
+using SmeAccounting.Domain;
+using SmeAccounting.Application;
+using Xunit;
+
+namespace SmeAccounting.ArchitectureTests;
+
+public class NamingConventionsTests
+{
+    [Fact] public void Entities_Should_Reside_In_Correct_Namespace() { /* ... */ }
+    [Fact] public void Repository_Interfaces_Should_Start_With_I() { /* ... */ }
+    [Fact] public void Commands_Should_End_With_Command() { /* ... */ }
+    [Fact] public void Queries_Should_End_With_Query() { /* ... */ }
+    [Fact] public void Validators_Should_End_With_Validator() { /* ... */ }
+    [Fact] public void Port_Interfaces_Should_Reside_In_Ports_Namespace() { /* ... */ }
+}
+```
+
+#### DomainPurityTests.cs
+```csharp
+using System.Xml.Linq;
+using NetArchTest.Rules;
+using SmeAccounting.Domain;
+using Xunit;
+
+namespace SmeAccounting.ArchitectureTests;
+
+public class DomainPurityTests
+{
+    [Fact] public void Domain_Should_Have_No_NuGet_PackageReferences() { /* csproj parse */ }
+    [Fact] public void Domain_Should_Not_Reference_EntityFramework() { /* NetArchTest */ }
+    [Fact] public void Domain_Should_Not_Reference_Npgsql() { /* NetArchTest */ }
+    [Fact] public void Domain_Should_Not_Reference_MediatR() { /* NetArchTest */ }
+    [Fact] public void Domain_Should_Not_Reference_FluentValidation() { /* NetArchTest */ }
+}
+```
+
+#### PostingRuleIsolationTests.cs
+```csharp
+using SmeAccounting.Domain;
+using SmeAccounting.Domain.Ports;
+using SmeAccounting.Domain.Entities;
+using Xunit;
+
+namespace SmeAccounting.ArchitectureTests;
+
+public class PostingRuleIsolationTests
+{
+    [Fact] public void IPostingService_Should_Reside_In_Domain_Assembly() { /* typeof check */ }
+    [Fact] public void JournalEntry_Should_Reside_In_Domain_Assembly() { /* typeof check */ }
+    [Fact] public void Money_Should_Reside_In_Domain_Assembly() { /* typeof check */ }
+}
+```
+
+---
+
+### 14. Authoritative Sources
+
+| Source | URL | Relevance |
+|--------|-----|-----------|
+| NetArchTest GitHub (BenMorris) | https://github.com/BenMorris/NetArchTest | Core API reference, fluent predicates |
+| NetArchTest NuGet | https://www.nuget.org/packages/NetArchTest.Rules/1.3.2 | Package version, .NET Standard 2.0 compat |
+| TheCodeMan — Architecture Tests | https://thecodeman.net/posts/architecture-tests-dotnet-clean-architecture | Clean Architecture enforcement patterns |
+| FullStackHero — Architecture Tests | https://fullstackhero.net/docs/testing/architecture-tests | .NET 10 kit with 50 architecture tests |
+| Code Maze — NetArchTest.Rules | https://code-maze.com/csharp-architecture-tests-with-netarchtest-rules | Inheritance blocking, project refs, custom rules |
+| NeVeSpl Enhanced Edition | https://github.com/NeVeSpl/NetArchTest.eNhancedEdition | `HaveDependencyOtherThan` pattern, dependency matrix |
+| NetArchTest Sample Policies | https://github.com/BenMorris/NetArchTest/blob/master/samples/.../ExamplePolicies.cs | Policy grouping with `Policy.Define()` |
+
+---
+
+*Research completed: Sep 16 2026. Sources: NetArchTest GitHub (BenMorris), NuGet.org, TheCodeMan, FullStackHero docs, Code Maze, NeVeSpl enhanced edition, NetArchTest sample policies.*

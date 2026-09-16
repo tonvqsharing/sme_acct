@@ -240,7 +240,7 @@ Create the ASP.NET MVC presentation layer with thin controllers that dispatch to
 
 ---
 
-### [G4] Architecture Tests and Verification
+- [x] ### [G4] Architecture Tests and Verification
 Create the architecture test project enforcing Clean Architecture constraints, layer coupling rules, and naming conventions using NetArchTest.
 
 **Deliverables:**

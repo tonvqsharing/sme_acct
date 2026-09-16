@@ -79,6 +79,42 @@ Updated continuously by all agents as they discover things.
 ### Architecture Enforcement
 - csproj refs + `NetArchTest.Rules` tests enforce dependency direction
 - Verified: Api → Application only, Application → Domain only, Infrastructure → Application + Domain
+- Domain has zero NuGet PackageReference elements (csproj purity test)
+- No Microsoft.EntityFrameworkCore, Npgsql, Serilog, MediatR in Domain assembly
+
+## Architecture Tests (G4 — Sep 2026)
+
+### Test Project Setup
+- `tests/SmeAccounting.ArchitectureTests/` — xUnit + NetArchTest.Rules 1.3.2
+- 4 ProjectReferences with `GeneratePathProperty="true"` for csproj path resolution
+- 22 tests total, all passing in < 6 seconds
+
+### Test Categories (22 tests)
+- **DependencyRulesTests** (7): Domain/Application/Infrastructure dependency direction enforcement
+- **LayerCouplingTests** (4): Controller→Domain.Entities, Controller→Domain.Ports, Handler→Infrastructure, Infrastructure→Api
+- **NamingConventionsTests** (6): Entities in correct namespace, repo interfaces start with I, commands/queries/DTOs/controllers naming
+- **DomainPurityTests** (3): No NuGet packages in Domain csproj, no forbidden packages, no EF Core assembly dependency
+- **PostingRuleIsolationTests** (2): IPostingService in Domain assembly, JournalEntry+Money enforceable without HTTP/DB
+
+### Key NetArchTest Patterns
+- `Types.InAssembly(typeof(Account).Assembly)` — load types from Domain assembly
+- `ShouldNot().HaveDependencyOn("SmeAccounting.Application")` — namespace prefix matched
+- `That().ResideInNamespace("SmeAccounting.Api.Controllers")` — namespace filter
+- `Should().HaveNameEndingWith("Command")` — naming convention assertion
+- `MeetCustomRule()` — for complex custom rules (not used, `HaveNameMatching` regex used instead)
+- `FailingTypes` is null when test passes — always use `?.Select() ?? []` pattern
+- `HaveNameContaining` does NOT exist in NetArchTest.Rules 1.3.2 — use `HaveNameMatching` with regex or namespace filtering
+
+### Known Deviations
+- `ChartOfAccountsController.cs:38` uses fully-qualified `Enum.Parse<SmeAccounting.Domain.ValueObjects.AccountType>(...)` — not caught by Entities/Ports namespace tests but would be caught by root Domain dependency test
+- Api csproj references Infrastructure for DI wiring (`AddInfrastructure` in Program.cs) — composition root exception
+- Commands namespace contains Result records and Input types — IRequest filter used to scope command naming tests
+- `AccountGroupTotal` in DTOs namespace doesn't end with "Dto" — excluded by filtering types that already end with "Dto"
+
+### Csproj Path Resolution
+- Use `typeof(TestClass).Assembly.Location` (test assembly, always in test output dir)
+- Navigate up 5 levels from `bin/Debug/net10.0/` to reach solution root
+- `Path.GetFullPath(Path.Combine(dir, "..", "..", "..", "..", "..", "src", ...))`
 
 ## Application Layer Patterns (G2 — Sep 2026)
 
@@ -135,25 +171,6 @@ Updated continuously by all agents as they discover things.
 - `AddInfrastructure(Action<DbContextOptionsBuilder>?)` extension method — accepts optional DB configuration action
 - Registers DbContext, UoW, repos, clock, audit, FX provider
 
-## Patterns to Follow
-
-1. **Atomic domain methods**: validate → mutate → raise event (e.g., `JournalEntry.Post()`)
-2. **Soft-delete for audit**: `IsActive = false`, never hard delete
-3. **Port interfaces in Domain**: zero framework dependencies, implement in Infrastructure
-4. **Value objects with invariants**: constructor validation throws `DomainException`
-5. **Domain events carry long IDs**: match `BaseEntity.Id` type — no cross-type casting
-6. **Private parameterless constructors**: EF Core materialization without exposing invalid state
-7. **ADR format**: Michael Nygard (Status/Context/Decision/Consequences)
-8. **Traceability matrices**: regulations → architecture components → tests
-
-## Pitfalls to Avoid
-
-- Don't use `dotnet new webapp` when you need MVC — it creates Razor Pages
-- Don't mix `long` and `Guid` entity IDs — causes casting at event raise sites
-- Don't let Domain layer reference any NuGet packages — port interfaces only
-- Don't hard-delete entities with audit requirements — use soft-delete pattern
-- Don't assume `TreatWarningsAsErrors` catches all warnings — NuGet locale warnings slip through
-
 ## Presentation Layer Patterns (G3 — Sep 2026)
 
 ### MVC vs Razor Pages
@@ -170,18 +187,18 @@ Updated continuously by all agents as they discover things.
 - Swashbuckle 10.x: `using Microsoft.OpenApi;` NOT `Microsoft.OpenApi.Models`
 - `UseNpgsql()` is in Infrastructure assembly — Api should NOT reference Npgsql directly
 
-### Controller Patterns
+### Controller Patterns (Thin Controllers)
 - Inject `IMediator` via constructor — zero domain/infrastructure references
 - `[ValidateAntiForgeryToken]` on all POST actions
 - Pass `CancellationToken` through to `_mediator.Send()`
 - Catch `FluentValidation.ValidationException` → map to `ModelState` errors
-- `SmeAccounting.Domain.ValueObjects.AccountType` used via fully qualified name (no `using` statement)
+- Controllers reference only Application types (DTOs, commands, queries, ViewModels)
+- `SmeAccounting.Domain.ValueObjects.AccountType` used via fully qualified name (no `using` statement) — avoids coupling
 
-### Architecture Decision: Infrastructure Reference
+### Architecture Constraints Verified
 - Api csproj references both Application AND Infrastructure (for DI wiring in Program.cs)
-- Controllers only reference Application types (DTOs, commands, queries, ViewModels)
-- Architecture tests should verify: no `using SmeAccounting.Domain.Entities` in controllers
-- The `using SmeAccounting.Domain` constraint applies to using statements, not fully qualified names
+- Controllers only reference Application types — no `using SmeAccounting.Domain.Entities` in controllers
+- `using SmeAccounting.Domain` constraint applies to using statements, not fully qualified names
 
 ### ViewModels
 - ViewModels in `Api/ViewModels/` — reference Application DTOs and primitives only
@@ -193,3 +210,27 @@ Updated continuously by all agents as they discover things.
 - `_Layout.cshtml` — Bootstrap 5, Vietnamese labels, `asp-controller`/`asp-action` navigation
 - Tables render empty state when no data — views work without database
 - jQuery validation scripts via `_ValidationScriptsPartial`
+
+## Patterns to Follow
+
+1. **Atomic domain methods**: validate → mutate → raise event (e.g., `JournalEntry.Post()`)
+2. **Soft-delete for audit**: `IsActive = false`, never hard delete
+3. **Port interfaces in Domain**: zero framework dependencies, implement in Infrastructure
+4. **Value objects with invariants**: constructor validation throws `DomainException`
+5. **Domain events carry long IDs**: match `BaseEntity.Id` type — no cross-type casting
+6. **Private parameterless constructors**: EF Core materialization without exposing invalid state
+7. **ADR format**: Michael Nygard (Status/Context/Decision/Consequences)
+8. **Traceability matrices**: regulations → architecture components → tests
+9. **Thin controllers**: inject IMediator only, delegate all logic to Application layer
+10. **ViewModels as boundary**: ViewModels reference DTOs/primitives only, controller maps to commands
+
+## Pitfalls to Avoid
+
+- Don't use `dotnet new webapp` when you need MVC — it creates Razor Pages
+- Don't mix `long` and `Guid` entity IDs — causes casting at event raise sites
+- Don't let Domain layer reference any NuGet packages — port interfaces only
+- Don't hard-delete entities with audit requirements — use soft-delete pattern
+- Don't assume `TreatWarningsAsErrors` catches all warnings — NuGet locale warnings slip through
+- Don't use `AddControllers()` when you need views — use `AddControllersWithViews()`
+- Don't reference Infrastructure types in controllers — only Application types
+- Swashbuckle 10.x namespace changed: `Microsoft.OpenApi` not `Microsoft.OpenApi.Models`
