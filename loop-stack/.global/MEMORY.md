@@ -73,3 +73,13 @@ Shared across all loops in this project.
 - **String over FK for currency codes**: Money VO uses `string Currency` — entities store currency codes as string, not FK to Currency entity
 - **Backwards-compatible method expansion**: Expand constructors/methods by adding new params at end with defaults — no existing callers broken
 - **Event minimalism**: Domain events carry entity ID + company ID only — avoid duplicating entity data in events
+
+### G3 Batch Learnings (Sep 2026)
+- **Single migration for cohesive feature**: `AccountingFoundation` migration covers all G1/G2 work — 6 new tables, 5 altered tables
+- **Migration naming**: Use descriptive feature name, not per-task numbering
+- **Pre-requisite**: Build must succeed before EF Core migration generation (EF Core reads compiled assemblies)
+- **Memory-constrained environments**: Zombie MSBuild processes cause OOM — `pkill MSBuild` frees memory
+- **Migration SQL correctness**: Verify PKs, indexes, FK relationships, down migration reversal
+- **Backfill note**: `defaultValue: 0L` on non-nullable company_id columns — existing rows get 0, must be backfilled in production
+- **Final schema**: 13 tables total (7 original + 6 new), 14 entities (7 original + 6 new + BaseEntity)
+- **Architecture tests**: 22/22 pass post-migration — no test changes needed for new entities following established patterns

@@ -209,3 +209,118 @@ Updated continuously by all agents as they discover things.
 - `rate` column: `numeric(10,6)` — matches ExchangeRate configuration
 - Unique indexes: composite for per-company uniqueness, single-column for companies.tax_code and currencies.code
 - JournalEntryLine dimension FKs: nullable long, SetNull delete — line data preserved if dimension deleted
+
+---
+
+## G3 Batch Consolidated Learnings (Sep 2026)
+
+### Migration Generation Process
+- **Command**: `dotnet ef migrations add AccountingFoundation --project src/SmeAccounting.Infrastructure --startup-project src/SmeAccounting.Api`
+- **Single migration** for entire G1/G2 scope — 6 new tables, 5 altered tables, all in one cohesive file
+- **Migration file**: `src/SmeAccounting.Infrastructure/Migrations/20260916083803_AccountingFoundation.cs` (499 lines)
+- **Pre-requisite**: Build must succeed before migration generation (EF Core reads compiled assemblies)
+- **Naming**: Descriptive feature name (`AccountingFoundation`), not per-task numbering
+
+### Final Project Summary — All Entities
+
+#### New Entities (6)
+| Entity | Table | Key Fields | Domain Event |
+|--------|-------|------------|--------------|
+| **Company** | `companies` | Name, TaxCode (unique), Address, FiscalYearStartMonth/Day, FunctionalCurrencyCode | CompanyCreated |
+| **Currency** | `currencies` | Code (unique, 3-char ISO 4217), Name, Symbol, DecimalPlaces, IsDefault, IsActive | CurrencyCreated |
+| **ExchangeRate** | `exchange_rates` | CompanyId FK, FromCurrencyCode, ToCurrencyCode, Rate (10,6), RateType, EffectiveDate, Source | ExchangeRateRecorded |
+| **Department** | `departments` | CompanyId FK, Code (unique per company), Name, IsActive | DepartmentCreated |
+| **CostCenter** | `cost_centers` | CompanyId FK, Code (unique per company), Name, IsActive | CostCenterCreated |
+| **Project** | `projects` | CompanyId FK, Code (unique per company), Name, StartDate?, EndDate?, IsActive | ProjectCreated |
+
+#### Extended Entities (5)
+| Entity | New Columns Added |
+|--------|-------------------|
+| **FiscalYear** | CompanyId (FK), StartDate, EndDate, Description |
+| **FiscalPeriod** | StartDate, EndDate, PeriodType (enum) |
+| **Account** | CompanyId (FK), Description, NormalBalance (enum) |
+| **AccountGroup** | CompanyId (FK), DisplayOrder |
+| **JournalEntryLine** | DepartmentId?, CostCenterId?, ProjectId? (all nullable FKs) |
+
+#### Unchanged Entities (3)
+| Entity | Notes |
+|--------|-------|
+| **JournalEntry** | No schema changes |
+| **PostingReference** | No schema changes |
+| **BaseEntity** | Abstract base — no table |
+
+### Final Database Schema — All Tables (13)
+
+#### New Tables (6)
+| Table | Columns | Indexes |
+|-------|---------|---------|
+| `companies` | id, name, tax_code (unique), address, phone, email, fiscal_year_start_month, fiscal_year_start_day, functional_currency_code, is_active, xmin | IX_companies_tax_code (unique) |
+| `currencies` | id, code (unique), name, symbol, decimal_places, is_default, is_active, xmin | IX_currencies_code (unique) |
+| `exchange_rates` | id, company_id FK, from_currency_code, to_currency_code, rate, rate_type, effective_date, source, xmin | IX_exchange_rates_company_id_from_currency_code_to_currency_co~ (composite unique) |
+| `departments` | id, company_id FK, code, name, is_active, xmin | IX_departments_company_id_code (composite unique) |
+| `cost_centers` | id, company_id FK, code, name, is_active, xmin | IX_cost_centers_company_id_code (composite unique) |
+| `projects` | id, company_id FK, code, name, start_date, end_date, is_active, xmin | IX_projects_company_id_code (composite unique) |
+
+#### Altered Tables (5)
+| Table | New Columns Added |
+|-------|-------------------|
+| `fiscal_years` | company_id FK, start_date, end_date, description |
+| `fiscal_periods` | start_date, end_date, period_type |
+| `accounts` | company_id FK, description, normal_balance |
+| `account_groups` | company_id FK, display_order |
+| `journal_entry_lines` | department_id FK, cost_center_id FK, project_id FK |
+
+#### Unchanged Tables (2)
+| Table | Notes |
+|-------|-------|
+| `journal_entries` | No schema changes |
+| `posting_references` | No schema changes |
+
+### Key Architectural Decisions
+
+1. **FK to Company pattern** — Universal: `HasOne<Company>().WithMany().HasForeignKey(e => e.CompanyId).OnDelete(DeleteBehavior.Restrict)` — prevents cascade delete across all company-scoped entities
+2. **Composite unique indexes** — Per-company uniqueness enforced at DB level (dimensions, exchange rates) — defense-in-depth beyond application validation
+3. **Enum storage** — All enums stored as string via `HasConversion<string>()` — PeriodType, NormalBalance, ExchangeRateType, AccountType, PeriodStatus
+4. **String over FK for currency codes** — Money VO uses `string Currency` — entities store currency codes as string, not FK to Currency entity
+5. **Event minimalism** — Domain events carry entity ID + company ID only — no data duplication in events
+6. **Backwards-compatible method expansion** — New params added at end with defaults — no existing callers broken
+7. **Soft-delete only** — IsActive pattern everywhere (Company, Currency, Dimensions, Accounts) — no hard delete for audit trail
+8. **Private parameterless constructors** — EF Core materialization without exposing invalid state
+9. **Single migration for cohesive feature** — Not per-task migrations — appropriate for G1/G2 scope as one unit
+
+### What Was Built vs What Existed
+
+#### Built from Scratch (G1-G2)
+- **Company entity** — Full domain entity with validation, events, repository
+- **Currency entity** — Promoted from VO to entity with Symbol, DecimalPlaces, IsActive
+- **ExchangeRate entity** — Full entity with invariants (From≠To, Rate>0), composite unique index
+- **Department, CostCenter, Project** — All three dimension entities with same pattern
+- **6 new EF Core configurations** — Following established snake-case + xmin pattern
+- **6 new repository implementations** — Constructor-injected DbContext pattern
+- **6 new port interfaces** — In Domain/Ports/, zero NuGet deps
+- **6 new domain events** — Minimal: entity ID + company ID
+- **EF Core migration** — Single `AccountingFoundation` migration covering all changes
+
+#### Extended Existing (G2)
+- **FiscalYear** — Added CompanyId FK, StartDate, EndDate, Description
+- **FiscalPeriod** — Added StartDate, EndDate, PeriodType
+- **Account** — Added CompanyId FK, Description, NormalBalance
+- **AccountGroup** — Added CompanyId FK, DisplayOrder
+- **JournalEntryLine** — Added 3 optional dimension FKs (DepartmentId, CostCenterId, ProjectId)
+
+#### Already Existed (Pre-G1)
+- Account, AccountGroup, FiscalYear, FiscalPeriod, JournalEntry, JournalEntryLine, PostingReference (7 entities)
+- Money, AccountCode, Currency (VO), AccountType, PeriodStatus, FiscalYearStatus (6 VOs/enums)
+- AccountCreated, AccountDeprecated, JournalEntryPosted, PeriodClosed (4 events)
+- 4 domain exceptions, 7 port interfaces, 2 repository implementations
+- 7 EF Core configurations, DbContext, DI registration
+- Application layer: CQRS commands/queries, DTOs, validators
+- Api layer: MVC controllers, ViewModels, Swagger
+- Architecture tests: 22 tests enforcing Clean Architecture constraints
+
+### Migration Verification Summary
+- **Build**: 0 warnings, 0 errors ✅
+- **Architecture tests**: 22/22 pass ✅
+- **Migration list**: InitialCreate → FixAccountNameColumn → AccountingFoundation (Pending) ✅
+- **Migration pending** — not applied to database (per plan requirement)
+- **Backfill note**: `defaultValue: 0L` on non-nullable company_id columns — existing rows get 0, must be backfilled in production
