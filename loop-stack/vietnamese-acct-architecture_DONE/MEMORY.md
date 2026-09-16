@@ -211,6 +211,51 @@ Updated continuously by all agents as they discover things.
 - Tables render empty state when no data — views work without database
 - jQuery validation scripts via `_ValidationScriptsPartial`
 
+## Final Project Summary (G4 — Sep 2026)
+
+### All Layers Complete
+| Layer | Project | Status | Key Deliverables |
+|-------|---------|--------|-----------------|
+| Domain | `src/SmeAccounting.Domain/` | VERIFIED_PASS | 8 entities, 6 value objects, 4 events, 7 port interfaces |
+| Application | `src/SmeAccounting.Application/` | VERIFIED_PASS | 6 commands, 6 queries, 8 DTOs, 3 validators, ValidationBehavior |
+| Infrastructure | `src/SmeAccounting.Infrastructure/` | VERIFIED_PASS | DbContext, 2 repos, 3 adapters, 2 services, AddInfrastructure() |
+| Api | `src/SmeAccounting.Api/` | VERIFIED_PASS | 6 controllers, 14 views, 5 ViewModels, Swagger, MVC routing |
+| ArchitectureTests | `tests/SmeAccounting.ArchitectureTests/` | VERIFIED_PASS | 22 tests, 5 categories, all passing in <6s |
+
+### Dependency Direction Verified
+```
+Api → Application → Domain ← Infrastructure → Application
+```
+- Api references Application + Infrastructure (composition root)
+- Application references Domain only
+- Infrastructure references Application + Domain
+- Domain has zero NuGet PackageReference — pure domain
+
+### Architecture Enforcement
+- 22 NetArchTest tests enforce dependency rules, namespace coupling, naming conventions, domain purity, posting isolation
+- csproj XML parse tests verify no forbidden packages in Domain
+- All tests re-verified 2026-09-16: 22/22 pass, 0 warnings
+
+## Key Architectural Decisions
+
+### Decision Summary
+1. **Clean Architecture** (ADR-001): Domain at center, strict dependency direction inward
+2. **CQRS with MediatR** (ADR-002): Commands/queries as IRequest records, MediatR 14.x pipeline
+3. **Posting Seam** (ADR-003): IPostingService in Domain layer, orchestrated in Application handlers
+4. **Long IDs** (not Guid): PostgreSQL bigint convention, avoids cross-type casting in events
+5. **Soft-delete pattern**: IsActive=false for audit trail, never hard delete
+6. **Port interfaces in Domain**: zero framework deps, implement in Infrastructure
+7. **Thin controllers**: inject IMediator only, delegate all logic to Application layer
+8. **ViewModels as boundary**: ViewModels reference DTOs/primitives only, controller maps to commands
+9. **IAccountingPolicy abstraction**: VAS vs IFRS via interface, ready for Decision 345 transition
+10. **E-invoice TVAN adapters**: Decree 123 XML format, port interface in Domain, adapter in Infrastructure
+
+### Accepted Deviations
+- `ChartOfAccountsController.cs:38` uses fully-qualified `Enum.Parse<SmeAccounting.Domain.ValueObjects.AccountType>` (WARN — not caught by namespace tests, would be caught by root Domain dependency test)
+- Api csproj references Infrastructure for DI wiring in Program.cs (composition root exception)
+- DomainException inherits System.Exception directly (not via intermediate base — functional equivalent)
+- `IPostingService.PostAsync` returns Task vs PLAN's `Post(JournalEntry)` — async/sync difference
+
 ## Patterns to Follow
 
 1. **Atomic domain methods**: validate → mutate → raise event (e.g., `JournalEntry.Post()`)
@@ -234,3 +279,5 @@ Updated continuously by all agents as they discover things.
 - Don't use `AddControllers()` when you need views — use `AddControllersWithViews()`
 - Don't reference Infrastructure types in controllers — only Application types
 - Swashbuckle 10.x namespace changed: `Microsoft.OpenApi` not `Microsoft.OpenApi.Models`
+- Don't use `HaveNameContaining` in NetArchTest.Rules 1.3.2 — use `HaveNameMatching` with regex
+- `FailingTypes` is null when test passes — always use `?.Select() ?? []` pattern
