@@ -1,15 +1,14 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using SmeAccounting.Domain.Entities;
-using SmeAccounting.Domain.ValueObjects;
 
 namespace SmeAccounting.Infrastructure.Persistence.Configurations;
 
-internal sealed class FiscalYearConfiguration : IEntityTypeConfiguration<FiscalYear>
+internal sealed class ProjectConfiguration : IEntityTypeConfiguration<Project>
 {
-    public void Configure(EntityTypeBuilder<FiscalYear> builder)
+    public void Configure(EntityTypeBuilder<Project> builder)
     {
-        builder.ToTable("fiscal_years");
+        builder.ToTable("projects");
         builder.HasKey(e => e.Id);
 
         builder.Property(e => e.Id)
@@ -19,8 +18,15 @@ internal sealed class FiscalYearConfiguration : IEntityTypeConfiguration<FiscalY
         builder.Property(e => e.CompanyId)
             .HasColumnName("company_id");
 
-        builder.Property(e => e.Year)
-            .HasColumnName("year");
+        builder.Property(e => e.Code)
+            .HasColumnName("code")
+            .IsRequired()
+            .HasMaxLength(50);
+
+        builder.Property(e => e.Name)
+            .HasColumnName("name")
+            .IsRequired()
+            .HasMaxLength(200);
 
         builder.Property(e => e.StartDate)
             .HasColumnName("start_date");
@@ -28,12 +34,11 @@ internal sealed class FiscalYearConfiguration : IEntityTypeConfiguration<FiscalY
         builder.Property(e => e.EndDate)
             .HasColumnName("end_date");
 
-        builder.Property(e => e.Description)
-            .HasColumnName("description");
+        builder.Property(e => e.IsActive)
+            .HasColumnName("is_active");
 
-        builder.Property(e => e.Status)
-            .HasColumnName("status")
-            .HasConversion<string>();
+        builder.HasIndex(e => new { e.CompanyId, e.Code })
+            .IsUnique();
 
         builder.HasOne<Company>()
             .WithMany()

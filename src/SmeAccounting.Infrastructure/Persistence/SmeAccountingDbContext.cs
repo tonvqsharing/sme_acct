@@ -16,6 +16,10 @@ public class SmeAccountingDbContext : DbContext, IUnitOfWork
     public DbSet<PostingReference> PostingReferences => Set<PostingReference>();
     public DbSet<Company> Companies => Set<Company>();
     public DbSet<Currency> Currencies => Set<Currency>();
+    public DbSet<ExchangeRate> ExchangeRates => Set<ExchangeRate>();
+    public DbSet<Department> Departments => Set<Department>();
+    public DbSet<CostCenter> CostCenters => Set<CostCenter>();
+    public DbSet<Project> Projects => Set<Project>();
 
     public SmeAccountingDbContext(DbContextOptions<SmeAccountingDbContext> options)
         : base(options) { }
@@ -29,6 +33,11 @@ public class SmeAccountingDbContext : DbContext, IUnitOfWork
         modelBuilder.Ignore<PeriodClosed>();
         modelBuilder.Ignore<CompanyCreated>();
         modelBuilder.Ignore<CurrencyCreated>();
+        modelBuilder.Ignore<FiscalYearCreated>();
+        modelBuilder.Ignore<ExchangeRateRecorded>();
+        modelBuilder.Ignore<DepartmentCreated>();
+        modelBuilder.Ignore<CostCenterCreated>();
+        modelBuilder.Ignore<ProjectCreated>();
 
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(SmeAccountingDbContext).Assembly);
         base.OnModelCreating(modelBuilder);

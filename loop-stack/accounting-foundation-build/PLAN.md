@@ -42,7 +42,7 @@ yes
 
 ---
 
-### [G2] T2 — FiscalYear + FiscalPeriod Extensions
+- [x] ### [G2] T2 — FiscalYear + FiscalPeriod Extensions
 **Parallel Group:** G2 (depends on T1; parallel with T3, T4, T5)
 **Depends On:** T1 (CompanyId FK)
 
@@ -68,7 +68,7 @@ yes
 
 ---
 
-### [G2] T3 — ExchangeRate Entity + Repository
+- [x] ### [G2] T3 — ExchangeRate Entity + Repository
 **Parallel Group:** G2 (depends on T1; parallel with T2, T4, T5)
 **Depends On:** T1
 
@@ -95,7 +95,7 @@ yes
 
 ---
 
-### [G2] T4 — Chart of Accounts Extensions
+- [x] ### [G2] T4 — Chart of Accounts Extensions
 **Parallel Group:** G2 (depends on T1; parallel with T2, T3, T5)
 **Depends On:** T1
 
@@ -119,7 +119,7 @@ yes
 
 ---
 
-### [G2] T5 — Accounting Dimensions (Department, CostCenter, Project)
+- [x] ### [G2] T5 — Accounting Dimensions (Department, CostCenter, Project)
 **Parallel Group:** G2 (depends on T1; parallel with T2, T3, T4)
 **Depends On:** T1
 

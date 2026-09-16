@@ -28,6 +28,8 @@ Shared across all loops in this project.
 - IFRS transition via Decision 345 — `IAccountingPolicy` interface abstraction for VAS vs IFRS
 - Architecture enforcement: csproj refs + NetArchTest.Rules tests
 - Dependency direction: Api→Application→Domain; Infrastructure→Application+Domain; Domain has zero NuGet refs
+- NormalBalance enum in ValueObjects/ (Debit, Credit) — same location as all other enums (AccountType, PeriodStatus, etc.)
+- FK to Company pattern: `HasOne<Company>().WithMany().HasForeignKey(e => e.CompanyId).OnDelete(DeleteBehavior.Restrict)` — consistent across FiscalYear, ExchangeRate, Account, AccountGroup
 
 ### Cross-Project Patterns (Sep 2026)
 - Solution layout: Domain (entities, value objects, events, exceptions, ports), Application (use cases, DTOs, validators), Infrastructure (EF Core, adapters), Api (controllers), ArchitectureTests (enforcement)
@@ -45,6 +47,15 @@ Shared across all loops in this project.
 - `CreateJournalEntryCommand` carries `IReadOnlyList<JournalEntryLineInput>` — domain creates Money from inputs
 - DI registration: `AddApplication()` extension method — MediatR assembly scan + open validation behavior + validators
 
+### T5 Dimensions Discoveries (Sep 2026)
+- Department, CostCenter, Project follow same pattern as ExchangeRate: CompanyId FK (required, Restrict), Code unique per company (composite index), IsActive soft-delete
+- Domain events: DepartmentCreated, CostCenterCreated, ProjectCreated — entity ID + CompanyId + occurredOn (same as ExchangeRateRecorded)
+- JournalEntryLine gets 3 optional nullable FKs (DepartmentId, CostCenterId, ProjectId) with SetNull delete behavior — if dimension deleted, line keeps data but loses reference
+- JournalEntry.AddLine updated with passthrough optional params — backwards compatible with existing callers
+- Configurations: composite unique index on (CompanyId, Code) for all 3 dimensions — prevents duplicate codes per company per dimension type at DB level
+- All 3 dimension port interfaces include GetByCodeAsync(code, companyId) for application-level duplicate check
+- All new params backwards compatible — no breaking changes to existing method signatures
+
 ### T1 Discoveries (Sep 2026)
 - Currency VO record in ValueObjects/ is NOT referenced anywhere as a type — Money uses `string Currency` not the VO record. Safe to add entity alongside it without namespace conflicts
 - Company constructor validates fiscal year start month (1–12) and day (1–28). Day capped at 28 for February safety. TaxCode regex validation deferred to FluentValidation
@@ -54,3 +65,11 @@ Shared across all loops in this project.
 - Both configurations: unique indexes on TaxCode (companies) and Code (currencies)
 - FK note: CompanyId FK needed on FiscalYear, FiscalPeriod, Account, AccountGroup, JournalEntry — deferred to T2/T4/T5
 - Company FunctionalCurrencyCode is a `string` (not FK to Currency entity) — matches Money VO pattern
+
+### G2 Cross-Cutting Patterns (Sep 2026)
+- **FK to Company pattern**: `HasOne<Company>().WithMany().HasForeignKey(e => e.CompanyId).OnDelete(DeleteBehavior.Restrict)` — universal across all company-scoped entities
+- **Composite unique indexes**: Used for per-company uniqueness (dimensions, exchange rates) — DB-level enforcement beyond application validation
+- **Enum storage**: All enums stored as string via `HasConversion<string>()` — PeriodType, NormalBalance, ExchangeRateType, AccountType, PeriodStatus
+- **String over FK for currency codes**: Money VO uses `string Currency` — entities store currency codes as string, not FK to Currency entity
+- **Backwards-compatible method expansion**: Expand constructors/methods by adding new params at end with defaults — no existing callers broken
+- **Event minimalism**: Domain events carry entity ID + company ID only — avoid duplicating entity data in events

@@ -8,4 +8,7 @@ public record AccountDto(
     long? ParentId,
     string AccountType,
     bool IsActive,
-    long? AccountGroupId);
+    long? AccountGroupId,
+    long CompanyId,
+    string? Description,
+    string NormalBalance);

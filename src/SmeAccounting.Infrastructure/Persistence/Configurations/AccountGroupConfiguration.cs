@@ -30,6 +30,17 @@ internal sealed class AccountGroupConfiguration : IEntityTypeConfiguration<Accou
             .HasColumnName("account_type")
             .HasConversion<string>();
 
+        builder.Property(e => e.CompanyId)
+            .HasColumnName("company_id");
+
+        builder.Property(e => e.DisplayOrder)
+            .HasColumnName("display_order");
+
+        builder.HasOne<Company>()
+            .WithMany()
+            .HasForeignKey(e => e.CompanyId)
+            .OnDelete(DeleteBehavior.Restrict);
+
         builder.Property<uint>("xmin")
             .IsRowVersion()
             .HasColumnName("xmin");

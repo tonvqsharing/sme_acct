@@ -45,8 +45,35 @@ internal sealed class JournalEntryLineConfiguration : IEntityTypeConfiguration<J
                 .HasMaxLength(3);
         });
 
+        builder.Property(e => e.DepartmentId)
+            .HasColumnName("department_id");
+
+        builder.Property(e => e.CostCenterId)
+            .HasColumnName("cost_center_id");
+
+        builder.Property(e => e.ProjectId)
+            .HasColumnName("project_id");
+
+        builder.HasOne<Department>()
+            .WithMany()
+            .HasForeignKey(e => e.DepartmentId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        builder.HasOne<CostCenter>()
+            .WithMany()
+            .HasForeignKey(e => e.CostCenterId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        builder.HasOne<Project>()
+            .WithMany()
+            .HasForeignKey(e => e.ProjectId)
+            .OnDelete(DeleteBehavior.SetNull);
+
         builder.HasIndex(e => e.EntryId);
         builder.HasIndex(e => e.AccountId);
+        builder.HasIndex(e => e.DepartmentId);
+        builder.HasIndex(e => e.CostCenterId);
+        builder.HasIndex(e => e.ProjectId);
 
         builder.Property<uint>("xmin")
             .IsRowVersion()

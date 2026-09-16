@@ -5,4 +5,7 @@ public record JournalEntryLineDto(
     long AccountId,
     MoneyDto Debit,
     MoneyDto Credit,
-    string? Description);
+    string? Description,
+    long? DepartmentId,
+    long? CostCenterId,
+    long? ProjectId);

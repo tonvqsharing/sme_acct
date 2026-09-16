@@ -36,8 +36,9 @@ public class ChartOfAccountsController : Controller
         try
         {
             var accountType = Enum.Parse<SmeAccounting.Domain.ValueObjects.AccountType>(model.AccountType);
+            var normalBalance = Enum.Parse<SmeAccounting.Domain.ValueObjects.NormalBalance>(model.NormalBalance);
             var command = new CreateAccountCommand(
-                model.Code, model.Name, accountType, model.ParentId, model.AccountGroupId);
+                model.Code, model.Name, accountType, model.CompanyId, normalBalance, model.ParentId, model.AccountGroupId, model.Description);
             await _mediator.Send(command, ct);
             return RedirectToAction(nameof(Index));
         }

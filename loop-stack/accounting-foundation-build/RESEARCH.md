@@ -973,5 +973,902 @@ dotnet test tests/SmeAccounting.ArchitectureTests/  # 22/22 pass
 ```
 Architecture tests check: Entities in Entities namespace, ports have I-prefix, Domain has zero NuGet refs, no forbidden cross-layer deps. Company/Currency in Entities namespace + ICompanyRepository/ICurrencyRepository in Ports — all pass existing conventions.
 
-## Task-Specific Research
-(Preserved from prior research — see top of document for existing domain model constraints)
+## Task-Specific Research — T2 FiscalYear + FiscalPeriod
+
+### Current FiscalYear Entity (`src/SmeAccounting.Domain/Entities/FiscalYear.cs`)
+```csharp
+public class FiscalYear : BaseEntity
+{
+    public int Year { get; private set; }
+    public FiscalYearStatus Status { get; private set; } = FiscalYearStatus.Open;
+    private readonly List<FiscalPeriod> _periods = [];
+    public IReadOnlyCollection<FiscalPeriod> Periods => _periods.AsReadOnly();
+    private FiscalYear() { }
+    public FiscalYear(int year) { Year = year; }
+    public FiscalPeriod AddPeriod(int month) { ... }
+}
+```
+**Current fields:** Year (int), Status (FiscalYearStatus = Open/Closed), Periods collection.
+**Missing:** CompanyId, StartDate, EndDate, Description. Constructor only takes `year`.
+
+### Current FiscalPeriod Entity (`src/SmeAccounting.Domain/Entities/FiscalPeriod.cs`)
+```csharp
+public class FiscalPeriod : BaseEntity
+{
+    public long YearId { get; private set; }
+    public int Month { get; private set; }
+    public PeriodStatus Status { get; private set; } = PeriodStatus.Open;
+    public DateTimeOffset? OpenedAt { get; private set; }
+    public DateTimeOffset? ClosedAt { get; private set; }
+    private FiscalPeriod() { }
+    public FiscalPeriod(long yearId, int month) { ... }
+    public void Open(DateTimeOffset openedAt) { ... }
+    public void Close(DateTimeOffset closedAt) { ... AddDomainEvent(new PeriodClosed(Id, closedAt)); }
+}
+```
+**Current fields:** YearId (long FK), Month (int), Status, OpenedAt, ClosedAt.
+**Missing:** StartDate, EndDate, PeriodType. Constructor only takes `(yearId, month)`.
+
+### Existing Enums
+- **FiscalYearStatus** (`ValueObjects/FiscalYearStatus.cs`): `Open`, `Closed` — in `SmeAccounting.Domain.ValueObjects` namespace
+- **PeriodStatus** (`ValueObjects/PeriodStatus.cs`): `Open`, `Closing`, `Closed` — in `SmeAccounting.Domain.ValueObjects` namespace
+- **No PeriodType enum exists** — needs creation. Plan specifies: `Monthly`, `Quarterly`
+- **No `Enums/` directory** — all existing enums in `ValueObjects/`. New PeriodType should follow same convention (put in `ValueObjects/` for consistency, or create `Enums/` — pick one)
+
+### EF Core Configurations
+- **FiscalYearConfiguration** (`Infrastructure/Persistence/Configurations/FiscalYearConfiguration.cs`): `fiscal_years` table, explicit HasColumnName for Year and Status, xmin row version. No FK to Company.
+- **FiscalPeriodConfiguration** (`Infrastructure/Persistence/Configurations/FiscalPeriodConfiguration.cs`): `fiscal_periods` table, explicit HasColumnName for YearId, Month, Status, OpenedAt, ClosedAt, xmin row version, index on YearId. No FK to FiscalYear explicitly configured (shadow prop from navigation).
+
+### Application Layer (Commands/Queries/DTOs)
+- **Commands:** `OpenFiscalPeriodCommand(long YearId, int Month)`, `CloseFiscalPeriodCommand(long PeriodId)` — record definitions only, NO handlers exist
+- **Queries:** `GetFiscalPeriodsQuery(long? YearId)` — record definition only, NO handler exists
+- **DTOs:** `FiscalYearDto(long Id, int Year, string Status)`, `FiscalPeriodDto(long Id, long YearId, int Month, string Status, DateTimeOffset? OpenedAt, DateTimeOffset? ClosedAt)` — need new fields
+- **Controller:** `FiscalPeriodController` — thin MediatR dispatch, takes `(yearId, month)` for Open, `(id)` for Close
+- **ViewModel:** `FiscalPeriodViewModel(IReadOnlyList<FiscalPeriodDto> Periods)` — needs no structural changes but DTO changes propagate
+
+### DbContext State
+- `SmeAccountingDbContext` already has: `DbSet<FiscalYear> FiscalYears`, `DbSet<FiscalPeriod> FiscalPeriods`
+- Already ignores: `PeriodClosed` event in `OnModelCreating`
+- New `FiscalYearCreated` event needs `Ignore<>` added
+
+### What Needs to Change — FiscalYear
+| Change | Type | Details |
+|--------|------|---------|
+| CompanyId | long, required FK → Company | New property. EF will create FK constraint |
+| StartDate | DateOnly, required | First day of fiscal year |
+| EndDate | DateOnly, required | Last day of fiscal year |
+| Description | string?, optional | "FY2026 — Calendar Year" |
+| Constructor | Update | Take `(long companyId, int year, DateOnly startDate, DateOnly endDate, string? description = null)` |
+| Validation | In constructor | `startDate < endDate`,CompanyId > 0 |
+| Domain event | New | `FiscalYearCreated(long CompanyId, int Year, DateOnly StartDate, DateOnly EndDate)` |
+| Configuration | Add columns | `company_id`, `start_date`, `end_date`, `description` with snake_case naming |
+| AddPeriod method | Keep | Existing `AddPeriod(int month)` stays for backwards compat. Consider overload with start/end dates |
+
+### What Needs to Change — FiscalPeriod
+| Change | Type | Details |
+|--------|------|---------|
+| StartDate | DateOnly, required | Explicit period start (not just month) |
+| EndDate | DateOnly, required | Explicit period end |
+| PeriodType | new enum: Monthly, Quarterly | New property |
+| Constructor | Update | Take `(long yearId, int month, DateOnly startDate, DateOnly endDate, PeriodType periodType)` |
+| Configuration | Add columns | `start_date`, `end_date`, `period_type` with snake_case, enum as string |
+
+### Domain Invariants to Enforce
+1. **FiscalYear:** `StartDate < EndDate` — validate in constructor
+2. **FiscalYear:** No overlapping FY per company — validate in repository or application layer (not pure domain, needs DB query)
+3. **FiscalYear:** Status transitions: Open → Closed (irreversible) — already exists
+4. **FiscalPeriod:** PeriodType determines duration — Monthly = 1 month, Quarterly = 3 months (validate in constructor or application)
+5. **FiscalPeriod:** StartDate/EndDate should be within parent FiscalYear's range (application-level)
+
+### Breaking Changes Assessment
+- **No breaking changes to existing method signatures.** Commands/queries are record definitions — adding new fields to DTOs is additive.
+- **Constructor changes** on FiscalYear/FiscalPeriod are breaking to existing callers, but NO callers exist outside of tests/handlers (no handlers exist). Safe to change.
+- **AddPeriod(int month)** on FiscalYear still works — existing FK from FiscalPeriod.YearId unchanged.
+- **FiscalPeriodDto/FiscalYearDto** records — adding new parameters changes constructor signature. Since no handlers map these yet, safe to change.
+
+### Domain Event Pattern for FiscalYearCreated
+```csharp
+public class FiscalYearCreated : DomainEvent
+{
+    public long CompanyId { get; }
+    public int Year { get; }
+    public DateOnly StartDate { get; }
+    public DateOnly EndDate { get; }
+    public FiscalYearCreated(long companyId, int year, DateOnly startDate, DateOnly endDate, DateTimeOffset occurredOn)
+        : base(occurredOn)
+    {
+        CompanyId = companyId; Year = year; StartDate = startDate; EndDate = endDate;
+    }
+}
+```
+
+### Files to Create/Modify
+**Create:**
+- `src/SmeAccounting.Domain/ValueObjects/PeriodType.cs` (new enum: Monthly, Quarterly)
+- `src/SmeAccounting.Domain/Events/FiscalYearCreated.cs` (new domain event)
+
+**Modify:**
+- `src/SmeAccounting.Domain/Entities/FiscalYear.cs` (add CompanyId, StartDate, EndDate, Description; update constructor; add validation; add event)
+- `src/SmeAccounting.Domain/Entities/FiscalPeriod.cs` (add StartDate, EndDate, PeriodType; update constructor)
+- `src/SmeAccounting.Infrastructure/Persistence/Configurations/FiscalYearConfiguration.cs` (add new column mappings)
+- `src/SmeAccounting.Infrastructure/Persistence/Configurations/FiscalPeriodConfiguration.cs` (add new column mappings, PeriodType as string conversion)
+- `src/SmeAccounting.Infrastructure/Persistence/SmeAccountingDbContext.cs` (Ignore FiscalYearCreated event)
+- `src/SmeAccounting.Application/DTOs/FiscalYearDto.cs` (add CompanyId, StartDate, EndDate, Description)
+- `src/SmeAccounting.Application/DTOs/FiscalPeriodDto.cs` (add StartDate, EndDate, PeriodType)
+
+**No changes needed:**
+- Commands (OpenFiscalPeriodCommand, CloseFiscalPeriodCommand) — signatures stay same
+- Queries (GetFiscalPeriodsQuery) — signature stays same
+- Controller (FiscalPeriodController) — dispatches via MediatR, no direct entity access
+- ViewModel (FiscalPeriodViewModel) — wraps DTOs, structural change is DTO-propagated
+
+### FK Relationship
+- FiscalYear gets `CompanyId` as a required FK → Company (configured via `builder.HasOne<Company>()...HasForeignKey("CompanyId")` in config or via convention if navigation added)
+- FiscalPeriod already has `YearId` FK → FiscalYear (via shadow property + index)
+- No direct FK from FiscalPeriod to Company (goes through FiscalYear)
+
+## Task-Specific Research — T3 ExchangeRate
+
+### Existing IForeignExchangeRateProvider Port (`src/SmeAccounting.Domain/Ports/IForeignExchangeRateProvider.cs`)
+```csharp
+public interface IForeignExchangeRateProvider
+{
+    Task<Money> ConvertAsync(Money amount, string targetCurrency, DateTimeOffset date);
+}
+```
+**Key insight:** This is an *adapter port* for converting money — NOT the same as an exchange rate *repository*. It takes Money + target + date and returns converted Money. ExchangeRate entity/repository is a separate concern: it stores rates, while this provider uses them. Both can coexist. The ExchangeRate entity could eventually back this provider (replace mock BankExchangeRateProvider).
+
+### BankExchangeRateProvider Adapter (`src/SmeAccounting.Infrastructure/Adapters/BankExchangeRateProvider.cs`)
+```csharp
+public class BankExchangeRateProvider : IForeignExchangeRateProvider
+{
+    public Task<Money> ConvertAsync(Money amount, string targetCurrency, DateTimeOffset date)
+    {
+        if (amount.Currency == targetCurrency)
+            return Task.FromResult(amount);
+        decimal mockRate = amount.Currency switch { ... };
+        return Task.FromResult(new Money(converted, targetCurrency));
+    }
+}
+```
+**Current state:** Hardcoded mock rates (VND↔USD=25000, VND↔EUR=27000). No date awareness. Registered as scoped in DI. T3 ExchangeRate entity is the *data store* for real rates — BankExchangeRateProvider is the *consumer* (adapter that looks up rates). No changes to this adapter needed for T3 — future task can wire it to ExchangeRate entity.
+
+### Money Value Object (`src/SmeAccounting.Domain/ValueObjects/Money.cs`)
+```csharp
+public record Money
+{
+    public decimal Amount { get; }
+    public string Currency { get; }
+    public static Money Zero => new(0m, "VND");
+    // + and - operators with currency-mismatch guards
+}
+```
+**Key:** Uses `string Currency` — NOT a FK to Currency entity. ExchangeRate stores `FromCurrencyCode` and `ToCurrencyCode` as `string` matching this pattern. No coupling between Money and ExchangeRate entity.
+
+### Currency Entity (`src/SmeAccounting.Domain/Entities/Currency.cs`)
+```csharp
+public class Currency : BaseEntity
+{
+    public string Code { get; private set; }    // ISO 4217 3-char, validated
+    public string Name { get; private set; }
+    public string Symbol { get; private set; }
+    public int DecimalPlaces { get; private set; }  // default 2
+    public bool IsDefault { get; private set; }
+    public bool IsActive { get; private set; } = true;
+}
+```
+**Relevance for T3:** ExchangeRate references currencies by `string Code` (not FK). No FK constraint at DB level. Application layer should validate currency codes exist. Domain invariant: `FromCurrencyCode != ToCurrencyCode` enforced in entity constructor.
+
+### No Existing ExchangeRate Files
+- No `ExchangeRate` entity, no `IExchangeRateRepository` port, no `ExchangeRateRecorded` event, no `ExchangeRateType` enum
+- Grep confirmed: only `IForeignExchangeRateProvider` mentions "ExchangeRate" in codebase
+
+### ExchangeRateType Enum — Where to Put It
+- No `Enums/` directory exists — all enums live in `ValueObjects/`: AccountType, PeriodStatus, FiscalYearStatus, PeriodType
+- **Decision:** Put `ExchangeRateType` in `ValueObjects/` for consistency with existing pattern
+- Values per PLAN: `Average`, `Actual`, `Book`, `Contract`
+- Circular 99 Art. 6 mapping:
+  - Average = remeasurement of monetary items at period-end; converting FS to VND
+  - Actual = recording FX transactions that increase monetary/non-monetary items
+  - Book = transactions that reduce FX monetary items; specific rate or weighted-average
+  - Contract = purchase/sale of FX per bank contract
+
+### ExchangeRate Entity — Field Specification (from PLAN)
+| Field | Type | Constraints | Notes |
+|-------|------|-------------|-------|
+| Id | long | BaseEntity PK | |
+| CompanyId | long | FK → Company, required | Multi-company ready |
+| FromCurrencyCode | string | Required, references Currency.Code | Source currency code |
+| ToCurrencyCode | string | Required, references Currency.Code | Target currency code |
+| Rate | decimal(10,6) | Required, > 0 | Exchange rate value |
+| RateType | ExchangeRateType enum | Required | Average/Actual/Book/Contract |
+| EffectiveDate | DateOnly | Required | Date this rate applies |
+| Source | string? | Optional | "SBV", "Bank name", etc. |
+
+### Domain Invariants to Enforce
+1. **FromCurrencyCode != ToCurrencyCode** — no self-conversion. Throw `DomainException` (new subclass or inline)
+2. **Rate > 0** — negative/zero rates make no sense. Throw `DomainException`
+3. **Unique per (CompanyId, FromCurrencyCode, ToCurrencyCode, RateType, EffectiveDate)** — enforced at application/repository level (composite unique index in config)
+
+### Domain Event Pattern for ExchangeRateRecorded
+```csharp
+public class ExchangeRateRecorded : DomainEvent
+{
+    public long ExchangeRateId { get; }
+    public long CompanyId { get; }
+    public string FromCurrencyCode { get; }
+    public string ToCurrencyCode { get; }
+    public decimal Rate { get; }
+    public ExchangeRateRecorded(long exchangeRateId, long companyId, string fromCurrencyCode,
+        string toCurrencyCode, decimal rate, DateTimeOffset occurredOn) : base(occurredOn)
+    {
+        ExchangeRateId = exchangeRateId; CompanyId = companyId;
+        FromCurrencyCode = fromCurrencyCode; ToCurrencyCode = toCurrencyCode; Rate = rate;
+    }
+}
+```
+**Convention:** Follows CompanyCreated/FiscalYearCreated pattern — entity ID + key fields + occurredOn from base.
+
+### IExchangeRateRepository — Port Interface Design
+```csharp
+public interface IExchangeRateRepository
+{
+    Task<ExchangeRate?> GetByIdAsync(long id);
+    Task<ExchangeRate?> GetByCurrencyPairAsync(string fromCurrencyCode, string toCurrencyCode,
+        ExchangeRateType rateType, DateOnly effectiveDate, long companyId);
+    Task<IReadOnlyList<ExchangeRate>> GetAllAsync();
+    Task AddAsync(ExchangeRate exchangeRate);
+}
+```
+**Key method:** `GetByCurrencyPairAsync` — looks up the specific rate for a currency pair + rate type + date + company. This is the primary lookup for the IForeignExchangeRateProvider adapter to consume. Nullable return (rate might not exist yet).
+
+### EF Core Configuration Pattern
+```csharp
+internal sealed class ExchangeRateConfiguration : IEntityTypeConfiguration<ExchangeRate>
+{
+    public void Configure(EntityTypeBuilder<ExchangeRate> builder)
+    {
+        builder.ToTable("exchange_rates");
+        builder.HasKey(e => e.Id);
+        builder.Property(e => e.Id).HasColumnName("id").ValueGeneratedOnAdd();
+        builder.Property(e => e.CompanyId).HasColumnName("company_id");
+        builder.Property(e => e.FromCurrencyCode).HasColumnName("from_currency_code").HasMaxLength(3);
+        builder.Property(e => e.ToCurrencyCode).HasColumnName("to_currency_code").HasMaxLength(3);
+        builder.Property(e => e.Rate).HasColumnName("rate").HasColumnType("decimal(10,6)");
+        builder.Property(e => e.RateType).HasColumnName("rate_type").HasConversion<string>();
+        builder.Property(e => e.EffectiveDate).HasColumnName("effective_date");
+        builder.Property(e => e.Source).HasColumnName("source").HasMaxLength(200);
+        // Composite unique index for rate lookup
+        builder.HasIndex(e => new { e.CompanyId, e.FromCurrencyCode, e.ToCurrencyCode, e.RateType, e.EffectiveDate })
+            .IsUnique();
+        // FK to Company
+        builder.HasOne<Company>().WithMany().HasForeignKey(e => e.CompanyId).OnDelete(DeleteBehavior.Restrict);
+        builder.Property<uint>("xmin").IsRowVersion().HasColumnName("xmin");
+    }
+}
+```
+**Key decisions:**
+- `HasConversion<string>()` on RateType (same as PeriodStatus, FiscalYearStatus, PeriodType)
+- `HasColumnType("decimal(10,6)")` for Rate precision
+- Composite unique index prevents duplicate rates per (company, pair, type, date)
+- FK to Company with `Restrict` delete (same pattern as FiscalYear)
+- `HasMaxLength(3)` on currency code columns (ISO 4217)
+
+### Repository Pattern (from EfCompanyRepository)
+- Constructor-injected `SmeAccountingDbContext`
+- `GetAllAsync()` uses `AsNoTracking()`
+- `AddAsync` just calls `_context.Set.AddAsync` — UoW handles save
+- `GetByCurrencyPairAsync` will need composite key lookup with `FirstOrDefaultAsync`
+
+### DbContext Changes Needed
+- Add `DbSet<ExchangeRate> ExchangeRates => Set<ExchangeRate>();`
+- Add `modelBuilder.Ignore<ExchangeRateRecorded>();` in `OnModelCreating`
+
+### DI Registration
+- `services.AddScoped<IExchangeRateRepository, EfExchangeRateRepository>();`
+
+### Domain Exception Decision
+- PLAN says: "No self-conversion (same currency codes) throws DomainException"
+- Can use existing `DomainException` base class directly (no need for a subclass — `DomainException("FromCurrencyCode and ToCurrencyCode must be different.")` is sufficient)
+- Alternative: `SelfConversionException` subclass for more specific catching — but over-engineering for this case
+- **Decision:** Use `DomainException` directly with descriptive message (consistent with `InvalidPostingRuleException` pattern but no custom subclass needed)
+
+### Breaking Changes Assessment
+- **No existing ExchangeRate entity, repo, or event** — everything is new, no breaking changes
+- `IForeignExchangeRateProvider` port stays unchanged — it's a separate adapter concern
+- `BankExchangeRateProvider` stays unchanged — mock adapter, future task can wire to ExchangeRate entity
+- Money VO stays unchanged — uses `string Currency` throughout
+
+### Files to Create
+1. `src/SmeAccounting.Domain/ValueObjects/ExchangeRateType.cs` (new enum)
+2. `src/SmeAccounting.Domain/Entities/ExchangeRate.cs` (new entity)
+3. `src/SmeAccounting.Domain/Events/ExchangeRateRecorded.cs` (new domain event)
+4. `src/SmeAccounting.Domain/Ports/IExchangeRateRepository.cs` (new port interface)
+5. `src/SmeAccounting.Infrastructure/Persistence/Configurations/ExchangeRateConfiguration.cs` (new config)
+6. `src/SmeAccounting.Infrastructure/Repositories/EfExchangeRateRepository.cs` (new repository)
+
+### Files to Modify
+1. `src/SmeAccounting.Infrastructure/Persistence/SmeAccountingDbContext.cs` (Add DbSet + Ignore event)
+2. `src/SmeAccounting.Infrastructure/DependencyInjection.cs` (Register repository)
+
+### Unique Constraint Approach
+- Composite unique index: `(CompanyId, FromCurrencyCode, ToCurrencyCode, RateType, EffectiveDate)`
+- Prevents duplicate rates for same pair+type+date per company
+- DB-level enforcement (EF Core config), not just application-level
+- One rate per (pair, type, date, company) — users override by creating new record if needed
+
+### FK Relationship
+- ExchangeRate.CompanyId → Company (required FK, Restrict delete)
+- FromCurrencyCode/ToCurrencyCode are NOT FKs to Currency entity — they reference Currency.Code by value (string match)
+- This matches the pattern used by MoneyVO (string Currency, not FK) and FunctionalCurrencyCode on Company
+
+## Task-Specific Research — T4 COA
+
+### Current Account Entity (`src/SmeAccounting.Domain/Entities/Account.cs`)
+```csharp
+public class Account : BaseEntity
+{
+    public AccountCode Code { get; private set; } = null!;
+    public string Name { get; private set; } = string.Empty;
+    public int Level { get; private set; }
+    public long? ParentId { get; private set; }
+    public AccountType AccountType { get; private set; }
+    public bool IsActive { get; private set; } = true;
+    public long? AccountGroupId { get; private set; }
+    private readonly List<Account> _children = [];
+    public IReadOnlyCollection<Account> Children => _children.AsReadOnly();
+    private Account() { }
+    public Account(AccountCode code, string name, AccountType accountType, int level = 1, long? parentId = null, long? accountGroupId = null) { ... }
+    public void Deprecate() { ... }
+    public Account AddChild(AccountCode code, string name, AccountType accountType, long? accountGroupId = null) { ... }
+}
+```
+**Current fields:** Code (AccountCode VO owned), Name, Level, ParentId (self-FK), AccountType (enum), IsActive, AccountGroupId (FK).
+**Missing:** CompanyId (long FK → Company), Description (string?), NormalBalance (enum).
+**Constructor takes:** (code, name, accountType, level, parentId, accountGroupId). CompanyId must be added as required param.
+
+### Current AccountGroup Entity (`src/SmeAccounting.Domain/Entities/AccountGroup.cs`)
+```csharp
+public class AccountGroup : BaseEntity
+{
+    public string Code { get; private set; } = string.Empty;
+    public string Name { get; private set; } = string.Empty;
+    public AccountType AccountType { get; private set; }
+    private AccountGroup() { }
+    public AccountGroup(string code, string name, AccountType accountType) { ... }
+}
+```
+**Current fields:** Code (string), Name (string), AccountType (enum).
+**Missing:** CompanyId (long FK → Company), DisplayOrder (int).
+**Constructor takes:** (code, name, accountType). CompanyId must be added as required param.
+
+### AccountType Enum (`src/SmeAccounting.Domain/ValueObjects/AccountType.cs`)
+```csharp
+namespace SmeAccounting.Domain.ValueObjects;
+public enum AccountType { Asset, Liability, Equity, Revenue, Expense }
+```
+**Location:** `ValueObjects/` — NOT a separate `Enums/` directory. All existing enums live in ValueObjects: AccountType, PeriodStatus, FiscalYearStatus, PeriodType, ExchangeRateType. New NormalBalance must follow same convention.
+
+### NormalBalance Enum — Does NOT Exist
+No NormalBalance enum anywhere in codebase. Needs creation in `ValueObjects/NormalBalance.cs`.
+- Values: `Debit`, `Credit`
+- Derivation rule: Asset/Expense → Debit, Liability/Equity/Revenue → Credit
+- PLAN says "stored explicitly for posting clarity" — so it's a DB column, not just derived logic
+
+### Existing AccountConfiguration (`Infrastructure/Persistence/Configurations/AccountConfiguration.cs`)
+- Table: `accounts`
+- snake_case columns: `id`, `level`, `name`, `parent_id`, `account_type`, `is_active`, `account_group_id`
+- `AccountCode` owned VO → `code` column (HasMaxLength(20))
+- AccountType: `HasConversion<string>()`
+- Self-referencing FK: `HasOne<Account>().WithMany(a => a.Children).HasForeignKey(e => e.ParentId).OnDelete(DeleteBehavior.Restrict)`
+- Index on `parent_id`
+- xmin concurrency token
+- **Needs additions:** `company_id` (long FK), `description` (string?), `normal_balance` (string via HasConversion)
+
+### Existing AccountGroupConfiguration (`Infrastructure/Persistence/Configurations/AccountGroupConfiguration.cs`)
+- Table: `account_groups`
+- snake_case columns: `id`, `code`, `name`, `account_type`
+- AccountType: `HasConversion<string>()`
+- Code: HasMaxLength(20), Name: HasMaxLength(200)
+- xmin concurrency token
+- **Needs additions:** `company_id` (long FK), `display_order` (int)
+
+### FK Pattern to Company (from T2 FiscalYear + T3 ExchangeRate)
+```csharp
+builder.HasOne<Company>().WithMany().HasForeignKey(e => e.CompanyId).OnDelete(DeleteBehavior.Restrict);
+```
+- Required FK (not nullable)
+- Restrict delete (prevent cascade)
+- No navigation property on Account/AccountGroup to Company (just FK column)
+- Pattern consistent across FiscalYear, ExchangeRate
+
+### Application Layer — Commands/Queries/DTOs
+
+**CreateAccountCommand** — currently `(Code, Name, AccountType, ParentId, AccountGroupId)`. Needs:
+- Add `CompanyId` (long, required) — accounts belong to a company
+- Add `Description` (string?, optional)
+- Add `NormalBalance` (NormalBalance enum, required)
+
+**DeprecateAccountCommand** — `(AccountId)`. **No changes needed.** Deprecation is by ID only.
+
+**GetAccountQuery** — `(AccountId)`. **No changes needed.** Returns AccountDto.
+
+**GetAccountsByGroupQuery** — `(AccountGroupId)`. **No changes needed.** Returns IReadOnlyList<AccountDto>.
+
+**AccountDto** — currently `(Id, Code, Name, Level, ParentId, AccountType, IsActive, AccountGroupId)`. Needs:
+- Add `CompanyId` (long)
+- Add `Description` (string?)
+- Add `NormalBalance` (string — DTO uses string not enum, per convention from FiscalPeriodDto)
+
+### Domain Events — AccountCreated/AccountDeprecated
+- `AccountCreated(long AccountId, DateTimeOffset occurredOn)` — **No changes needed.** T4 is about extending fields, not changing event contract.
+- `AccountDeprecated(long AccountId, DateTimeOffset occurredOn)` — **No changes needed.**
+
+### DbContext Changes Needed
+- Already has: `DbSet<Account>`, `DbSet<AccountGroup>`, ignores `AccountCreated`, `AccountDeprecated`
+- **No new DbSets needed** — Account/AccountGroup already registered
+- **No new domain events to ignore** — AccountCreated/AccountDeprecated already ignored
+- **No DI changes needed** — `IAccountRepository` + `EfAccountRepository` already registered
+
+### Invariants to Enforce
+1. **CompanyId > 0** — validate in entity constructor (required param)
+2. **NormalBalance consistent with AccountType** — Asset/Expense → Debit, Liability/Equity/Revenue → Credit. Could validate in constructor but PLAN says "stored explicitly for posting clarity" — allow override? Or validate invariant? **Decision: validate invariant in constructor** (NormalBalance must match AccountType). Prevents data corruption.
+3. **DisplayOrder >= 0** — validate in AccountGroup constructor
+4. **No existing unique constraint on (CompanyId, Code) for AccountGroup** — but should be unique per company? PLAN says "DisplayOrder (int)" only. No unique constraint specified. **Skip for now** — application-level enforcement.
+
+### Constructor Changes
+
+**Account constructor** — new signature:
+```csharp
+public Account(AccountCode code, string name, AccountType accountType, long companyId,
+    NormalBalance normalBalance, int level = 1, long? parentId = null, long? accountGroupId = null,
+    string? description = null)
+```
+- `companyId` required (CompanyId > 0 validation)
+- `normalBalance` required (validate matches AccountType)
+- `description` optional
+- `level`, `parentId`, `accountGroupId` remain optional with defaults
+
+**AddChild method** — needs companyId and normalBalance passed through:
+```csharp
+public Account AddChild(AccountCode code, string name, AccountType accountType, long companyId,
+    NormalBalance normalBalance, long? accountGroupId = null, string? description = null)
+```
+
+**AccountGroup constructor** — new signature:
+```csharp
+public AccountGroup(string code, string name, AccountType accountType, long companyId, int displayOrder = 0)
+```
+- `companyId` required (CompanyId > 0 validation)
+- `displayOrder` optional with default 0
+
+### Files to Create
+1. `src/SmeAccounting.Domain/ValueObjects/NormalBalance.cs` (new enum: Debit, Credit)
+
+### Files to Modify
+1. `src/SmeAccounting.Domain/Entities/Account.cs` — add CompanyId, Description, NormalBalance fields; update constructor; update AddChild; add NormalBalance validation
+2. `src/SmeAccounting.Domain/Entities/AccountGroup.cs` — add CompanyId, DisplayOrder fields; update constructor
+3. `src/SmeAccounting.Infrastructure/Persistence/Configurations/AccountConfiguration.cs` — add company_id FK, description, normal_balance columns
+4. `src/SmeAccounting.Infrastructure/Persistence/Configurations/AccountGroupConfiguration.cs` — add company_id FK, display_order column
+5. `src/SmeAccounting.Application/Commands/CreateAccountCommand.cs` — add CompanyId, Description, NormalBalance params
+6. `src/SmeAccounting.Application/DTOs/AccountDto.cs` — add CompanyId, Description, NormalBalance fields
+
+### Files NOT Modified
+- `DeprecateAccountCommand.cs` — no changes (takes AccountId only)
+- `GetAccountQuery.cs` — no changes (takes AccountId)
+- `GetAccountsByGroupQuery.cs` — no changes (takes AccountGroupId)
+- `AccountCreated.cs` — no changes (event contract unchanged)
+- `AccountDeprecated.cs` — no changes (event contract unchanged)
+- `SmeAccountingDbContext.cs` — no changes (Account/AccountGroup already have DbSets, events already ignored)
+- `DependencyInjection.cs` — no changes (IAccountRepository already registered)
+- `IAccountRepository.cs` — no changes (port interface stays same)
+
+### Breaking Changes Assessment
+- **Account constructor change** — breaking to any callers. No handlers exist for CreateAccountCommand yet (command is just a record definition, no handler implementation). Safe to change.
+- **AddChild method change** — breaking to callers. Only called within Account entity itself (in existing AddChild method). Safe to change.
+- **AccountGroup constructor change** — breaking to callers. No callers exist. Safe to change.
+- **CreateAccountCommand change** — adding params to record. No handler exists. Safe to change.
+- **AccountDto change** — adding params to record. No handler maps this yet. Safe to change.
+- **All changes are additive** — existing method signatures on Account (Deprecate) and AccountGroup (none) are unaffected.
+
+### NormalBalance Invariant Validation
+```csharp
+private static NormalBalance DetermineNormalBalance(AccountType accountType) => accountType switch
+{
+    AccountType.Asset => NormalBalance.Debit,
+    AccountType.Expense => NormalBalance.Debit,
+    AccountType.Liability => NormalBalance.Credit,
+    AccountType.Equity => NormalBalance.Credit,
+    AccountType.Revenue => NormalBalance.Credit,
+    _ => throw new ArgumentOutOfRangeException(nameof(accountType))
+};
+```
+Validate in constructor: `if (normalBalance != DetermineNormalBalance(accountType)) throw new DomainException(...)`
+This prevents data corruption while storing the value explicitly for posting clarity.
+
+### Verification — Source Files Confirmed
+
+#### Account.cs (actual — `src/SmeAccounting.Domain/Entities/Account.cs`)
+- Line 21: Constructor `Account(AccountCode code, string name, AccountType accountType, int level = 1, long? parentId = null, long? accountGroupId = null)`
+- Line 37: `AddChild(AccountCode code, string name, AccountType accountType, long? accountGroupId = null)`
+- No CompanyId, no Description, no NormalBalance — confirmed missing
+- AccountCreated event at `src/SmeAccounting.Domain/Events/AccountCreated.cs` — takes `(long accountId, DateTimeOffset occurredOn)` — NO changes needed (event contract unchanged)
+
+#### AccountGroup.cs (actual — `src/SmeAccounting.Domain/Entities/AccountGroup.cs`)
+- Line 13: Constructor `AccountGroup(string code, string name, AccountType accountType)`
+- No CompanyId, no DisplayOrder — confirmed missing
+
+#### AccountConfiguration.cs (actual — `src/SmeAccounting.Infrastructure/Persistence/Configurations/AccountConfiguration.cs`)
+- Table: `accounts`
+- Existing columns: `id`, `level`, `name`, `parent_id`, `account_type`, `is_active`, `account_group_id`, owned `code`
+- Self-referencing FK with Restrict delete on ParentId
+- xmin concurrency token present
+- Missing: `company_id`, `description`, `normal_balance`
+
+#### AccountGroupConfiguration.cs (actual — `src/SmeAccounting.Infrastructure/Persistence/Configurations/AccountGroupConfiguration.cs`)
+- Table: `account_groups`
+- Existing columns: `id`, `code` (HasMaxLength 20), `name` (HasMaxLength 200), `account_type`
+- xmin concurrency token present
+- Missing: `company_id`, `display_order`
+
+#### AccountType.cs (actual — `src/SmeAccounting.Domain/ValueObjects/AccountType.cs`)
+- Namespace: `SmeAccounting.Domain.ValueObjects` — NOT a separate `Enums/` directory
+- Values: `Asset, Liability, Equity, Revenue, Expense`
+
+#### NormalBalance enum — Does NOT Exist
+- No `NormalBalance` anywhere in codebase (grep confirmed)
+- Must create in `ValueObjects/NormalBalance.cs` (not `Enums/`)
+
+#### FK to Company Pattern (from FiscalYearConfiguration — verified)
+```csharp
+builder.HasOne<Company>()
+    .WithMany()
+    .HasForeignKey(e => e.CompanyId)
+    .OnDelete(DeleteBehavior.Restrict);
+```
+- No navigation property on Account/AccountGroup to Company — just FK column
+- Restrict delete prevents cascade
+
+#### DbContext — No Changes Needed
+- `SmeAccountingDbContext` already has `DbSet<Account>` and `DbSet<AccountGroup>` (lines 10-11)
+- Already ignores `AccountCreated` and `AccountDeprecated` events (lines 27-28)
+- No new events to add for T4
+
+#### Application Layer — Commands/DTOs
+- **CreateAccountCommand**: `(string Code, string Name, AccountType AccountType, long? ParentId, long? AccountGroupId)` — needs CompanyId, Description, NormalBalance added
+- **DeprecateAccountCommand**: `(long AccountId)` — NO changes needed
+- **AccountDto**: `(long Id, string Code, string Name, int Level, long? ParentId, string AccountType, bool IsActive, long? AccountGroupId)` — needs CompanyId, Description, NormalBalance added
+
+#### IAccountRepository — No Changes Needed
+- Port interface stays same: `GetByIdAsync, GetAllAsync, AddAsync, UpdateAsync`
+- FK is configured at EF level, not port level
+
+### Executor Checklist — Exact Changes Needed
+
+**Files to CREATE (1):**
+1. `src/SmeAccounting.Domain/ValueObjects/NormalBalance.cs` — enum: `Debit, Credit`
+
+**Files to MODIFY (6):**
+1. `src/SmeAccounting.Domain/Entities/Account.cs` — add `CompanyId` (long), `Description` (string?), `NormalBalance` (enum); update constructor signature; update `AddChild` method; add invariant validation
+2. `src/SmeAccounting.Domain/Entities/AccountGroup.cs` — add `CompanyId` (long), `DisplayOrder` (int); update constructor signature
+3. `src/SmeAccounting.Infrastructure/Persistence/Configurations/AccountConfiguration.cs` — add `company_id` FK, `description`, `normal_balance` (HasConversion<string>); add FK to Company with Restrict
+4. `src/SmeAccounting.Infrastructure/Persistence/Configurations/AccountGroupConfiguration.cs` — add `company_id` FK, `display_order`; add FK to Company with Restrict
+5. `src/SmeAccounting.Application/Commands/CreateAccountCommand.cs` — add `CompanyId`, `Description`, `NormalBalance` params
+6. `src/SmeAccounting.Application/DTOs/AccountDto.cs` — add `CompanyId`, `Description`, `NormalBalance` fields
+
+**Files NOT modified (confirmed safe):**
+- `AccountCreated.cs` — event contract unchanged
+- `AccountDeprecated.cs` — event contract unchanged
+- `SmeAccountingDbContext.cs` — Account/AccountGroup already have DbSets, events already ignored
+- `DependencyInjection.cs` — IAccountRepository already registered
+- `IAccountRepository.cs` — port interface stays same
+- `DeprecateAccountCommand.cs` — takes AccountId only, no changes
+- `GetAccountQuery.cs` / `GetAccountsByGroupQuery.cs` — no changes
+
+### Account.Group display order: default 0
+- PLAN says `DisplayOrder (int)` on AccountGroup — no default specified
+- Suggested: `int displayOrder = 0` in constructor — allows flexible ordering without requiring explicit value
+
+## Task-Specific Research — T5 Dimensions
+
+### Current JournalEntryLine Entity (`src/SmeAccounting.Domain/Entities/JournalEntryLine.cs`)
+```csharp
+public class JournalEntryLine : BaseEntity
+{
+    public long EntryId { get; private set; }
+    public long AccountId { get; private set; }
+    public Money Debit { get; private set; } = Money.Zero;
+    public Money Credit { get; private set; } = Money.Zero;
+    public string? Description { get; private set; }
+
+    private JournalEntryLine() { }
+
+    public JournalEntryLine(long entryId, long accountId, Money debit, Money credit, string? description = null)
+    {
+        EntryId = entryId;
+        AccountId = accountId;
+        Debit = debit ?? throw new ArgumentNullException(nameof(debit));
+        Credit = credit ?? throw new ArgumentNullException(nameof(credit));
+        Description = description;
+    }
+}
+```
+**Current fields:** EntryId (long), AccountId (long), Debit (Money), Credit (Money), Description (string?).
+**Missing:** DepartmentId (long?), CostCenterId (long?), ProjectId (long?). All optional FKs.
+
+### Current JournalEntryLineConfiguration (`src/SmeAccounting.Infrastructure/Persistence/Configurations/JournalEntryLineConfiguration.cs`)
+- Table: `journal_entry_lines`
+- Existing columns: `id`, `entry_id`, `account_id`, `description`, owned Money (`debit_amount`/`debit_currency`, `credit_amount`/`credit_currency`)
+- Indexes on: `entry_id`, `account_id`
+- xmin concurrency token present
+- **Missing:** `department_id`, `cost_center_id`, `project_id` — all nullable FK columns
+- **No FK constraints yet** for EntryId/AccountId to their respective entities (shadow props from EF auto-discovery, not explicit config)
+
+### Dimension Entity Pattern (from ExchangeRate — closest match)
+ExchangeRate is the best template for dimension entities because it:
+- Has CompanyId FK (required)
+- Uses string Code with uniqueness per company
+- Has IsActive for soft-delete
+- Raises domain event in constructor
+
+**Pattern to follow for Department/CostCenter/Project:**
+```csharp
+public class Department : BaseEntity
+{
+    public long CompanyId { get; private set; }
+    public string Code { get; private set; } = string.Empty;
+    public string Name { get; private set; } = string.Empty;
+    public bool IsActive { get; private set; } = true;
+
+    private Department() { }
+
+    public Department(long companyId, string code, string name)
+    {
+        if (companyId <= 0)
+            throw new DomainException("CompanyId must be greater than zero.");
+        if (string.IsNullOrWhiteSpace(code))
+            throw new DomainException("Code is required.");
+        if (string.IsNullOrWhiteSpace(name))
+            throw new DomainException("Name is required.");
+
+        CompanyId = companyId;
+        Code = code;
+        Name = name;
+
+        AddDomainEvent(new DepartmentCreated(Id, companyId, DateTimeOffset.UtcNow));
+    }
+}
+```
+Project adds `StartDate` (DateOnly?) and `EndDate` (DateOnly?) fields.
+
+### FK to Company Pattern (confirmed from FiscalYear, ExchangeRate)
+```csharp
+builder.HasOne<Company>()
+    .WithMany()
+    .HasForeignKey(e => e.CompanyId)
+    .OnDelete(DeleteBehavior.Restrict);
+```
+- Required FK (not nullable)
+- Restrict delete (prevent cascade)
+- No navigation property on dimension entities to Company (just FK column)
+- Pattern consistent across FiscalYear, FiscalPeriod, ExchangeRate
+
+### Unique Constraints — Composite Index Per Dimension
+Code must be unique per company per dimension type. DB-level enforcement via composite unique index:
+
+```csharp
+// Department: unique (CompanyId, Code)
+builder.HasIndex(e => new { e.CompanyId, e.Code }).IsUnique();
+
+// CostCenter: unique (CompanyId, Code)
+builder.HasIndex(e => new { e.CompanyId, e.Code }).IsUnique();
+
+// Project: unique (CompanyId, Code)
+builder.HasIndex(e => new { e.CompanyId, e.Code }).IsUnique();
+```
+This prevents duplicate codes per company per dimension type at DB level.
+
+### JournalEntryLine Extension — Optional FK Columns
+JournalEntryLine gets three new nullable FK properties:
+
+```csharp
+public long? DepartmentId { get; private set; }
+public long? CostCenterId { get; private set; }
+public long? ProjectId { get; private set; }
+```
+
+**Configuration additions:**
+```csharp
+builder.Property(e => e.DepartmentId).HasColumnName("department_id");
+builder.Property(e => e.CostCenterId).HasColumnName("cost_center_id");
+builder.Property(e => e.ProjectId).HasColumnName("project_id");
+
+// Optional FK constraints (nullable — no Restrict needed, SetNull is fine)
+builder.HasOne<Department>().WithMany().HasForeignKey(e => e.DepartmentId).OnDelete(DeleteBehavior.SetNull);
+builder.HasOne<CostCenter>().WithMany().HasForeignKey(e => e.CostCenterId).OnDelete(DeleteBehavior.SetNull);
+builder.HasOne<Project>().WithMany().HasForeignKey(e => e.ProjectId).OnDelete(DeleteBehavior.SetNull);
+```
+- Nullable FKs — dimension can be null (optional)
+- `SetNull` delete behavior — if dimension deleted, lines keep data but lose dimension reference
+- Indexes on each FK column for query performance
+
+### JournalEntryLine Constructor Update
+```csharp
+public JournalEntryLine(long entryId, long accountId, Money debit, Money credit,
+    string? description = null, long? departmentId = null, long? costCenterId = null, long? projectId = null)
+{
+    EntryId = entryId;
+    AccountId = accountId;
+    Debit = debit ?? throw new ArgumentNullException(nameof(debit));
+    Credit = credit ?? throw new ArgumentNullException(nameof(credit));
+    Description = description;
+    DepartmentId = departmentId;
+    CostCenterId = costCenterId;
+    ProjectId = projectId;
+}
+```
+All new params optional with defaults — backwards compatible with existing callers.
+
+### JournalEntry.AddLine Method Update
+`AddLine` in JournalEntry.cs needs to pass through the new optional params:
+```csharp
+public JournalEntryLine AddLine(long accountId, Money debit, Money credit,
+    string? description = null, long? departmentId = null, long? costCenterId = null, long? projectId = null)
+{
+    if (IsPosted)
+        throw new DomainException("Cannot modify a posted journal entry.");
+
+    var line = new JournalEntryLine(Id, accountId, debit, credit, description, departmentId, costCenterId, projectId);
+    _lines.Add(line);
+    return line;
+}
+```
+
+### Domain Events Pattern
+Each dimension raises a created event in constructor:
+```csharp
+public class DepartmentCreated : DomainEvent
+{
+    public long DepartmentId { get; }
+    public long CompanyId { get; }
+
+    public DepartmentCreated(long departmentId, long companyId, DateTimeOffset occurredOn)
+        : base(occurredOn)
+    {
+        DepartmentId = departmentId;
+        CompanyId = companyId;
+    }
+}
+```
+Same pattern for `CostCenterCreated` and `ProjectCreated`. Follows `ExchangeRateRecorded` pattern (entity ID + CompanyId + occurredOn).
+
+### Port Interface Pattern
+```csharp
+namespace SmeAccounting.Domain.Ports;
+
+public interface IDepartmentRepository
+{
+    Task<Department?> GetByIdAsync(long id);
+    Task<Department?> GetByCodeAsync(string code, long companyId);
+    Task<IReadOnlyList<Department>> GetAllAsync();
+    Task AddAsync(Department department);
+}
+```
+Same pattern for `ICostCenterRepository` and `IProjectRepository`. `GetByCodeAsync` enables application-level duplicate code check.
+
+### Repository Pattern
+```csharp
+public class EfDepartmentRepository : IDepartmentRepository
+{
+    private readonly SmeAccountingDbContext _context;
+
+    public EfDepartmentRepository(SmeAccountingDbContext context) => _context = context;
+
+    public async Task<Department?> GetByIdAsync(long id)
+    {
+        return await _context.Departments.FirstOrDefaultAsync(e => e.Id == id);
+    }
+
+    public async Task<Department?> GetByCodeAsync(string code, long companyId)
+    {
+        return await _context.Departments
+            .FirstOrDefaultAsync(e => e.Code == code && e.CompanyId == companyId);
+    }
+
+    public async Task<IReadOnlyList<Department>> GetAllAsync()
+    {
+        return await _context.Departments
+            .AsNoTracking()
+            .OrderBy(e => e.Code)
+            .ToListAsync();
+    }
+
+    public async Task AddAsync(Department department)
+    {
+        await _context.Departments.AddAsync(department);
+    }
+}
+```
+Same pattern for `EfCostCenterRepository` and `EfProjectRepository`.
+
+### DbContext Changes Needed
+- Add `DbSet<Department> Departments => Set<Department>();`
+- Add `DbSet<CostCenter> CostCenters => Set<CostCenter>();`
+- Add `DbSet<Project> Projects => Set<Project>();`
+- Add `modelBuilder.Ignore<DepartmentCreated>();`
+- Add `modelBuilder.Ignore<CostCenterCreated>();`
+- Add `modelBuilder.Ignore<ProjectCreated>();`
+
+### DI Registration
+```csharp
+services.AddScoped<IDepartmentRepository, EfDepartmentRepository>();
+services.AddScoped<ICostCenterRepository, EfCostCenterRepository>();
+services.AddScoped<IProjectRepository, EfProjectRepository>();
+```
+
+### JournalEntryLineDto Update
+```csharp
+public record JournalEntryLineDto(
+    long Id,
+    long AccountId,
+    MoneyDto Debit,
+    MoneyDto Credit,
+    string? Description,
+    long? DepartmentId,
+    long? CostCenterId,
+    long? ProjectId);
+```
+
+### Invariants to Enforce
+1. **CompanyId > 0** — validate in entity constructor (required param)
+2. **Code required, non-empty** — validate in constructor
+3. **Name required, non-empty** — validate in constructor
+4. **Code unique per company per dimension** — enforced via composite unique index at DB level
+5. **StartDate < EndDate** (Project only) — validate if both provided
+
+### Breaking Changes Assessment
+- **JournalEntryLine constructor change** — adding optional params with defaults. Existing callers still work (backwards compatible).
+- **JournalEntry.AddLine change** — adding optional params with defaults. Existing callers still work.
+- **JournalEntryLineDto change** — adding params to record. No handlers map this yet. Safe to change.
+- **No handlers exist for CreateJournalEntry/PostJournalEntry** — no breaking changes to application layer.
+- **No controllers reference JournalEntryLine directly** — all go through MediatR.
+
+### Files to Create (10)
+1. `src/SmeAccounting.Domain/Entities/Department.cs`
+2. `src/SmeAccounting.Domain/Entities/CostCenter.cs`
+3. `src/SmeAccounting.Domain/Entities/Project.cs`
+4. `src/SmeAccounting.Domain/Events/DepartmentCreated.cs`
+5. `src/SmeAccounting.Domain/Events/CostCenterCreated.cs`
+6. `src/SmeAccounting.Domain/Events/ProjectCreated.cs`
+7. `src/SmeAccounting.Domain/Ports/IDepartmentRepository.cs`
+8. `src/SmeAccounting.Domain/Ports/ICostCenterRepository.cs`
+9. `src/SmeAccounting.Domain/Ports/IProjectRepository.cs`
+10. `src/SmeAccounting.Infrastructure/Persistence/Configurations/DepartmentConfiguration.cs`
+11. `src/SmeAccounting.Infrastructure/Persistence/Configurations/CostCenterConfiguration.cs`
+12. `src/SmeAccounting.Infrastructure/Persistence/Configurations/ProjectConfiguration.cs`
+13. `src/SmeAccounting.Infrastructure/Repositories/EfDepartmentRepository.cs`
+14. `src/SmeAccounting.Infrastructure/Repositories/EfCostCenterRepository.cs`
+15. `src/SmeAccounting.Infrastructure/Repositories/EfProjectRepository.cs`
+
+### Files to Modify (5)
+1. `src/SmeAccounting.Domain/Entities/JournalEntryLine.cs` — add DepartmentId, CostCenterId, ProjectId; update constructor
+2. `src/SmeAccounting.Domain/Entities/JournalEntry.cs` — update AddLine to pass through new optional params
+3. `src/SmeAccounting.Infrastructure/Persistence/Configurations/JournalEntryLineConfiguration.cs` — add 3 nullable FK columns + FK constraints + indexes
+4. `src/SmeAccounting.Infrastructure/Persistence/SmeAccountingDbContext.cs` — add 3 DbSets + ignore 3 events
+5. `src/SmeAccounting.Infrastructure/DependencyInjection.cs` — register 3 repositories
+6. `src/SmeAccounting.Application/DTOs/JournalEntryLineDto.cs` — add 3 optional fields
+
+### Files NOT Modified (confirmed safe)
+- Domain events (DepartmentCreated, etc.) — new files, no existing events change
+- JournalEntry events — JournalEntryPosted contract unchanged
+- Port interfaces (IAccountRepository, IJournalEntryRepository) — no changes needed
+- Commands/Queries — no handlers exist yet, no breaking changes
+- Controllers — no direct entity references, MediatR dispatch only
+
+### Executor Checklist Summary
+**New entities:** Department, CostCenter, Project (3 entities, each ~30 lines)
+**New events:** DepartmentCreated, CostCenterCreated, ProjectCreated (3 events, each ~15 lines)
+**New ports:** IDepartmentRepository, ICostCenterRepository, IProjectRepository (3 interfaces, each ~10 lines)
+**New configs:** DepartmentConfiguration, CostCenterConfiguration, ProjectConfiguration (3 configs, each ~40 lines)
+**New repos:** EfDepartmentRepository, EfCostCenterRepository, EfProjectRepository (3 repos, each ~40 lines)
+**Modified:** JournalEntryLine.cs (+12 lines), JournalEntry.cs (+6 lines), JournalEntryLineConfiguration.cs (+18 lines), SmeAccountingDbContext.cs (+6 lines), DependencyInjection.cs (+3 lines), JournalEntryLineDto.cs (+3 lines)

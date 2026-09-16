@@ -35,6 +35,17 @@ internal sealed class AccountConfiguration : IEntityTypeConfiguration<Account>
         builder.Property(e => e.AccountGroupId)
             .HasColumnName("account_group_id");
 
+        builder.Property(e => e.CompanyId)
+            .HasColumnName("company_id");
+
+        builder.Property(e => e.Description)
+            .HasColumnName("description")
+            .HasMaxLength(500);
+
+        builder.Property(e => e.NormalBalance)
+            .HasColumnName("normal_balance")
+            .HasConversion<string>();
+
         builder.OwnsOne(e => e.Code, codeBuilder =>
         {
             codeBuilder.Property(c => c.Value)
@@ -49,6 +60,11 @@ internal sealed class AccountConfiguration : IEntityTypeConfiguration<Account>
             .OnDelete(DeleteBehavior.Restrict);
 
         builder.HasIndex(e => e.ParentId);
+
+        builder.HasOne<Company>()
+            .WithMany()
+            .HasForeignKey(e => e.CompanyId)
+            .OnDelete(DeleteBehavior.Restrict);
 
         builder.Property<uint>("xmin")
             .IsRowVersion()

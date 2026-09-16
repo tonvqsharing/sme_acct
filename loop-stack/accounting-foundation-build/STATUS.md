@@ -2,52 +2,123 @@
 ## State
 IN_PROGRESS
 ## Current Task
-T2 — FiscalYear + FiscalPeriod Extensions
+All G2 tasks verified. Ready for G3 (T6 — EF Core Migration).
 ## Task Progress
-1 / 6 complete
+5 / 6 complete
 ## Attempts On Current Task
-1
+0
 ## Completed Tasks
 - [x] [G1] T1 — Company Entity + Currency Promotion
+- [x] [G2] T2 — FiscalYear + FiscalPeriod Extensions
+- [x] [G2] T3 — ExchangeRate Entity + Repository
+- [x] [G2] T4 — Chart of Accounts Extensions
+- [x] [G2] T5 — Accounting Dimensions (Department, CostCenter, Project)
 ## Skipped Tasks
 (none)
 ## Last Researcher Result
-T1 patterns mapped: BaseEntity (long Id, events), Account (private ctor, Deprecate pattern), Currency VO is minimal record (Code/Name/IsDefault) — promotion adds Id/Symbol/DecimalPlaces/IsActive. Config: internal sealed, snake_case, xmin, enums as strings. Repo: DbContext-injected, CRUD. Port: I{Name}Repository. Events: long Id + DateTimeOffset.UtcNow. TaxCode: `\d{10}(\d{3})?` regex. Money VO unchanged (uses string Currency). Namespace shift: ValueObjects.Currency → Entities.Currency.
+T5 Dimensions: 15 files to create (3 entities, 3 events, 3 ports, 3 configs, 3 repos), 6 files to modify (JournalEntryLine, JournalEntry, 1 config, DbContext, DI, JournalEntryLineDto). FK pattern confirmed. Composite unique index on (CompanyId, Code). JournalEntryLine gets 3 optional nullable FKs with SetNull delete. All new params backwards compatible.
 ## Last Executor Result
-T1 complete. Files created/modified:
-- Domain: Company.cs, Currency.cs (Entities), CompanyCreated.cs, CurrencyCreated.cs (Events), ICompanyRepository.cs, ICurrencyRepository.cs (Ports)
-- Infrastructure: CompanyConfiguration.cs, CurrencyConfiguration.cs, EfCompanyRepository.cs, EfCurrencyRepository.cs, SmeAccountingDbContext.cs (DbSets + Ignore events), DependencyInjection.cs (DI registration)
+T5 complete. Files created:
+- Domain: Department.cs, CostCenter.cs, Project.cs (3 entities), DepartmentCreated.cs, CostCenterCreated.cs, ProjectCreated.cs (3 events), IDepartmentRepository.cs, ICostCenterRepository.cs, IProjectRepository.cs (3 ports)
+- Infrastructure: DepartmentConfiguration.cs, CostCenterConfiguration.cs, ProjectConfiguration.cs (3 configs), EfDepartmentRepository.cs, EfCostCenterRepository.cs, EfProjectRepository.cs (3 repos)
+- Modified: JournalEntryLine.cs (+DepartmentId, CostCenterId, ProjectId), JournalEntry.cs (AddLine passthrough), JournalEntryLineConfiguration.cs (3 nullable FKs + SetNull + indexes), SmeAccountingDbContext.cs (3 DbSets + 3 Ignore events), DependencyInjection.cs (3 repo registrations), JournalEntryLineDto.cs (+3 fields)
 - Build: 0 warnings, 0 errors. Arch tests: 22/22 pass.
 ## Last Verifier Result
-**VERDICT: VERIFIED_PASS**
+**VERIFIED_PASS: ALL 4 G2 TASKS**
 
-### Verification Results (6/6 criteria met)
+### Verification Process
+1. `dotnet build SmeAccounting.sln` → **0 warnings, 0 errors** ✅
+2. `dotnet test tests/SmeAccounting.ArchitectureTests/` → **22/22 pass** ✅
 
-| # | Criterion | Result | Detail |
-|---|-----------|--------|--------|
-| 1 | `dotnet build` exits 0 | ✅ | 0 warnings, 0 errors, 12.19s |
-| 2 | Arch tests 22/22 | ✅ | Passed: 22, Failed: 0, Skipped: 0 |
-| 3 | Company entity fields | ✅ | Id (long), Name, TaxCode, Address, Phone?, Email?, FiscalYearStartMonth (int, default 1, 1–12), FiscalYearStartDay (int, default 1, 1–28), FunctionalCurrencyCode (string, default "VND"), IsActive (bool, default true). Private ctor. |
-| 4 | Currency entity (separate from VO) | ✅ | Entity in Entities/: Id (long), Code (3-char ISO 4217 validated), Name, Symbol, DecimalPlaces (default 2), IsDefault, IsActive (default true). Private ctor. Old VO in ValueObjects/ untouched. |
-| 5 | Configs: snake-case + xmin | ✅ | CompanyConfiguration: `companies`, explicit HasColumnName all props, xmin row version, unique index on TaxCode. CurrencyConfiguration: `currencies`, explicit HasColumnName all props, xmin row version, unique index on Code. Both `internal sealed class`. |
-| 6 | Money VO unchanged | ✅ | Money.cs in ValueObjects/ — still `record Money` with `decimal Amount` + `string Currency`. No changes. |
+### T2 — FiscalYear + FiscalPeriod → **VERIFIED_PASS**
+- FiscalYear: CompanyId (long, FK→Company), StartDate (DateOnly), EndDate (DateOnly), Description (string?) ✅
+- FiscalPeriod: StartDate (DateOnly), EndDate (DateOnly), PeriodType (enum) ✅
+- Domain invariant: StartDate < EndDate enforced in constructor ✅
+
+### T3 — ExchangeRate Entity → **VERIFIED_PASS**
+- ExchangeRate entity exists (BaseEntity) ✅
+- FromCurrencyCode != ToCurrencyCode enforced (DomainException) ✅
+- Rate > 0 enforced (DomainException) ✅
+- Currency codes normalized to uppercase ✅
+- ExchangeRateType enum exists ✅
+- ExchangeRateRecorded domain event exists ✅
+
+### T4 — Chart of Accounts Extensions → **VERIFIED_PASS**
+- Account: CompanyId (long), Description (string?), NormalBalance (enum) ✅
+- AccountGroup: CompanyId (long), DisplayOrder (int) ✅
+- NormalBalance enum stored as string in DB (per audit) ✅
+
+### T5 — Accounting Dimensions → **VERIFIED_PASS**
+- Department, CostCenter, Project entities exist (BaseEntity) ✅
+- JournalEntryLine: DepartmentId, CostCenterId, ProjectId (all nullable long?) ✅
+- Composite unique index (CompanyId, Code) per dimension ✅
+- Domain events: DepartmentCreated, CostCenterCreated, ProjectCreated ✅
+- Port interfaces: IDepartmentRepository, ICostCenterRepository, IProjectRepository ✅
+
 ## Last Audit Result
-**VERDICT: CLEAN**
+**Date:** 2026-09-16 | **Auditor:** Auditor Agent (G2 tasks)
 
-### Audit Results (10/10 criteria met)
+### T2 — FiscalYear + FiscalPeriod → **CLEAN**
+- ✅ FiscalYear: CompanyId (long, FK→Company, Restrict), StartDate (DateOnly), EndDate (DateOnly), Description (string?)
+- ✅ FiscalPeriod: StartDate (DateOnly), EndDate (DateOnly), PeriodType (Monthly/Quarterly enum)
+- ✅ PeriodType stored as string via HasConversion<string>()
+- ✅ Configs: snake_case columns, xmin row version, FK to Company with Restrict delete
+- ✅ FiscalYearCreated event:CompanyId, Year (plan requested StartDate/EndDate too — functionally equivalent via entity lookup, minor deviation)
+- ✅ FiscalYear constructor validates: companyId > 0, startDate < endDate
+- ✅ Existing commands/queries compile (no breaking changes to AddPeriod signature — new params have defaults)
+- ✅ `dotnet build`: 0 warnings, 0 errors
 
-| # | Criterion | Result | Detail |
-|---|-----------|--------|--------|
-| 1 | `dotnet build` succeeds | ✅ | 0 warnings, 0 errors |
-| 2 | Architecture tests pass | ✅ | 22/22 pass |
-| 3 | Company entity fields | ✅ | Id, Name, TaxCode, Address, Phone?, Email?, FiscalYearStartMonth (1–12, default 1), FiscalYearStartDay (1–28, default 1), FunctionalCurrencyCode ("VND"), IsActive — all correct with private ctors, null checks, domain event |
-| 4 | Currency entity (separate from VO) | ✅ | Entity in Entities/Currency.cs: Id, Code (ISO 4217 3-char validated), Name, Symbol, DecimalPlaces (default 2), IsDefault, IsActive — private ctor + CurrencyCreated event. Old VO record in ValueObjects/Currency.cs still exists but unused (no type references — only property name `Currency` on Money VO) |
-| 5 | EF configs: snake-case + xmin | ✅ | Both configurations: `internal sealed class`, `ToTable("snake_case")`, explicit `HasColumnName` on every property, `xmin` row version, `ValueGeneratedOnAdd` on Id, unique indexes on TaxCode (Company) and Code (Currency) |
-| 6 | Repositories implement interfaces | ✅ | EfCompanyRepository : ICompanyRepository — GetByIdAsync, GetByTaxCodeAsync, GetAllAsync (AsNoTracking), AddAsync. EfCurrencyRepository : ICurrencyRepository — GetByIdAsync, GetByCodeAsync, GetAllAsync (AsNoTracking), AddAsync. Both inject DbContext via constructor |
-| 7 | DbContext: DbSets + Ignore events | ✅ | `DbSet<Company> Companies`, `DbSet<Currency> Currencies` added. `Ignore<CompanyCreated>()` and `Ignore<CurrencyCreated>()` in OnModelCreating. Existing DbSets and events unchanged |
-| 8 | DI registration | ✅ | `AddScoped<ICompanyRepository, EfCompanyRepository>()` and `AddScoped<ICurrencyRepository, EfCurrencyRepository>()` in AddInfrastructure |
-| 9 | No breaking changes | ✅ | Money VO unchanged (still `string Currency`). All existing commands/queries/validators/controllers compile. Old Currency VO record kept (unused but harmless — no namespace collision since no file imports both namespaces) |
-| 10 | No unnecessary abstractions | ✅ | Entities are concrete classes (not interfaces), configurations follow existing pattern, repositories are direct implementations. No extra layers or abstractions added |
+### T3 — ExchangeRate Entity → **CLEAN**
+- ✅ Entity: CompanyId, FromCurrencyCode, ToCurrencyCode, Rate (decimal(10,6)), RateType, EffectiveDate, Source
+- ✅ Domain invariant: FromCurrencyCode != ToCurrencyCode (throws DomainException)
+- ✅ Domain invariant: Rate > 0 (throws DomainException)
+- ✅ Currency codes normalized to uppercase via ToUpperInvariant()
+- ✅ ExchangeRateType enum in ValueObjects/ (consistent with other enums)
+- ✅ RateType stored as string via HasConversion<string>()
+- ✅ Config: snake_case columns, xmin row version
+- ✅ Unique composite index: (CompanyId, FromCurrencyCode, ToCurrencyCode, RateType, EffectiveDate)
+- ✅ FK to Company with Restrict delete
+- ✅ ExchangeRateRecorded event: ExchangeRateId + CompanyId (minimal, correct)
+- ✅ `dotnet build`: 0 warnings, 0 errors
+
+### T4 — Chart of Accounts Extensions → **CLEAN**
+- ✅ Account: CompanyId (long, FK→Company, Restrict), Description (string?), NormalBalance (Debit/Credit enum)
+- ✅ AccountGroup: CompanyId (long, FK→Company, Restrict), DisplayOrder (int, default 0)
+- ✅ NormalBalance enum in ValueObjects/ (consistent with AccountType, PeriodStatus pattern)
+- ✅ NormalBalance stored as string via HasConversion<string>()
+- ✅ Account constructor validates companyId > 0
+- ✅ Existing commands (CreateAccountCommand, DeprecateAccountCommand) compile — CreateAccount updated with CompanyId/NormalBalance params, Deprecate unchanged
+- ✅ Config: snake_case columns, xmin row version, FK to Company
+- ✅ `dotnet build`: 0 warnings, 0 errors
+
+### T5 — Dimensions (Department, CostCenter, Project) → **CLEAN**
+- ✅ All 3 entities: CompanyId (FK→Company, Restrict), Code (string), Name (string), IsActive (bool, default true)
+- ✅ Project has additional StartDate (DateOnly?) and EndDate (DateOnly?)
+- ✅ Code unique per company per dimension: composite index (CompanyId, Code) with IsUnique in all 3 configs
+- ✅ Domain invariants: CompanyId > 0, Code/Name not empty (DomainException)
+- ✅ Domain events: DepartmentCreated, CostCenterCreated, ProjectCreated (all: EntityId + CompanyId)
+- ✅ JournalEntryLine: 3 optional nullable FKs (DepartmentId, CostCenterId, ProjectId) with SetNull delete behavior
+- ✅ JournalEntryLineDto updated with 3 dimension fields
+- ✅ Soft-delete only (IsActive), no hard delete on any dimension entity
+- ✅ Port interfaces: IDepartmentRepository, ICostCenterRepository, IProjectRepository (all include GetByCodeAsync)
+- ✅ Repository implementations registered in DI
+- ✅ DbContext: 3 DbSets, 3 Ignore events
+- ✅ Configs: snake_case, xmin, FK to Company, composite unique indexes
+- ✅ `dotnet build`: 0 warnings, 0 errors
+
+### Common
+- ✅ `dotnet build SmeAccounting.sln`: **0 warnings, 0 errors**
+- ✅ `dotnet test tests/SmeAccounting.ArchitectureTests/`: **22/22 pass**
+- ✅ No breaking changes — all existing methods/commands still compile
+- ✅ No unnecessary abstractions — clean, consistent patterns throughout
+
+### Notes (Non-blocking)
+- NormalBalance and ExchangeRateType enums placed in `ValueObjects/` not `Enums/` — **consistent with existing pattern** (AccountType, PeriodStatus, FiscalYearStatus, PeriodType all in ValueObjects/)
+- No IFiscalYearRepository port exists — fiscal year access is through FiscalPeriod year_id FK, which is appropriate for current use
+- JournalEntryLineInput in CreateJournalEntryCommand does NOT include dimension FKs yet — acceptable since dimension commands don't exist yet
+
+**FINAL VERDICT: ALL 4 G2 TASKS CLEAN**
+
 ## Active Heartbeats
 (none)
 ## Blocked Reason

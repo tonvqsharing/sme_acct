@@ -29,6 +29,10 @@ public static class DependencyInjection
         services.AddScoped<IJournalEntryRepository, EfJournalEntryRepository>();
         services.AddScoped<ICompanyRepository, EfCompanyRepository>();
         services.AddScoped<ICurrencyRepository, EfCurrencyRepository>();
+        services.AddScoped<IExchangeRateRepository, EfExchangeRateRepository>();
+        services.AddScoped<IDepartmentRepository, EfDepartmentRepository>();
+        services.AddScoped<ICostCenterRepository, EfCostCenterRepository>();
+        services.AddScoped<IProjectRepository, EfProjectRepository>();
 
         services.AddSingleton<IClock, SystemClock>();
         services.AddScoped<IAuditLogger, AuditLogger>();

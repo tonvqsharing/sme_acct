@@ -18,9 +18,20 @@ public class CreateAccountViewModel
     [Display(Name = "Loại tài khoản")]
     public string AccountType { get; set; } = string.Empty;
 
+    [Required(ErrorMessage = "CompanyId là bắt buộc")]
+    [Display(Name = "CompanyId")]
+    public long CompanyId { get; set; }
+
+    [Required(ErrorMessage = "Số dư bình thường là bắt buộc")]
+    [Display(Name = "Số dư bình thường")]
+    public string NormalBalance { get; set; } = string.Empty;
+
     [Display(Name = "Tài khoản cha")]
     public long? ParentId { get; set; }
 
     [Display(Name = "Nhóm tài khoản")]
     public long? AccountGroupId { get; set; }
+
+    [Display(Name = "Mô tả")]
+    public string? Description { get; set; }
 }

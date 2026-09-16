@@ -22,6 +22,16 @@ internal sealed class FiscalPeriodConfiguration : IEntityTypeConfiguration<Fisca
         builder.Property(e => e.Month)
             .HasColumnName("month");
 
+        builder.Property(e => e.StartDate)
+            .HasColumnName("start_date");
+
+        builder.Property(e => e.EndDate)
+            .HasColumnName("end_date");
+
+        builder.Property(e => e.PeriodType)
+            .HasColumnName("period_type")
+            .HasConversion<string>();
+
         builder.Property(e => e.Status)
             .HasColumnName("status")
             .HasConversion<string>();

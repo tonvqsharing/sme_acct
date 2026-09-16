@@ -35,12 +35,19 @@ public class JournalEntry : BaseEntity
         SourceId = sourceId;
     }
 
-    public JournalEntryLine AddLine(long accountId, Money debit, Money credit, string? description = null)
+    public JournalEntryLine AddLine(
+        long accountId,
+        Money debit,
+        Money credit,
+        string? description = null,
+        long? departmentId = null,
+        long? costCenterId = null,
+        long? projectId = null)
     {
         if (IsPosted)
             throw new DomainException("Cannot modify a posted journal entry.");
 
-        var line = new JournalEntryLine(Id, accountId, debit, credit, description);
+        var line = new JournalEntryLine(Id, accountId, debit, credit, description, departmentId, costCenterId, projectId);
         _lines.Add(line);
         return line;
     }
