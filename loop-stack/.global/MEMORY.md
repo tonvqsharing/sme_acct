@@ -44,3 +44,13 @@ Shared across all loops in this project.
 - `IAccountingReportService` in Application layer — report generation port (Infrastructure implements)
 - `CreateJournalEntryCommand` carries `IReadOnlyList<JournalEntryLineInput>` — domain creates Money from inputs
 - DI registration: `AddApplication()` extension method — MediatR assembly scan + open validation behavior + validators
+
+### T1 Discoveries (Sep 2026)
+- Currency VO record in ValueObjects/ is NOT referenced anywhere as a type — Money uses `string Currency` not the VO record. Safe to add entity alongside it without namespace conflicts
+- Company constructor validates fiscal year start month (1–12) and day (1–28). Day capped at 28 for February safety. TaxCode regex validation deferred to FluentValidation
+- CompanyCreated/CurrencyCreated events raised in constructors (same pattern as AccountCreated)
+- Currency entity: Code validated as 3 uppercase chars (ISO 4217). Entity has IsDefault, IsActive, Symbol, DecimalPlaces
+- Port interfaces: ICompanyRepository adds GetByTaxCodeAsync (unique constraint); ICurrencyRepository adds GetByCodeAsync (unique constraint)
+- Both configurations: unique indexes on TaxCode (companies) and Code (currencies)
+- FK note: CompanyId FK needed on FiscalYear, FiscalPeriod, Account, AccountGroup, JournalEntry — deferred to T2/T4/T5
+- Company FunctionalCurrencyCode is a `string` (not FK to Currency entity) — matches Money VO pattern

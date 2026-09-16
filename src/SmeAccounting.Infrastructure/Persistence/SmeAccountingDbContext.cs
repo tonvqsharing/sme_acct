@@ -14,6 +14,8 @@ public class SmeAccountingDbContext : DbContext, IUnitOfWork
     public DbSet<FiscalYear> FiscalYears => Set<FiscalYear>();
     public DbSet<FiscalPeriod> FiscalPeriods => Set<FiscalPeriod>();
     public DbSet<PostingReference> PostingReferences => Set<PostingReference>();
+    public DbSet<Company> Companies => Set<Company>();
+    public DbSet<Currency> Currencies => Set<Currency>();
 
     public SmeAccountingDbContext(DbContextOptions<SmeAccountingDbContext> options)
         : base(options) { }
@@ -25,6 +27,8 @@ public class SmeAccountingDbContext : DbContext, IUnitOfWork
         modelBuilder.Ignore<AccountDeprecated>();
         modelBuilder.Ignore<JournalEntryPosted>();
         modelBuilder.Ignore<PeriodClosed>();
+        modelBuilder.Ignore<CompanyCreated>();
+        modelBuilder.Ignore<CurrencyCreated>();
 
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(SmeAccountingDbContext).Assembly);
         base.OnModelCreating(modelBuilder);
