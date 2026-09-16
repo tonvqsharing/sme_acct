@@ -20,6 +20,7 @@ public class SmeAccountingDbContext : DbContext, IUnitOfWork
     public DbSet<Department> Departments => Set<Department>();
     public DbSet<CostCenter> CostCenters => Set<CostCenter>();
     public DbSet<Project> Projects => Set<Project>();
+    public DbSet<VoucherType> VoucherTypes => Set<VoucherType>();
 
     public SmeAccountingDbContext(DbContextOptions<SmeAccountingDbContext> options)
         : base(options) { }
@@ -38,6 +39,7 @@ public class SmeAccountingDbContext : DbContext, IUnitOfWork
         modelBuilder.Ignore<DepartmentCreated>();
         modelBuilder.Ignore<CostCenterCreated>();
         modelBuilder.Ignore<ProjectCreated>();
+        modelBuilder.Ignore<VoucherTypeCreated>();
 
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(SmeAccountingDbContext).Assembly);
         base.OnModelCreating(modelBuilder);

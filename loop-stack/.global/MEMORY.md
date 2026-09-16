@@ -83,3 +83,19 @@ Shared across all loops in this project.
 - **Backfill note**: `defaultValue: 0L` on non-nullable company_id columns — existing rows get 0, must be backfilled in production
 - **Final schema**: 13 tables total (7 original + 6 new), 14 entities (7 original + 6 new + BaseEntity)
 - **Architecture tests**: 22/22 pass post-migration — no test changes needed for new entities following established patterns
+
+### T1 VoucherType — Cross-Loop Reference (Sep 2026)
+- **New entity file checklist:** Entity(`Domain/Entities/`), Enum(`Domain/ValueObjects/`), Event(`Domain/Events/`), Port(`Domain/Ports/`), EF Config(`Infrastructure/Persistence/Configurations/`), Repository(`Infrastructure/Repositories/`)
+- **DbContext edits:** `DbSet<T>` property + `modelBuilder.Ignore<Event>()` — always both
+- **DI edit:** `AddScoped<IXxx, EfXxx>()` — one line in DependencyInjection.cs
+- **Enum location:** `Domain/ValueObjects/` — NOT `Domain/Enums/` (no such directory; all 7 enums live in ValueObjects/)
+- **Invariant pattern:** `DomainException` for all new entities (replaces legacy `ArgumentNullException`/`ArgumentOutOfRangeException`)
+- **Entity pattern:** CompanyId + Code + Name + IsActive + optional Description — copy from Department/CostCenter/Project
+- **EF config pattern:** `internal sealed class XxxConfiguration : IEntityTypeConfiguration<T>` — `ToTable(snake_plural)`, `HasKey`, `HasColumnName` per property, `HasConversion<string>()` for enums, `HasOne<Company>().WithMany().HasForeignKey().OnDelete(Restrict)`, composite unique index on `(CompanyId, Code)`, xmin row version last
+- **Repository pattern:** tracked for GetById/GetByCode, `AsNoTracking()` for GetAll, `AddAsync` delegates to DbSet — no `UpdateAsync` (change tracking handles it)
+- **Event pattern:** `{Entity}Created(EntityId, CompanyId, occurredOn)` — matches Department/CostCenter/Project events exactly
+- **FK nav-free:** No `Company` navigation property on entity — `HasOne<Company>().WithMany()` in EF config only
+- **Id=0 in constructor:** Known — real ID assigned by EF Core after SaveChanges; events carry provisional 0
+- **Deactivate() no event:** Matches plan; can add `XxxDeactivated` event later if needed
+- **Max lengths:** Code=20, Name=200, Description=500 — enforced in EF config, not domain
+- **Architecture tests:** 22/22 pass — entity in `Domain.Entities`, port starts with `I`, zero new NuGet refs

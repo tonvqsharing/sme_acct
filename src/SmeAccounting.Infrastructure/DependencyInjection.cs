@@ -33,6 +33,7 @@ public static class DependencyInjection
         services.AddScoped<IDepartmentRepository, EfDepartmentRepository>();
         services.AddScoped<ICostCenterRepository, EfCostCenterRepository>();
         services.AddScoped<IProjectRepository, EfProjectRepository>();
+        services.AddScoped<IVoucherTypeRepository, EfVoucherTypeRepository>();
 
         services.AddSingleton<IClock, SystemClock>();
         services.AddScoped<IAuditLogger, AuditLogger>();
