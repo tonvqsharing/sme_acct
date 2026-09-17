@@ -2638,3 +2638,1685 @@ OpeningBalanceMapping has only 6 properties (CompanyId, VoucherTypeId, DebitAcco
 
 #### 12. FiscalPeriod Reference
 The plan mentions "existing Account/FiscalPeriod entities" as dependencies. However, OpeningBalanceMapping does NOT have a FiscalPeriodId FK. FiscalPeriod is an indirect dependency — the Application layer (Task 6) will use FiscalPeriod to determine when opening balance entries should be posted, but the mapping entity itself only references VoucherType and Account.
+
+---
+
+## Task-Specific Research — Task 6: Application Layer — Commands + Queries for All 5 Slices
+
+**Goal:** Create MediatR commands, queries, DTOs, validators, and handlers for all 5 Phase 2 domains (VoucherType, DocumentNumberingSeries, TransactionReason, PostingConfiguration, OpeningBalanceMapping).
+
+**Depends on:** Tasks 1-5 (all domain entities + infrastructure complete).
+
+**CRITICAL DISCOVERY: No handler implementations exist anywhere in the codebase.** All 6 existing commands (CreateAccountCommand, DeprecateAccountCommand, CreateJournalEntryCommand, PostJournalEntryCommand, CloseFiscalPeriodCommand, OpenFiscalPeriodCommand) and 6 existing queries (GetAccountQuery, GetAccountsByGroupQuery, GetJournalEntryQuery, GetFiscalPeriodsQuery, GetBalanceSheetQuery, GetIncomeStatementQuery) are defined as records implementing `IRequest<T>`, but there are ZERO `IRequestHandler<TRequest, TResponse>` implementations anywhere in the solution. Controllers dispatch via MediatR but no handlers exist. Task 6 must create a new `Handlers/` directory and implement handlers for ALL commands/queries (both existing Phase 1 and new Phase 2).
+
+### File List — Complete Task 6 Output
+
+**Total: ~30 new files, 0 modified files.**
+
+| # | File Path | Type | Slice |
+|---|-----------|------|-------|
+| 1 | `src/SmeAccounting.Application/DTOs/VoucherTypeDto.cs` | DTO | VoucherType |
+| 2 | `src/SmeAccounting.Application/DTOs/DocumentNumberingSeriesDto.cs` | DTO | DocumentNumberingSeries |
+| 3 | `src/SmeAccounting.Application/DTOs/TransactionReasonDto.cs` | DTO | TransactionReason |
+| 4 | `src/SmeAccounting.Application/DTOs/PostingConfigurationDto.cs` | DTO | PostingConfiguration |
+| 5 | `src/SmeAccounting.Application/DTOs/OpeningBalanceMappingDto.cs` | DTO | OpeningBalanceMapping |
+| 6 | `src/SmeAccounting.Application/Commands/CreateVoucherTypeCommand.cs` | Command | VoucherType |
+| 7 | `src/SmeAccounting.Application/Commands/DeactivateVoucherTypeCommand.cs` | Command | VoucherType |
+| 8 | `src/SmeAccounting.Application/Commands/CreateDocumentNumberingSeriesCommand.cs` | Command | DocumentNumberingSeries |
+| 9 | `src/SmeAccounting.Application/Commands/ResetNumberingSeriesCommand.cs` | Command | DocumentNumberingSeries |
+| 10 | `src/SmeAccounting.Application/Commands/CreateTransactionReasonCommand.cs` | Command | TransactionReason |
+| 11 | `src/SmeAccounting.Application/Commands/DeactivateTransactionReasonCommand.cs` | Command | TransactionReason |
+| 12 | `src/SmeAccounting.Application/Commands/CreatePostingConfigurationCommand.cs` | Command | PostingConfiguration |
+| 13 | `src/SmeAccounting.Application/Commands/DeactivatePostingConfigurationCommand.cs` | Command | PostingConfiguration |
+| 14 | `src/SmeAccounting.Application/Commands/CreateOpeningBalanceMappingCommand.cs` | Command | OpeningBalanceMapping |
+| 15 | `src/SmeAccounting.Application/Commands/DeactivateOpeningBalanceMappingCommand.cs` | Command | OpeningBalanceMapping |
+| 16 | `src/SmeAccounting.Application/Queries/GetVoucherTypeQuery.cs` | Query | VoucherType |
+| 17 | `src/SmeAccounting.Application/Queries/GetVoucherTypesByCompanyQuery.cs` | Query | VoucherType |
+| 18 | `src/SmeAccounting.Application/Queries/GetNumberingSeriesQuery.cs` | Query | DocumentNumberingSeries |
+| 19 | `src/SmeAccounting.Application/Queries/GetNumberingSeriesByCompanyQuery.cs` | Query | DocumentNumberingSeries |
+| 20 | `src/SmeAccounting.Application/Queries/GetTransactionReasonQuery.cs` | Query | TransactionReason |
+| 21 | `src/SmeAccounting.Application/Queries/GetTransactionReasonsByVoucherTypeQuery.cs` | Query | TransactionReason |
+| 22 | `src/SmeAccounting.Application/Queries/GetPostingConfigurationQuery.cs` | Query | PostingConfiguration |
+| 23 | `src/SmeAccounting.Application/Queries/GetPostingConfigurationsByCompanyQuery.cs` | Query | PostingConfiguration |
+| 24 | `src/SmeAccounting.Application/Queries/GetOpeningBalanceMappingQuery.cs` | Query | OpeningBalanceMapping |
+| 25 | `src/SmeAccounting.Application/Queries/GetOpeningBalanceMappingsByCompanyQuery.cs` | Query | OpeningBalanceMapping |
+| 26 | `src/SmeAccounting.Application/Validators/CreateVoucherTypeCommandValidator.cs` | Validator | VoucherType |
+| 27 | `src/SmeAccounting.Application/Validators/CreateDocumentNumberingSeriesCommandValidator.cs` | Validator | DocumentNumberingSeries |
+| 28 | `src/SmeAccounting.Application/Validators/CreateTransactionReasonCommandValidator.cs` | Validator | TransactionReason |
+| 29 | `src/SmeAccounting.Application/Validators/CreatePostingConfigurationCommandValidator.cs` | Validator | PostingConfiguration |
+| 30 | `src/SmeAccounting.Application/Validators/CreateOpeningBalanceMappingCommandValidator.cs` | Validator | OpeningBalanceMapping |
+| 31 | `src/SmeAccounting.Application/Handlers/` (directory) | Directory | All |
+| 32-41 | `src/SmeAccounting.Application/Handlers/*.cs` (10 handler files) | Handlers | All |
+
+---
+
+### 1. Existing Application Layer Patterns (Exhaustive Reference)
+
+#### 1.1 Command Pattern
+
+**File pattern:** One file per command, command + result records in same file.
+**Namespace:** `SmeAccounting.Application.Commands`
+**File-scoped namespace:** Yes (`namespace SmeAccounting.Application.Commands;`)
+**Type:** `record` implementing `IRequest<TResult>`
+
+**Exact existing patterns:**
+
+```csharp
+// Simple command (from CreateAccountCommand.cs)
+using MediatR;
+using SmeAccounting.Domain.ValueObjects;
+
+namespace SmeAccounting.Application.Commands;
+
+public record CreateAccountCommand(
+    string Code,
+    string Name,
+    AccountType AccountType,
+    long CompanyId,
+    NormalBalance NormalBalance,
+    long? ParentId,
+    long? AccountGroupId,
+    string? Description = null) : IRequest<CreateAccountResult>;
+
+public record CreateAccountResult(long Id);
+```
+
+```csharp
+// Simple deprecation command (from DeprecateAccountCommand.cs)
+using MediatR;
+
+namespace SmeAccounting.Application.Commands;
+
+public record DeprecateAccountCommand(long AccountId) : IRequest<DeprecateAccountResult>;
+
+public record DeprecateAccountResult(long AccountId);
+```
+
+```csharp
+// Command with nested input type (from CreateJournalEntryCommand.cs)
+using MediatR;
+using SmeAccounting.Application.DTOs;
+
+namespace SmeAccounting.Application.Commands;
+
+public record CreateJournalEntryCommand(
+    DateTimeOffset Date,
+    long PeriodId,
+    string? Description,
+    string? SourceType,
+    long? SourceId,
+    IReadOnlyList<JournalEntryLineInput> Lines) : IRequest<CreateJournalEntryResult>;
+
+public record JournalEntryLineInput(
+    long AccountId,
+    decimal DebitAmount,
+    decimal CreditAmount,
+    string? Description);
+
+public record CreateJournalEntryResult(long Id, string EntryNumber);
+```
+
+**Key pattern observations:**
+- Command record uses positional parameters (primary constructor syntax)
+- Result record defined in same file, immediately after command
+- Result record name follows: `{CommandNameWithoutCommand}Result` pattern (e.g., `CreateAccountResult`, `DeprecateAccountResult`)
+- Optional parameters use `?` nullable + default value (e.g., `string? Description = null`)
+- `long?` for nullable FK IDs
+- `IReadOnlyList<T>` for collection inputs
+- No validation in command constructors — validation is in FluentValidation validators
+
+#### 1.2 Query Pattern
+
+**File pattern:** One file per query.
+**Namespace:** `SmeAccounting.Application.Queries`
+**Type:** `record` implementing `IRequest<ResponseType>`
+
+**Exact existing patterns:**
+
+```csharp
+// Single-item query (from GetAccountQuery.cs)
+using MediatR;
+using SmeAccounting.Application.DTOs;
+
+namespace SmeAccounting.Application.Queries;
+
+public record GetAccountQuery(long AccountId) : IRequest<AccountDto?>;
+```
+
+```csharp
+// Collection query (from GetAccountsByGroupQuery.cs)
+using MediatR;
+using SmeAccounting.Application.DTOs;
+
+namespace SmeAccounting.Application.Queries;
+
+public record GetAccountsByGroupQuery(long AccountGroupId) : IRequest<IReadOnlyList<AccountDto>>;
+```
+
+```csharp
+// Nullable parameter query (from GetFiscalPeriodsQuery.cs)
+using MediatR;
+using SmeAccounting.Application.DTOs;
+
+namespace SmeAccounting.Application.Queries;
+
+public record GetFiscalPeriodsQuery(long? YearId) : IRequest<IReadOnlyList<FiscalPeriodDto>>;
+```
+
+```csharp
+// Non-nullable return type query (from GetBalanceSheetQuery.cs)
+using MediatR;
+using SmeAccounting.Application.DTOs;
+
+namespace SmeAccounting.Application.Queries;
+
+public record GetBalanceSheetQuery(long PeriodId) : IRequest<BalanceSheetDto>;
+```
+
+**Key pattern observations:**
+- Single-item queries return `DtoType?` (nullable)
+- Collection queries return `IReadOnlyList<DtoType>`
+- Non-nullable returns for aggregate queries (BalanceSheet, IncomeStatement)
+- Query parameter names use entity-specific names (e.g., `AccountId`, `AccountGroupId`, `PeriodId`)
+- No validators on queries (only commands have validators)
+
+#### 1.3 DTO Pattern
+
+**File pattern:** One file per DTO. Simple records with no methods.
+**Namespace:** `SmeAccounting.Application.DTOs`
+**Type:** `record` (positional parameters)
+
+**Critical: Enums are stored as `string` in DTOs, NOT as enum types.** This is the established pattern.
+
+**Exact existing patterns:**
+
+```csharp
+// Simple DTO (from AccountDto.cs)
+namespace SmeAccounting.Application.DTOs;
+
+public record AccountDto(
+    long Id,
+    string Code,
+    string Name,
+    int Level,
+    long? ParentId,
+    string AccountType,      // enum stored as string
+    bool IsActive,
+    long? AccountGroupId,
+    long CompanyId,
+    string? Description,
+    string NormalBalance);   // enum stored as string
+```
+
+```csharp
+// DTO with nested collection (from JournalEntryDto.cs)
+namespace SmeAccounting.Application.DTOs;
+
+public record JournalEntryDto(
+    long Id,
+    string EntryNumber,
+    DateTimeOffset Date,
+    long PeriodId,
+    string? Description,
+    bool IsPosted,
+    DateTimeOffset? PostedAt,
+    IReadOnlyList<JournalEntryLineDto> Lines);
+```
+
+```csharp
+// Helper DTO (from MoneyDto.cs)
+namespace SmeAccounting.Application.DTOs;
+
+public record MoneyDto(decimal Amount, string Currency);
+```
+
+```csharp
+// Aggregate DTO (from BalanceSheetDto.cs)
+namespace SmeAccounting.Application.DTOs;
+
+public record BalanceSheetDto(
+    IReadOnlyList<AccountGroupTotal> Assets,
+    IReadOnlyList<AccountGroupTotal> Liabilities,
+    IReadOnlyList<AccountGroupTotal> Equity);
+
+public record AccountGroupTotal(string GroupName, decimal Total, string Currency);
+```
+
+**Key pattern observations:**
+- DTOs are pure records — no methods, no validation, no domain references
+- Enums mapped as `string` (e.g., `string AccountType`, `string NormalBalance`, `string Status`)
+- Nullable properties use `string?`, `long?`, `DateTimeOffset?`
+- `IReadOnlyList<T>` for collection properties
+- Each DTO in its own file (except AccountGroupTotal which is a helper in BalanceSheetDto.cs)
+- All DTOs MUST end with `Dto` suffix (architecture test enforces this)
+- No `using` statements needed for simple records (file-scoped namespace)
+
+#### 1.4 Validator Pattern
+
+**File pattern:** One file per validator.
+**Namespace:** `SmeAccounting.Application.Validators`
+**Type:** `class` inheriting `AbstractValidator<TCommand>`
+
+**Exact existing patterns:**
+
+```csharp
+// Complex validator (from CreateAccountCommandValidator.cs)
+using FluentValidation;
+using SmeAccounting.Application.Commands;
+
+namespace SmeAccounting.Application.Validators;
+
+public class CreateAccountCommandValidator : AbstractValidator<CreateAccountCommand>
+{
+    public CreateAccountCommandValidator()
+    {
+        RuleFor(x => x.Code)
+            .NotEmpty().WithMessage("Account code is required.")
+            .Matches(@"^\d{4,}$").WithMessage("Account code must be numeric, at least 4 digits.");
+
+        RuleFor(x => x.Name)
+            .NotEmpty().WithMessage("Account name is required.")
+            .MaximumLength(200).WithMessage("Account name cannot exceed 200 characters.");
+
+        RuleFor(x => x.AccountType)
+            .IsInEnum().WithMessage("Invalid account type.");
+    }
+}
+```
+
+```csharp
+// Simple ID validator (from PostJournalEntryCommandValidator.cs)
+using FluentValidation;
+using SmeAccounting.Application.Commands;
+
+namespace SmeAccounting.Application.Validators;
+
+public class PostJournalEntryCommandValidator : AbstractValidator<PostJournalEntryCommand>
+{
+    public PostJournalEntryCommandValidator()
+    {
+        RuleFor(x => x.JournalEntryId)
+            .GreaterThan(0).WithMessage("Journal entry ID is required.");
+    }
+}
+```
+
+```csharp
+// Collection validator (from CreateJournalEntryCommandValidator.cs)
+using FluentValidation;
+using SmeAccounting.Application.Commands;
+
+namespace SmeAccounting.Application.Validators;
+
+public class CreateJournalEntryCommandValidator : AbstractValidator<CreateJournalEntryCommand>
+{
+    public CreateJournalEntryCommandValidator()
+    {
+        RuleFor(x => x.PeriodId)
+            .GreaterThan(0).WithMessage("Period ID is required.");
+
+        RuleFor(x => x.Lines)
+            .NotEmpty().WithMessage("Journal entry must have at least one line.");
+
+        RuleForEach(x => x.Lines).ChildRules(line =>
+        {
+            line.RuleFor(l => l.AccountId)
+                .GreaterThan(0).WithMessage("Line must have a valid account.");
+        });
+    }
+}
+```
+
+**Key pattern observations:**
+- Constructor-based rules (no `RuleLevelCascadeMode` or class-level settings)
+- `RuleFor(x => x.Property)` fluent syntax
+- `.NotEmpty()` for strings
+- `.GreaterThan(0)` for long IDs
+- `.IsInEnum()` for enum values
+- `.MaximumLength(N)` for string length limits
+- `.Matches("regex")` for pattern validation
+- `.WithMessage("...")` on every rule
+- `RuleForEach(...).ChildRules(...)` for collection validation
+- Validators auto-discovered by `AddValidatorsFromAssembly` — no manual registration needed
+- Namespace: `SmeAccounting.Application.Validators`
+
+#### 1.5 Handler Pattern (CRITICAL — No Existing Handlers)
+
+**NO HANDLERS EXIST.** This is the most important finding. The 6 existing commands and 6 existing queries have no `IRequestHandler<>` implementations. Task 6 must create ALL handlers from scratch.
+
+**Handler directory:** New `src/SmeAccounting.Application/Handlers/` directory.
+**Namespace:** `SmeAccounting.Application.Handlers`
+**Type:** `class` implementing `IRequestHandler<TCommand, TResult>` or `IRequestHandler<TQuery, TResult>`
+
+**Architecture constraint:** Handlers must NOT reference `SmeAccounting.Infrastructure` namespace (enforced by `Application_Handlers_Should_Not_Reference_Infrastructure_Namespace` test). Handlers use port interfaces (e.g., `IVoucherTypeRepository`) injected via constructor.
+
+**DI auto-registration:** `AddMediatR(cfg => cfg.RegisterServicesFromAssembly(...))` scans the Application assembly and auto-registers all `IRequestHandler<>` implementations. No manual handler registration needed.
+
+**Handler template (to be created):**
+
+```csharp
+using MediatR;
+using SmeAccounting.Application.Commands;
+using SmeAccounting.Application.DTOs;
+using SmeAccounting.Domain.Ports;
+
+namespace SmeAccounting.Application.Handlers;
+
+internal sealed class CreateVoucherTypeHandler(
+    IVoucherTypeRepository repository,
+    IUnitOfWork unitOfWork)
+    : IRequestHandler<CreateVoucherTypeCommand, CreateVoucherTypeResult>
+{
+    public async Task<CreateVoucherTypeResult> Handle(
+        CreateVoucherTypeCommand request,
+        CancellationToken cancellationToken)
+    {
+        var voucherType = new VoucherType(
+            request.CompanyId, request.Code, request.Name,
+            request.VoucherCategory, request.Description);
+
+        await repository.AddAsync(voucherType);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
+
+        return new CreateVoucherTypeResult(voucherType.Id);
+    }
+}
+```
+
+**Key handler pattern observations (derived from architecture + DI patterns):**
+- `internal sealed class` — not public (matches Infrastructure pattern)
+- Primary constructor with port interfaces injected
+- Implements `IRequestHandler<TCommand, TResult>`
+- Single `Handle` method with `(TCommand request, CancellationToken ct)`
+- Create handlers: new entity -> repo.AddAsync -> unitOfWork.SaveChangesAsync -> return result
+- Deactivate handlers: repo.GetByIdAsync -> entity.Deactivate() -> unitOfWork.SaveChangesAsync -> return result
+- Query handlers: repo.GetByIdAsync -> map to DTO -> return DTO
+- Collection query handlers: repo.GetAllByXAsync -> map to IReadOnlyList<DTO> -> return list
+- Mapping: manual property-by-property (no AutoMapper)
+
+#### 1.6 DI Registration Pattern
+
+**File:** `src/SmeAccounting.Application/DependencyInjection.cs`
+
+**Current code:**
+```csharp
+using FluentValidation;
+using MediatR;
+using Microsoft.Extensions.DependencyInjection;
+using SmeAccounting.Application.Behaviors;
+
+namespace SmeAccounting.Application;
+
+public static class DependencyInjection
+{
+    public static IServiceCollection AddApplication(this IServiceCollection services)
+    {
+        services.AddMediatR(cfg =>
+        {
+            cfg.RegisterServicesFromAssembly(typeof(DependencyInjection).Assembly);
+            cfg.AddOpenBehavior(typeof(ValidationBehavior<,>));
+        });
+
+        services.AddValidatorsFromAssembly(typeof(DependencyInjection).Assembly);
+
+        return services;
+    }
+}
+```
+
+**No changes needed.** The assembly scan (`RegisterServicesFromAssembly`) auto-discovers:
+- All `IRequestHandler<>` implementations (new handlers in `Handlers/` directory)
+- All `IValidator<>` implementations (new validators in `Validators/` directory)
+- The `ValidationBehavior<>` pipeline behavior (already registered)
+
+Adding new files to the Application assembly is sufficient. No manual DI registration required.
+
+#### 1.7 ValidationBehavior Pipeline
+
+**File:** `src/SmeAccounting.Application/Behaviors/ValidationBehavior.cs`
+
+```csharp
+public class ValidationBehavior<TRequest, TResponse>(
+    IEnumerable<IValidator<TRequest>> validators)
+    : IPipelineBehavior<TRequest, TResponse>
+    where TRequest : IRequest<TResponse>
+```
+
+- Runs ALL validators for a command before the handler executes
+- If any validation fails, throws `FluentValidation.ValidationException` with aggregated failures
+- Skipped if no validators registered for the command type
+- Controllers catch `ValidationException` and populate ModelState
+
+#### 1.8 Application Project References
+
+**File:** `src/SmeAccounting.Application/SmeAccounting.Application.csproj`
+
+```xml
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="..\SmeAccounting.Domain\SmeAccounting.Domain.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="MediatR" Version="14.2.0" />
+    <PackageReference Include="FluentValidation" Version="12.1.0" />
+    <PackageReference Include="FluentValidation.DependencyInjectionExtensions" Version="12.1.0" />
+  </ItemGroup>
+</Project>
+```
+
+Application references ONLY Domain. No Infrastructure reference. This is why handlers use port interfaces, not EF Core directly.
+
+---
+
+### 2. Phase 2 Domain Reference — Entity Constructors + Port Methods
+
+Handlers need to create entities and call repo methods. Here are the exact constructor signatures and port interfaces for all 5 entities:
+
+#### 2.1 VoucherType
+
+**Entity constructor:**
+```csharp
+new VoucherType(long companyId, string code, string name, VoucherCategory voucherCategory, string? description = null)
+```
+
+**Port:**
+```csharp
+IVoucherTypeRepository {
+    Task<VoucherType?> GetByIdAsync(long id);
+    Task<VoucherType?> GetByCodeAsync(string code, long companyId);
+    Task<IReadOnlyList<VoucherType>> GetAllAsync();
+    Task AddAsync(VoucherType voucherType);
+}
+```
+
+**Domain method:** `Deactivate()` — sets `IsActive = false`
+
+#### 2.2 DocumentNumberingSeries
+
+**Entity constructor:**
+```csharp
+new DocumentNumberingSeries(
+    long companyId, long voucherTypeId, string prefix,
+    int paddingLength = 6, bool isDefault = false, string? description = null)
+```
+
+**Port:**
+```csharp
+IDocumentNumberingSeriesRepository {
+    Task<DocumentNumberingSeries?> GetByIdAsync(long id);
+    Task<DocumentNumberingSeries?> GetDefaultAsync(long voucherTypeId, long companyId);
+    Task<IReadOnlyList<DocumentNumberingSeries>> GetAllByCompanyAsync(long companyId);
+    Task AddAsync(DocumentNumberingSeries series);
+}
+```
+
+**Domain methods:** `Increment()`, `Reset(int startFrom)`, `Deactivate()`
+
+#### 2.3 TransactionReason
+
+**Entity constructor:**
+```csharp
+new TransactionReason(long companyId, long voucherTypeId, string code, string name, string? description = null)
+```
+
+**Port:**
+```csharp
+ITransactionReasonRepository {
+    Task<TransactionReason?> GetByIdAsync(long id);
+    Task<TransactionReason?> GetByCodeAsync(string code, long companyId);
+    Task<IReadOnlyList<TransactionReason>> GetAllByVoucherTypeAsync(long voucherTypeId);
+    Task AddAsync(TransactionReason transactionReason);
+}
+```
+
+**Domain method:** `Deactivate()`
+
+#### 2.4 PostingConfiguration
+
+**Entity constructor:**
+```csharp
+new PostingConfiguration(
+    long companyId, long voucherTypeId, long debitAccountId, long creditAccountId,
+    long? transactionReasonId = null, int displayOrder = 0, string? description = null)
+```
+
+**Port:**
+```csharp
+IPostingConfigurationRepository {
+    Task<PostingConfiguration?> GetByIdAsync(long id);
+    Task<IReadOnlyList<PostingConfiguration>> GetAllByVoucherTypeAsync(long voucherTypeId, long companyId);
+    Task<IReadOnlyList<PostingConfiguration>> GetAllByCompanyAsync(long companyId);
+    Task AddAsync(PostingConfiguration postingConfiguration);
+}
+```
+
+**Domain method:** `Deactivate()`
+
+#### 2.5 OpeningBalanceMapping
+
+**Entity constructor:**
+```csharp
+new OpeningBalanceMapping(
+    long companyId, long voucherTypeId, long debitAccountId, long creditAccountId,
+    string? description = null)
+```
+
+**Port:**
+```csharp
+IOpeningBalanceMappingRepository {
+    Task<OpeningBalanceMapping?> GetByIdAsync(long id);
+    Task<IReadOnlyList<OpeningBalanceMapping>> GetAllByCompanyAsync(long companyId);
+    Task AddAsync(OpeningBalanceMapping mapping);
+}
+```
+
+**Domain method:** `Deactivate()`
+
+#### 2.6 IUnitOfWork
+
+```csharp
+IUnitOfWork {
+    Task<int> SaveChangesAsync(CancellationToken ct = default);
+}
+```
+
+Implemented by `SmeAccountingDbContext`. Every command handler must call `unitOfWork.SaveChangesAsync(cancellationToken)` after mutations.
+
+---
+
+### 3. Exact Command Definitions (from PLAN.md)
+
+#### 3.1 VoucherType Commands
+
+```csharp
+// CreateVoucherTypeCommand
+public record CreateVoucherTypeCommand(
+    string Code,
+    string Name,
+    VoucherCategory VoucherCategory,
+    long CompanyId,
+    string? Description = null) : IRequest<CreateVoucherTypeResult>;
+
+public record CreateVoucherTypeResult(long Id);
+```
+
+```csharp
+// DeactivateVoucherTypeCommand
+public record DeactivateVoucherTypeCommand(long VoucherTypeId) : IRequest<DeactivateVoucherTypeResult>;
+
+public record DeactivateVoucherTypeResult;
+```
+
+**Gotcha — DeactivateVoucherTypeResult has NO properties:** Unlike DeprecateAccountResult(long AccountId) which echoes the ID back, the plan specifies `DeactivateVoucherTypeResult` with no parameters. Same pattern for all 4 deactivate commands. This is a parameterless result record.
+
+#### 3.2 DocumentNumberingSeries Commands
+
+```csharp
+// CreateDocumentNumberingSeriesCommand
+public record CreateDocumentNumberingSeriesCommand(
+    long VoucherTypeId,
+    long CompanyId,
+    string Prefix,
+    int PaddingLength,
+    bool IsDefault,
+    string? Description = null) : IRequest<CreateDocumentNumberingSeriesResult>;
+
+public record CreateDocumentNumberingSeriesResult(long Id);
+```
+
+```csharp
+// ResetNumberingSeriesCommand
+public record ResetNumberingSeriesCommand(long SeriesId, int StartFrom) : IRequest<ResetNumberingSeriesResult>;
+
+public record ResetNumberingSeriesResult;
+```
+
+**Gotcha — ResetNumberingSeriesResult has no properties:** Same as deactivate pattern. No echo of SeriesId.
+
+#### 3.3 TransactionReason Commands
+
+```csharp
+// CreateTransactionReasonCommand
+public record CreateTransactionReasonCommand(
+    string Code,
+    string Name,
+    long VoucherTypeId,
+    long CompanyId,
+    string? Description = null) : IRequest<CreateTransactionReasonResult>;
+
+public record CreateTransactionReasonResult(long Id);
+```
+
+```csharp
+// DeactivateTransactionReasonCommand
+public record DeactivateTransactionReasonCommand(long ReasonId) : IRequest<DeactivateTransactionReasonResult>;
+
+public record DeactivateTransactionReasonResult;
+```
+
+**Gotcha — Parameter name is `ReasonId`, not `TransactionReasonId`:** The plan specifies `ReasonId` as the command parameter name. Follow this exactly.
+
+#### 3.4 PostingConfiguration Commands
+
+```csharp
+// CreatePostingConfigurationCommand
+public record CreatePostingConfigurationCommand(
+    long VoucherTypeId,
+    long DebitAccountId,
+    long CreditAccountId,
+    long CompanyId,
+    long? TransactionReasonId,
+    string? Description = null) : IRequest<CreatePostingConfigurationResult>;
+
+public record CreatePostingConfigurationResult(long Id);
+```
+
+```csharp
+// DeactivatePostingConfigurationCommand
+public record DeactivatePostingConfigurationCommand(long ConfigId) : IRequest<DeactivatePostingConfigurationResult>;
+
+public record DeactivatePostingConfigurationResult;
+```
+
+**Gotcha — Parameter name is `ConfigId`, not `PostingConfigurationId`:** Follow plan exactly.
+
+#### 3.5 OpeningBalanceMapping Commands
+
+```csharp
+// CreateOpeningBalanceMappingCommand
+public record CreateOpeningBalanceMappingCommand(
+    long CompanyId,
+    long VoucherTypeId,
+    long DebitAccountId,
+    long CreditAccountId,
+    string? Description = null) : IRequest<CreateOpeningBalanceMappingResult>;
+
+public record CreateOpeningBalanceMappingResult(long Id);
+```
+
+```csharp
+// DeactivateOpeningBalanceMappingCommand
+public record DeactivateOpeningBalanceMappingCommand(long MappingId) : IRequest<DeactivateOpeningBalanceMappingResult>;
+
+public record DeactivateOpeningBalanceMappingResult;
+```
+
+**Gotcha — Parameter name is `MappingId`:** Follow plan exactly.
+
+---
+
+### 4. Exact Query Definitions (from PLAN.md)
+
+#### 4.1 VoucherType Queries
+
+```csharp
+// GetVoucherTypeQuery
+public record GetVoucherTypeQuery(long VoucherTypeId) : IRequest<VoucherTypeDto?>;
+```
+
+```csharp
+// GetVoucherTypesByCompanyQuery
+public record GetVoucherTypesByCompanyQuery(long CompanyId) : IRequest<IReadOnlyList<VoucherTypeDto>>;
+```
+
+#### 4.2 DocumentNumberingSeries Queries
+
+```csharp
+// GetNumberingSeriesQuery
+public record GetNumberingSeriesQuery(long SeriesId) : IRequest<DocumentNumberingSeriesDto?>;
+```
+
+```csharp
+// GetNumberingSeriesByCompanyQuery
+public record GetNumberingSeriesByCompanyQuery(long CompanyId) : IRequest<IReadOnlyList<DocumentNumberingSeriesDto>>;
+```
+
+#### 4.3 TransactionReason Queries
+
+```csharp
+// GetTransactionReasonQuery
+public record GetTransactionReasonQuery(long ReasonId) : IRequest<TransactionReasonDto?>;
+```
+
+```csharp
+// GetTransactionReasonsByVoucherTypeQuery
+public record GetTransactionReasonsByVoucherTypeQuery(long VoucherTypeId) : IRequest<IReadOnlyList<TransactionReasonDto>>;
+```
+
+#### 4.4 PostingConfiguration Queries
+
+```csharp
+// GetPostingConfigurationQuery
+public record GetPostingConfigurationQuery(long ConfigId) : IRequest<PostingConfigurationDto?>;
+```
+
+```csharp
+// GetPostingConfigurationsByCompanyQuery
+public record GetPostingConfigurationsByCompanyQuery(long CompanyId) : IRequest<IReadOnlyList<PostingConfigurationDto>>;
+```
+
+#### 4.5 OpeningBalanceMapping Queries
+
+```csharp
+// GetOpeningBalanceMappingQuery
+public record GetOpeningBalanceMappingQuery(long MappingId) : IRequest<OpeningBalanceMappingDto?>;
+```
+
+```csharp
+// GetOpeningBalanceMappingsByCompanyQuery
+public record GetOpeningBalanceMappingsByCompanyQuery(long CompanyId) : IRequest<IReadOnlyList<OpeningBalanceMappingDto>>;
+```
+
+**Query naming convention:** `Get{Entity}Query` for single item, `Get{EntityPlural}By{Scope}Query` for collection.
+
+---
+
+### 5. DTO Definitions
+
+All DTOs are records in `SmeAccounting.Application.DTOs`. Enums stored as `string`.
+
+```csharp
+// VoucherTypeDto.cs
+namespace SmeAccounting.Application.DTOs;
+
+public record VoucherTypeDto(
+    long Id,
+    string Code,
+    string Name,
+    string VoucherCategory,  // enum as string
+    long CompanyId,
+    bool IsActive,
+    string? Description);
+```
+
+```csharp
+// DocumentNumberingSeriesDto.cs
+namespace SmeAccounting.Application.DTOs;
+
+public record DocumentNumberingSeriesDto(
+    long Id,
+    long VoucherTypeId,
+    long CompanyId,
+    string Prefix,
+    int NextNumber,
+    int PaddingLength,
+    bool IsDefault,
+    bool IsActive,
+    string? Description);
+```
+
+```csharp
+// TransactionReasonDto.cs
+namespace SmeAccounting.Application.DTOs;
+
+public record TransactionReasonDto(
+    long Id,
+    string Code,
+    string Name,
+    long VoucherTypeId,
+    long CompanyId,
+    bool IsActive,
+    string? Description);
+```
+
+```csharp
+// PostingConfigurationDto.cs
+namespace SmeAccounting.Application.DTOs;
+
+public record PostingConfigurationDto(
+    long Id,
+    long VoucherTypeId,
+    long DebitAccountId,
+    long CreditAccountId,
+    long CompanyId,
+    long? TransactionReasonId,
+    int DisplayOrder,
+    bool IsActive,
+    string? Description);
+```
+
+```csharp
+// OpeningBalanceMappingDto.cs
+namespace SmeAccounting.Application.DTOs;
+
+public record OpeningBalanceMappingDto(
+    long Id,
+    long CompanyId,
+    long VoucherTypeId,
+    long DebitAccountId,
+    long CreditAccountId,
+    bool IsActive,
+    string? Description);
+```
+
+**DTO mapping in handlers (entity -> DTO):**
+
+```csharp
+// Example: VoucherType entity -> VoucherTypeDto
+var dto = new VoucherTypeDto(
+    entity.Id,
+    entity.Code,
+    entity.Name,
+    entity.VoucherCategory.ToString(),  // enum -> string
+    entity.CompanyId,
+    entity.IsActive,
+    entity.Description);
+```
+
+**Critical: `.ToString()` for enum-to-string mapping.** This matches the existing pattern where `AccountType` enum is mapped to `string AccountType` in `AccountDto` via `.ToString()`.
+
+---
+
+### 6. Validator Definitions
+
+#### 6.1 CreateVoucherTypeCommandValidator
+
+```csharp
+using FluentValidation;
+using SmeAccounting.Application.Commands;
+
+namespace SmeAccounting.Application.Validators;
+
+public class CreateVoucherTypeCommandValidator : AbstractValidator<CreateVoucherTypeCommand>
+{
+    public CreateVoucherTypeCommandValidator()
+    {
+        RuleFor(x => x.Code)
+            .NotEmpty().WithMessage("Voucher type code is required.")
+            .MaximumLength(20).WithMessage("Voucher type code cannot exceed 20 characters.");
+
+        RuleFor(x => x.Name)
+            .NotEmpty().WithMessage("Voucher type name is required.")
+            .MaximumLength(200).WithMessage("Voucher type name cannot exceed 200 characters.");
+
+        RuleFor(x => x.VoucherCategory)
+            .IsInEnum().WithMessage("Invalid voucher category.");
+
+        RuleFor(x => x.CompanyId)
+            .GreaterThan(0).WithMessage("Company ID is required.");
+    }
+}
+```
+
+#### 6.2 CreateDocumentNumberingSeriesCommandValidator
+
+```csharp
+using FluentValidation;
+using SmeAccounting.Application.Commands;
+
+namespace SmeAccounting.Application.Validators;
+
+public class CreateDocumentNumberingSeriesCommandValidator : AbstractValidator<CreateDocumentNumberingSeriesCommand>
+{
+    public CreateDocumentNumberingSeriesCommandValidator()
+    {
+        RuleFor(x => x.VoucherTypeId)
+            .GreaterThan(0).WithMessage("Voucher type ID is required.");
+
+        RuleFor(x => x.CompanyId)
+            .GreaterThan(0).WithMessage("Company ID is required.");
+
+        RuleFor(x => x.Prefix)
+            .NotEmpty().WithMessage("Prefix is required.")
+            .MaximumLength(20).WithMessage("Prefix cannot exceed 20 characters.");
+
+        RuleFor(x => x.PaddingLength)
+            .InclusiveBetween(1, 10).WithMessage("Padding length must be between 1 and 10.");
+    }
+}
+```
+
+#### 6.3 CreateTransactionReasonCommandValidator
+
+```csharp
+using FluentValidation;
+using SmeAccounting.Application.Commands;
+
+namespace SmeAccounting.Application.Validators;
+
+public class CreateTransactionReasonCommandValidator : AbstractValidator<CreateTransactionReasonCommand>
+{
+    public CreateTransactionReasonCommandValidator()
+    {
+        RuleFor(x => x.Code)
+            .NotEmpty().WithMessage("Transaction reason code is required.")
+            .MaximumLength(20).WithMessage("Transaction reason code cannot exceed 20 characters.");
+
+        RuleFor(x => x.Name)
+            .NotEmpty().WithMessage("Transaction reason name is required.")
+            .MaximumLength(200).WithMessage("Transaction reason name cannot exceed 200 characters.");
+
+        RuleFor(x => x.VoucherTypeId)
+            .GreaterThan(0).WithMessage("Voucher type ID is required.");
+
+        RuleFor(x => x.CompanyId)
+            .GreaterThan(0).WithMessage("Company ID is required.");
+    }
+}
+```
+
+#### 6.4 CreatePostingConfigurationCommandValidator
+
+```csharp
+using FluentValidation;
+using SmeAccounting.Application.Commands;
+
+namespace SmeAccounting.Application.Validators;
+
+public class CreatePostingConfigurationCommandValidator : AbstractValidator<CreatePostingConfigurationCommand>
+{
+    public CreatePostingConfigurationCommandValidator()
+    {
+        RuleFor(x => x.VoucherTypeId)
+            .GreaterThan(0).WithMessage("Voucher type ID is required.");
+
+        RuleFor(x => x.DebitAccountId)
+            .GreaterThan(0).WithMessage("Debit account ID is required.");
+
+        RuleFor(x => x.CreditAccountId)
+            .GreaterThan(0).WithMessage("Credit account ID is required.");
+
+        RuleFor(x => x.CompanyId)
+            .GreaterThan(0).WithMessage("Company ID is required.");
+
+        RuleFor(x => x)
+            .Must(x => x.DebitAccountId != x.CreditAccountId)
+            .WithMessage("Debit and credit accounts must be different.");
+
+        RuleFor(x => x.TransactionReasonId)
+            .GreaterThan(0).When(x => x.TransactionReasonId.HasValue)
+            .WithMessage("Transaction reason ID must be greater than zero when specified.");
+    }
+}
+```
+
+**Gotcha — Custom `Must` rule for debit != credit:** FluentValidation has no built-in "not equal" rule across two properties. Use `.Must(x => x.DebitAccountId != x.CreditAccountId)` with a lambda on the command object. This mirrors the domain invariant `DomainException("DebitAccountId and CreditAccountId must be different.")` on `PostingConfiguration`.
+
+**Gotcha — Conditional TransactionReasonId validation:** `.GreaterThan(0).When(x => x.TransactionReasonId.HasValue)` — only validates when the nullable has a value. Null is valid (default posting rule).
+
+#### 6.5 CreateOpeningBalanceMappingCommandValidator
+
+```csharp
+using FluentValidation;
+using SmeAccounting.Application.Commands;
+
+namespace SmeAccounting.Application.Validators;
+
+public class CreateOpeningBalanceMappingCommandValidator : AbstractValidator<CreateOpeningBalanceMappingCommand>
+{
+    public CreateOpeningBalanceMappingCommandValidator()
+    {
+        RuleFor(x => x.CompanyId)
+            .GreaterThan(0).WithMessage("Company ID is required.");
+
+        RuleFor(x => x.VoucherTypeId)
+            .GreaterThan(0).WithMessage("Voucher type ID is required.");
+
+        RuleFor(x => x.DebitAccountId)
+            .GreaterThan(0).WithMessage("Debit account ID is required.");
+
+        RuleFor(x => x.CreditAccountId)
+            .GreaterThan(0).WithMessage("Credit account ID is required.");
+
+        RuleFor(x => x)
+            .Must(x => x.DebitAccountId != x.CreditAccountId)
+            .WithMessage("Debit and credit accounts must be different.");
+    }
+}
+```
+
+---
+
+### 7. Handler Implementations — Complete Templates
+
+All handlers go in `src/SmeAccounting.Application/Handlers/`. New directory — `internal sealed class`.
+
+#### 7.1 VoucherType Handlers
+
+**CreateVoucherTypeHandler:**
+```csharp
+using MediatR;
+using SmeAccounting.Application.Commands;
+using SmeAccounting.Domain.Entities;
+using SmeAccounting.Domain.Ports;
+
+namespace SmeAccounting.Application.Handlers;
+
+internal sealed class CreateVoucherTypeHandler(
+    IVoucherTypeRepository repository,
+    IUnitOfWork unitOfWork)
+    : IRequestHandler<CreateVoucherTypeCommand, CreateVoucherTypeResult>
+{
+    public async Task<CreateVoucherTypeResult> Handle(
+        CreateVoucherTypeCommand request,
+        CancellationToken cancellationToken)
+    {
+        var voucherType = new VoucherType(
+            request.CompanyId, request.Code, request.Name,
+            request.VoucherCategory, request.Description);
+
+        await repository.AddAsync(voucherType);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
+
+        return new CreateVoucherTypeResult(voucherType.Id);
+    }
+}
+```
+
+**DeactivateVoucherTypeHandler:**
+```csharp
+using MediatR;
+using SmeAccounting.Application.Commands;
+using SmeAccounting.Domain.Ports;
+
+namespace SmeAccounting.Application.Handlers;
+
+internal sealed class DeactivateVoucherTypeHandler(
+    IVoucherTypeRepository repository,
+    IUnitOfWork unitOfWork)
+    : IRequestHandler<DeactivateVoucherTypeCommand, DeactivateVoucherTypeResult>
+{
+    public async Task<DeactivateVoucherTypeResult> Handle(
+        DeactivateVoucherTypeCommand request,
+        CancellationToken cancellationToken)
+    {
+        var voucherType = await repository.GetByIdAsync(request.VoucherTypeId);
+        if (voucherType is null)
+            throw new InvalidOperationException($"Voucher type with ID {request.VoucherTypeId} not found.");
+
+        voucherType.Deactivate();
+        await unitOfWork.SaveChangesAsync(cancellationToken);
+
+        return new DeactivateVoucherTypeResult();
+    }
+}
+```
+
+**GetVoucherTypeHandler:**
+```csharp
+using MediatR;
+using SmeAccounting.Application.DTOs;
+using SmeAccounting.Application.Queries;
+using SmeAccounting.Domain.Ports;
+
+namespace SmeAccounting.Application.Handlers;
+
+internal sealed class GetVoucherTypeHandler(
+    IVoucherTypeRepository repository)
+    : IRequestHandler<GetVoucherTypeQuery, VoucherTypeDto?>
+{
+    public async Task<VoucherTypeDto?> Handle(
+        GetVoucherTypeQuery request,
+        CancellationToken cancellationToken)
+    {
+        var entity = await repository.GetByIdAsync(request.VoucherTypeId);
+        return entity is null ? null : new VoucherTypeDto(
+            entity.Id, entity.Code, entity.Name,
+            entity.VoucherCategory.ToString(),
+            entity.CompanyId, entity.IsActive, entity.Description);
+    }
+}
+```
+
+**GetVoucherTypesByCompanyHandler:**
+```csharp
+using MediatR;
+using SmeAccounting.Application.DTOs;
+using SmeAccounting.Application.Queries;
+using SmeAccounting.Domain.Ports;
+
+namespace SmeAccounting.Application.Handlers;
+
+internal sealed class GetVoucherTypesByCompanyHandler(
+    IVoucherTypeRepository repository)
+    : IRequestHandler<GetVoucherTypesByCompanyQuery, IReadOnlyList<VoucherTypeDto>>
+{
+    public async Task<IReadOnlyList<VoucherTypeDto>> Handle(
+        GetVoucherTypesByCompanyQuery request,
+        CancellationToken cancellationToken)
+    {
+        var entities = await repository.GetAllAsync();
+        return entities
+            .Where(e => e.CompanyId == request.CompanyId)
+            .Select(e => new VoucherTypeDto(
+                e.Id, e.Code, e.Name,
+                e.VoucherCategory.ToString(),
+                e.CompanyId, e.IsActive, e.Description))
+            .ToList();
+    }
+}
+```
+
+**Gotcha — GetAllAsync returns all companies, filter in handler:** `IVoucherTypeRepository.GetAllAsync()` has no companyId parameter (returns all voucher types). The handler must filter by CompanyId in memory. This is an existing limitation of the VoucherType repo (same as the `GetAllAsync()` pattern on Department/CostCenter/Project repos). A future improvement could add `GetAllByCompanyAsync(companyId)` to the port.
+
+#### 7.2 DocumentNumberingSeries Handlers
+
+**CreateDocumentNumberingSeriesHandler:**
+```csharp
+using MediatR;
+using SmeAccounting.Application.Commands;
+using SmeAccounting.Domain.Entities;
+using SmeAccounting.Domain.Ports;
+
+namespace SmeAccounting.Application.Handlers;
+
+internal sealed class CreateDocumentNumberingSeriesHandler(
+    IDocumentNumberingSeriesRepository repository,
+    IUnitOfWork unitOfWork)
+    : IRequestHandler<CreateDocumentNumberingSeriesCommand, CreateDocumentNumberingSeriesResult>
+{
+    public async Task<CreateDocumentNumberingSeriesResult> Handle(
+        CreateDocumentNumberingSeriesCommand request,
+        CancellationToken cancellationToken)
+    {
+        var series = new DocumentNumberingSeries(
+            request.CompanyId, request.VoucherTypeId, request.Prefix,
+            request.PaddingLength, request.IsDefault, request.Description);
+
+        await repository.AddAsync(series);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
+
+        return new CreateDocumentNumberingSeriesResult(series.Id);
+    }
+}
+```
+
+**ResetNumberingSeriesHandler:**
+```csharp
+using MediatR;
+using SmeAccounting.Application.Commands;
+using SmeAccounting.Domain.Ports;
+
+namespace SmeAccounting.Application.Handlers;
+
+internal sealed class ResetNumberingSeriesHandler(
+    IDocumentNumberingSeriesRepository repository,
+    IUnitOfWork unitOfWork)
+    : IRequestHandler<ResetNumberingSeriesCommand, ResetNumberingSeriesResult>
+{
+    public async Task<ResetNumberingSeriesResult> Handle(
+        ResetNumberingSeriesCommand request,
+        CancellationToken cancellationToken)
+    {
+        var series = await repository.GetByIdAsync(request.SeriesId);
+        if (series is null)
+            throw new InvalidOperationException($"Numbering series with ID {request.SeriesId} not found.");
+
+        series.Reset(request.StartFrom);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
+
+        return new ResetNumberingSeriesResult();
+    }
+}
+```
+
+**GetNumberingSeriesHandler:**
+```csharp
+using MediatR;
+using SmeAccounting.Application.DTOs;
+using SmeAccounting.Application.Queries;
+using SmeAccounting.Domain.Ports;
+
+namespace SmeAccounting.Application.Handlers;
+
+internal sealed class GetNumberingSeriesHandler(
+    IDocumentNumberingSeriesRepository repository)
+    : IRequestHandler<GetNumberingSeriesQuery, DocumentNumberingSeriesDto?>
+{
+    public async Task<DocumentNumberingSeriesDto?> Handle(
+        GetNumberingSeriesQuery request,
+        CancellationToken cancellationToken)
+    {
+        var entity = await repository.GetByIdAsync(request.SeriesId);
+        return entity is null ? null : new DocumentNumberingSeriesDto(
+            entity.Id, entity.VoucherTypeId, entity.CompanyId,
+            entity.Prefix, entity.NextNumber, entity.PaddingLength,
+            entity.IsDefault, entity.IsActive, entity.Description);
+    }
+}
+```
+
+**GetNumberingSeriesByCompanyHandler:**
+```csharp
+using MediatR;
+using SmeAccounting.Application.DTOs;
+using SmeAccounting.Application.Queries;
+using SmeAccounting.Domain.Ports;
+
+namespace SmeAccounting.Application.Handlers;
+
+internal sealed class GetNumberingSeriesByCompanyHandler(
+    IDocumentNumberingSeriesRepository repository)
+    : IRequestHandler<GetNumberingSeriesByCompanyQuery, IReadOnlyList<DocumentNumberingSeriesDto>>
+{
+    public async Task<IReadOnlyList<DocumentNumberingSeriesDto>> Handle(
+        GetNumberingSeriesByCompanyQuery request,
+        CancellationToken cancellationToken)
+    {
+        var entities = await repository.GetAllByCompanyAsync(request.CompanyId);
+        return entities
+            .Select(e => new DocumentNumberingSeriesDto(
+                e.Id, e.VoucherTypeId, e.CompanyId,
+                e.Prefix, e.NextNumber, e.PaddingLength,
+                e.IsDefault, e.IsActive, e.Description))
+            .ToList();
+    }
+}
+```
+
+#### 7.3 TransactionReason Handlers
+
+**CreateTransactionReasonHandler:**
+```csharp
+using MediatR;
+using SmeAccounting.Application.Commands;
+using SmeAccounting.Domain.Entities;
+using SmeAccounting.Domain.Ports;
+
+namespace SmeAccounting.Application.Handlers;
+
+internal sealed class CreateTransactionReasonHandler(
+    ITransactionReasonRepository repository,
+    IUnitOfWork unitOfWork)
+    : IRequestHandler<CreateTransactionReasonCommand, CreateTransactionReasonResult>
+{
+    public async Task<CreateTransactionReasonResult> Handle(
+        CreateTransactionReasonCommand request,
+        CancellationToken cancellationToken)
+    {
+        var reason = new TransactionReason(
+            request.CompanyId, request.VoucherTypeId,
+            request.Code, request.Name, request.Description);
+
+        await repository.AddAsync(reason);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
+
+        return new CreateTransactionReasonResult(reason.Id);
+    }
+}
+```
+
+**DeactivateTransactionReasonHandler:**
+```csharp
+using MediatR;
+using SmeAccounting.Application.Commands;
+using SmeAccounting.Domain.Ports;
+
+namespace SmeAccounting.Application.Handlers;
+
+internal sealed class DeactivateTransactionReasonHandler(
+    ITransactionReasonRepository repository,
+    IUnitOfWork unitOfWork)
+    : IRequestHandler<DeactivateTransactionReasonCommand, DeactivateTransactionReasonResult>
+{
+    public async Task<DeactivateTransactionReasonResult> Handle(
+        DeactivateTransactionReasonCommand request,
+        CancellationToken cancellationToken)
+    {
+        var reason = await repository.GetByIdAsync(request.ReasonId);
+        if (reason is null)
+            throw new InvalidOperationException($"Transaction reason with ID {request.ReasonId} not found.");
+
+        reason.Deactivate();
+        await unitOfWork.SaveChangesAsync(cancellationToken);
+
+        return new DeactivateTransactionReasonResult();
+    }
+}
+```
+
+**GetTransactionReasonHandler:**
+```csharp
+using MediatR;
+using SmeAccounting.Application.DTOs;
+using SmeAccounting.Application.Queries;
+using SmeAccounting.Domain.Ports;
+
+namespace SmeAccounting.Application.Handlers;
+
+internal sealed class GetTransactionReasonHandler(
+    ITransactionReasonRepository repository)
+    : IRequestHandler<GetTransactionReasonQuery, TransactionReasonDto?>
+{
+    public async Task<TransactionReasonDto?> Handle(
+        GetTransactionReasonQuery request,
+        CancellationToken cancellationToken)
+    {
+        var entity = await repository.GetByIdAsync(request.ReasonId);
+        return entity is null ? null : new TransactionReasonDto(
+            entity.Id, entity.Code, entity.Name,
+            entity.VoucherTypeId, entity.CompanyId,
+            entity.IsActive, entity.Description);
+    }
+}
+```
+
+**GetTransactionReasonsByVoucherTypeHandler:**
+```csharp
+using MediatR;
+using SmeAccounting.Application.DTOs;
+using SmeAccounting.Application.Queries;
+using SmeAccounting.Domain.Ports;
+
+namespace SmeAccounting.Application.Handlers;
+
+internal sealed class GetTransactionReasonsByVoucherTypeHandler(
+    ITransactionReasonRepository repository)
+    : IRequestHandler<GetTransactionReasonsByVoucherTypeQuery, IReadOnlyList<TransactionReasonDto>>
+{
+    public async Task<IReadOnlyList<TransactionReasonDto>> Handle(
+        GetTransactionReasonsByVoucherTypeQuery request,
+        CancellationToken cancellationToken)
+    {
+        var entities = await repository.GetAllByVoucherTypeAsync(request.VoucherTypeId);
+        return entities
+            .Select(e => new TransactionReasonDto(
+                e.Id, e.Code, e.Name,
+                e.VoucherTypeId, e.CompanyId,
+                e.IsActive, e.Description))
+            .ToList();
+    }
+}
+```
+
+#### 7.4 PostingConfiguration Handlers
+
+**CreatePostingConfigurationHandler:**
+```csharp
+using MediatR;
+using SmeAccounting.Application.Commands;
+using SmeAccounting.Domain.Entities;
+using SmeAccounting.Domain.Ports;
+
+namespace SmeAccounting.Application.Handlers;
+
+internal sealed class CreatePostingConfigurationHandler(
+    IPostingConfigurationRepository repository,
+    IUnitOfWork unitOfWork)
+    : IRequestHandler<CreatePostingConfigurationCommand, CreatePostingConfigurationResult>
+{
+    public async Task<CreatePostingConfigurationResult> Handle(
+        CreatePostingConfigurationCommand request,
+        CancellationToken cancellationToken)
+    {
+        var config = new PostingConfiguration(
+            request.CompanyId, request.VoucherTypeId,
+            request.DebitAccountId, request.CreditAccountId,
+            request.TransactionReasonId, description: request.Description);
+
+        await repository.AddAsync(config);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
+
+        return new CreatePostingConfigurationResult(config.Id);
+    }
+}
+```
+
+**Gotcha — DisplayOrder not in command:** The `CreatePostingConfigurationCommand` does not include `DisplayOrder`. The entity constructor defaults `displayOrder` to 0. If DisplayOrder needs to be set, it should be added to the command. For now, follow the plan exactly — command has no DisplayOrder parameter.
+
+**DeactivatePostingConfigurationHandler:**
+```csharp
+using MediatR;
+using SmeAccounting.Application.Commands;
+using SmeAccounting.Domain.Ports;
+
+namespace SmeAccounting.Application.Handlers;
+
+internal sealed class DeactivatePostingConfigurationHandler(
+    IPostingConfigurationRepository repository,
+    IUnitOfWork unitOfWork)
+    : IRequestHandler<DeactivatePostingConfigurationCommand, DeactivatePostingConfigurationResult>
+{
+    public async Task<DeactivatePostingConfigurationResult> Handle(
+        DeactivatePostingConfigurationCommand request,
+        CancellationToken cancellationToken)
+    {
+        var config = await repository.GetByIdAsync(request.ConfigId);
+        if (config is null)
+            throw new InvalidOperationException($"Posting configuration with ID {request.ConfigId} not found.");
+
+        config.Deactivate();
+        await unitOfWork.SaveChangesAsync(cancellationToken);
+
+        return new DeactivatePostingConfigurationResult();
+    }
+}
+```
+
+**GetPostingConfigurationHandler:**
+```csharp
+using MediatR;
+using SmeAccounting.Application.DTOs;
+using SmeAccounting.Application.Queries;
+using SmeAccounting.Domain.Ports;
+
+namespace SmeAccounting.Application.Handlers;
+
+internal sealed class GetPostingConfigurationHandler(
+    IPostingConfigurationRepository repository)
+    : IRequestHandler<GetPostingConfigurationQuery, PostingConfigurationDto?>
+{
+    public async Task<PostingConfigurationDto?> Handle(
+        GetPostingConfigurationQuery request,
+        CancellationToken cancellationToken)
+    {
+        var entity = await repository.GetByIdAsync(request.ConfigId);
+        return entity is null ? null : new PostingConfigurationDto(
+            entity.Id, entity.VoucherTypeId, entity.DebitAccountId,
+            entity.CreditAccountId, entity.CompanyId,
+            entity.TransactionReasonId, entity.DisplayOrder,
+            entity.IsActive, entity.Description);
+    }
+}
+```
+
+**GetPostingConfigurationsByCompanyHandler:**
+```csharp
+using MediatR;
+using SmeAccounting.Application.DTOs;
+using SmeAccounting.Application.Queries;
+using SmeAccounting.Domain.Ports;
+
+namespace SmeAccounting.Application.Handlers;
+
+internal sealed class GetPostingConfigurationsByCompanyHandler(
+    IPostingConfigurationRepository repository)
+    : IRequestHandler<GetPostingConfigurationsByCompanyQuery, IReadOnlyList<PostingConfigurationDto>>
+{
+    public async Task<IReadOnlyList<PostingConfigurationDto>> Handle(
+        GetPostingConfigurationsByCompanyQuery request,
+        CancellationToken cancellationToken)
+    {
+        var entities = await repository.GetAllByCompanyAsync(request.CompanyId);
+        return entities
+            .Select(e => new PostingConfigurationDto(
+                e.Id, e.VoucherTypeId, e.DebitAccountId,
+                e.CreditAccountId, e.CompanyId,
+                e.TransactionReasonId, e.DisplayOrder,
+                e.IsActive, e.Description))
+            .ToList();
+    }
+}
+```
+
+#### 7.5 OpeningBalanceMapping Handlers
+
+**CreateOpeningBalanceMappingHandler:**
+```csharp
+using MediatR;
+using SmeAccounting.Application.Commands;
+using SmeAccounting.Domain.Entities;
+using SmeAccounting.Domain.Ports;
+
+namespace SmeAccounting.Application.Handlers;
+
+internal sealed class CreateOpeningBalanceMappingHandler(
+    IOpeningBalanceMappingRepository repository,
+    IUnitOfWork unitOfWork)
+    : IRequestHandler<CreateOpeningBalanceMappingCommand, CreateOpeningBalanceMappingResult>
+{
+    public async Task<CreateOpeningBalanceMappingResult> Handle(
+        CreateOpeningBalanceMappingCommand request,
+        CancellationToken cancellationToken)
+    {
+        var mapping = new OpeningBalanceMapping(
+            request.CompanyId, request.VoucherTypeId,
+            request.DebitAccountId, request.CreditAccountId,
+            request.Description);
+
+        await repository.AddAsync(mapping);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
+
+        return new CreateOpeningBalanceMappingResult(mapping.Id);
+    }
+}
+```
+
+**DeactivateOpeningBalanceMappingHandler:**
+```csharp
+using MediatR;
+using SmeAccounting.Application.Commands;
+using SmeAccounting.Domain.Ports;
+
+namespace SmeAccounting.Application.Handlers;
+
+internal sealed class DeactivateOpeningBalanceMappingHandler(
+    IOpeningBalanceMappingRepository repository,
+    IUnitOfWork unitOfWork)
+    : IRequestHandler<DeactivateOpeningBalanceMappingCommand, DeactivateOpeningBalanceMappingResult>
+{
+    public async Task<DeactivateOpeningBalanceMappingResult> Handle(
+        DeactivateOpeningBalanceMappingCommand request,
+        CancellationToken cancellationToken)
+    {
+        var mapping = await repository.GetByIdAsync(request.MappingId);
+        if (mapping is null)
+            throw new InvalidOperationException($"Opening balance mapping with ID {request.MappingId} not found.");
+
+        mapping.Deactivate();
+        await unitOfWork.SaveChangesAsync(cancellationToken);
+
+        return new DeactivateOpeningBalanceMappingResult();
+    }
+}
+```
+
+**GetOpeningBalanceMappingHandler:**
+```csharp
+using MediatR;
+using SmeAccounting.Application.DTOs;
+using SmeAccounting.Application.Queries;
+using SmeAccounting.Domain.Ports;
+
+namespace SmeAccounting.Application.Handlers;
+
+internal sealed class GetOpeningBalanceMappingHandler(
+    IOpeningBalanceMappingRepository repository)
+    : IRequestHandler<GetOpeningBalanceMappingQuery, OpeningBalanceMappingDto?>
+{
+    public async Task<OpeningBalanceMappingDto?> Handle(
+        GetOpeningBalanceMappingQuery request,
+        CancellationToken cancellationToken)
+    {
+        var entity = await repository.GetByIdAsync(request.MappingId);
+        return entity is null ? null : new OpeningBalanceMappingDto(
+            entity.Id, entity.CompanyId, entity.VoucherTypeId,
+            entity.DebitAccountId, entity.CreditAccountId,
+            entity.IsActive, entity.Description);
+    }
+}
+```
+
+**GetOpeningBalanceMappingsByCompanyHandler:**
+```csharp
+using MediatR;
+using SmeAccounting.Application.DTOs;
+using SmeAccounting.Application.Queries;
+using SmeAccounting.Domain.Ports;
+
+namespace SmeAccounting.Application.Handlers;
+
+internal sealed class GetOpeningBalanceMappingsByCompanyHandler(
+    IOpeningBalanceMappingRepository repository)
+    : IRequestHandler<GetOpeningBalanceMappingsByCompanyQuery, IReadOnlyList<OpeningBalanceMappingDto>>
+{
+    public async Task<IReadOnlyList<OpeningBalanceMappingDto>> Handle(
+        GetOpeningBalanceMappingsByCompanyQuery request,
+        CancellationToken cancellationToken)
+    {
+        var entities = await repository.GetAllByCompanyAsync(request.CompanyId);
+        return entities
+            .Select(e => new OpeningBalanceMappingDto(
+                e.Id, e.CompanyId, e.VoucherTypeId,
+                e.DebitAccountId, e.CreditAccountId,
+                e.IsActive, e.Description))
+            .ToList();
+    }
+}
+```
+
+---
+
+### 8. Architecture Test Compliance
+
+**Tests that constrain Application layer (from architecture tests):**
+
+| Test | Constraint | Task 6 Impact |
+|------|-----------|---------------|
+| `Commands_In_Commands_Namespace_Should_End_With_Command` | All `IRequest<>` types in `SmeAccounting.Application.Commands` namespace must end with `Command` | All new commands end with `Command` ✓ |
+| `Queries_In_Queries_Namespace_Should_End_With_Query` | All classes in `SmeAccounting.Application.Queries` must end with `Query` | All new queries end with `Query` ✓ |
+| `DTOs_Should_End_With_Dto` | All types in `SmeAccounting.Application.DTOs` ending with `Dto` must also end with `Dto` | All new DTOs end with `Dto` ✓ |
+| `Application_Handlers_Should_Not_Reference_Infrastructure_Namespace` | `IRequestHandler<,>` implementations must not reference `SmeAccounting.Infrastructure` | Handlers only reference Domain.Ports, Domain.Entities, Application.Commands, Application.DTOs ✓ |
+| `Application_Should_Not_Depend_On_Infrastructure` | Application assembly must not reference Infrastructure assembly | No Infrastructure references in any Application file ✓ |
+| `Application_Should_Not_Depend_On_Api` | Application assembly must not reference Api assembly | No Api references in any Application file ✓ |
+
+**Key constraint for handlers:** Handlers MUST use port interfaces (`IVoucherTypeRepository`, `IUnitOfWork`, etc.) — NEVER concrete implementations (`EfVoucherTypeRepository`, `SmeAccountingDbContext`). Port interfaces are in `SmeAccounting.Domain.Ports` which Application is allowed to reference.
+
+**Handler namespace:** `SmeAccounting.Application.Handlers` — NOT in `Commands` or `Queries` namespace. The architecture tests do NOT constrain handler namespace, only handler dependency on Infrastructure.
+
+---
+
+### 9. Gotchas and Edge Cases
+
+#### 9.1 No Existing Handlers — Must Create All From Scratch
+The most critical finding. 6 existing commands + 6 existing queries have no handlers. Controllers dispatch via MediatR but will throw `InvalidOperationException("No service for type 'MediatR.IRequestHandler<...>'")` at runtime. Task 6 must create handlers for ALL commands/queries (both existing Phase 1 and new Phase 2). The plan only mentions Phase 2 handlers, but the executor should decide whether to also create Phase 1 handlers or defer them.
+
+#### 9.2 Deactivate/Reset Result Records Have No Properties
+`DeactivateVoucherTypeResult`, `DeactivateTransactionReasonResult`, `DeactivatePostingConfigurationResult`, `DeactivateOpeningBalanceMappingResult`, and `ResetNumberingSeriesResult` are all parameterless records. Unlike `DeprecateAccountResult(long AccountId)` which echoes the ID, these are empty. Follow the plan exactly.
+
+#### 9.3 GetAllAsync vs GetAllByCompanyAsync
+`IVoucherTypeRepository.GetAllAsync()` returns ALL voucher types across ALL companies. The `GetVoucherTypesByCompanyHandler` must filter in memory with `.Where(e => e.CompanyId == request.CompanyId)`. This is an existing limitation. Other repos (`IDocumentNumberingSeriesRepository`, `IPostingConfigurationRepository`, `IOpeningBalanceMappingRepository`) have company-scoped methods already. `ITransactionReasonRepository.GetAllByVoucherTypeAsync()` is scoped by voucher type, not company.
+
+#### 9.4 Enum-to-String Mapping in DTOs
+Entity enums (e.g., `VoucherCategory`) are mapped to DTO strings via `.ToString()`. This is the established pattern. Do NOT use `.ToString("G")` or any format specifier — default `.ToString()` produces the enum name (e.g., "Receipt", "Payment").
+
+#### 9.5 Domain Exceptions in Create Handlers
+If entity constructor throws `DomainException` (e.g., empty code, invalid company ID), the handler will propagate it unhandled. This is correct behavior — `DomainException` is not caught by `ValidationException` catch blocks in controllers. The FluentValidation pipeline catches bad input BEFORE the handler runs. Domain exceptions are a safety net for business rule violations that slip past validation.
+
+#### 9.6 NotFound Handling in Deactivate/Reset Handlers
+Handlers throw `InvalidOperationException` if the entity is not found. This is a runtime error, not a validation error. Controllers will see a 500 error. A more robust pattern would use `Result<T>` or custom exceptions, but the existing codebase does not use this pattern. Follow existing convention: `throw new InvalidOperationException($"... with ID {id} not found.")`.
+
+#### 9.7 Command Parameter Names Must Match Plan
+The plan specifies exact parameter names: `VoucherTypeId`, `ReasonId`, `ConfigId`, `MappingId`, `SeriesId`. These differ from entity property names (e.g., entity has `Id` but command uses `VoucherTypeId`/`ReasonId`/`ConfigId`/`MappingId`/`SeriesId`). Follow the plan exactly.
+
+#### 9.8 No DisplayOrder in CreatePostingConfigurationCommand
+The plan omits `DisplayOrder` from the create command. Entity defaults to 0. If ordering matters, add it later. Follow the plan as-is.
+
+#### 9.9 File-Scoped Namespaces
+All files use file-scoped namespace syntax (`namespace X;` not `namespace X { }`). This is the established pattern across all Application files.
+
+#### 9.10 No `using` Needed for Implicit Usings
+`Directory.Build.props` enables implicit usings. Standard namespaces like `System`, `System.Collections.Generic`, `System.Linq`, `System.Threading.Tasks` are auto-imported. Only need explicit `using` for:
+- `MediatR` (for `IRequest<>`, `IRequestHandler<>`)
+- `FluentValidation` (for `AbstractValidator<>`)
+- `SmeAccounting.Application.Commands` (for command types)
+- `SmeAccounting.Application.DTOs` (for DTO types)
+- `SmeAccounting.Application.Queries` (for query types)
+- `SmeAccounting.Domain.Entities` (for entity types)
+- `SmeAccounting.Domain.Ports` (for port interfaces)
+
+#### 9.11 Handler Count
+Total handlers to create: 10 (for 10 new commands + 10 new queries = 20 new request types). Each handler file contains one handler class. Total handler files: 10 (or 20 if one file per request type — depends on executor preference). Existing 12 commands/queries (6 commands + 6 queries) have no handlers and can be deferred.
+
+#### 9.12 No Modifying Existing Files
+Task 6 creates new files only. No modifications to existing commands, queries, DTOs, validators, DependencyInjection.cs, or any other file. All new content goes into new files in the Application project.

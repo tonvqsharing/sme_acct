@@ -132,7 +132,7 @@ Create entity that maps opening balance accounts for fiscal year transitions.
 
 ---
 
-### [G4] Task 6 — Application Layer: Commands + Queries for All 5 Slices
+### [x] [G4] Task 6 — Application Layer: Commands + Queries for All 5 Slices
 
 **Slice:** All 5 slices — Application layer
 **Depends on:** Tasks 1-5 (all domain + infra complete)

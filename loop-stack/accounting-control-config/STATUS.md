@@ -2,9 +2,9 @@
 ## State
 EXECUTING
 ## Current Task
-[G3] Task 5 — Opening Balance Mapping Domain + Infrastructure
+[G4] Task 6 — Application Layer: Commands + Queries for All 5 Slices
 ## Task Progress
-5 / 7 complete
+6 / 7 complete
 ## Attempts On Current Task
 1
 ## Completed Tasks
@@ -13,6 +13,7 @@ EXECUTING
 - [G2] Task 3 — Transaction Reason Domain + Infrastructure: 5 new files, 2 modified files, build 0 errors/0 warnings, 22/22 arch tests pass
 - [G3] Task 4 — Posting Configuration Domain + Infrastructure: 4 new files, 2 modified files, build 0 errors/0 warnings, 22/22 arch tests pass
 - [G3] Task 5 — Opening Balance Mapping Domain + Infrastructure: 4 new files, 2 modified files, build 0 errors/0 warnings, 22/22 arch tests pass
+- [G4] Task 6 — Application Layer Commands+Queries: 40 new files (5 DTOs + 10 commands + 10 queries + 5 validators + 10 handlers), build 0 errors/0 warnings, 22/22 arch tests pass
 ## Skipped Tasks
 (none)
 ## Last Researcher Result

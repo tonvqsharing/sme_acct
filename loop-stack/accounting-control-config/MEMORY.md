@@ -54,3 +54,17 @@ Updated continuously by all agents as they discover things.
 - **GetAllByCompanyAsync sorted by VoucherTypeId then DebitAccountId:** No DisplayOrder, natural sort key
 - **18 DbSets, 14 ignored events** after T5
 - **Architecture tests:** 22/22 pass — entity follows established patterns
+
+### T6: Application Layer — Commands + Queries for All 5 Slices (Sep 2026)
+- **40 new files created:** 5 DTOs + 10 commands + 10 queries + 5 validators + 10 handlers (in new `Handlers/` directory)
+- **No existing files modified:** DI already has assembly scan (`AddMediatR` + `AddValidatorsFromAssembly`), auto-discovers new handlers and validators
+- **Handler pattern:** `internal sealed class` with primary constructor injection of port interfaces + IUnitOfWork. Create handlers: new entity → repo.AddAsync → unitOfWork.SaveChangesAsync → return result. Deactivate/Reset: repo.GetByIdAsync → entity.Deactivate()/Reset() → SaveChangesAsync → return empty result. Query handlers: repo.GetByIdAsync → map to DTO → return.
+- **Deactivate/Reset result records are parameterless:** `DeactivateVoucherTypeResult`, `ResetNumberingSeriesResult`, etc. have no properties — unlike `DeprecateAccountResult(long AccountId)` which echoes the ID
+- **DeactivateTransactionReasonCommand uses `ReasonId`:** Not `TransactionReasonId` — follow plan exactly
+- **DeactivatePostingConfigurationCommand uses `ConfigId`:** Not `PostingConfigurationId`
+- **DeactivateOpeningBalanceMappingCommand uses `MappingId`:** Not `OpeningBalanceMappingId`
+- **PostingConfiguration has no DisplayOrder in create command:** Entity defaults to 0. Command omits DisplayOrder per plan
+- **GetVoucherTypesByCompanyHandler filters in memory:** `IVoucherTypeRepository.GetAllAsync()` returns all companies — handler applies `.Where(e => e.CompanyId == request.CompanyId)`. All other repos have company-scoped methods
+- **Enum-to-string in DTOs:** `entity.VoucherCategory.ToString()` — matches existing AccountDto pattern
+- **20 handlers total for 20 request types:** 10 commands + 10 queries = 20 handlers. Existing Phase 1 commands/queries (12 total) have NO handlers — out of scope for T6
+- **Build:** 0 warnings, 0 errors. **Architecture tests:** 22/22 pass
