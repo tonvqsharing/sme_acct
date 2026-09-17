@@ -185,7 +185,7 @@ Create MediatR commands, queries, DTOs, validators, and handlers for all 5 domai
 
 ---
 
-### [G5] Task 7 — EF Migration + Integration Verification
+### [x] [G5] Task 7 — EF Migration + Integration Verification
 
 **Slice:** Database migration + full build verification
 **Depends on:** Tasks 1-6 (all domain, infra, and app layers complete)
