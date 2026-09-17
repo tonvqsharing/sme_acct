@@ -42,6 +42,14 @@ public static class DependencyInjection
         services.AddScoped<ITaxTreatmentRepository, EfTaxTreatmentRepository>();
         services.AddScoped<ITaxAuthorityRepository, EfTaxAuthorityRepository>();
         services.AddScoped<ITaxRateRepository, EfTaxRateRepository>();
+        services.AddScoped<ITaxRuleRepository, EfTaxRuleRepository>();
+        services.AddScoped<ITaxExemptionReasonRepository, EfTaxExemptionReasonRepository>();
+        services.AddScoped<ITaxAccountingMappingRepository, EfTaxAccountingMappingRepository>();
+        services.AddScoped<ITaxPeriodRepository, EfTaxPeriodRepository>();
+        services.AddScoped<ICustomerRepository, EfCustomerRepository>();
+        services.AddScoped<ISupplierRepository, EfSupplierRepository>();
+        services.AddScoped<IEmployeeRepository, EfEmployeeRepository>();
+        services.AddScoped<IPaymentTermRepository, EfPaymentTermRepository>();
 
         services.AddSingleton<IClock, SystemClock>();
         services.AddScoped<IAuditLogger, AuditLogger>();

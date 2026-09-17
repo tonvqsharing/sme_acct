@@ -29,6 +29,10 @@ public class SmeAccountingDbContext : DbContext, IUnitOfWork
     public DbSet<TaxTreatment> TaxTreatments => Set<TaxTreatment>();
     public DbSet<TaxAuthority> TaxAuthorities => Set<TaxAuthority>();
     public DbSet<TaxRate> TaxRates => Set<TaxRate>();
+    public DbSet<TaxRule> TaxRules => Set<TaxRule>();
+    public DbSet<TaxExemptionReason> TaxExemptionReasons => Set<TaxExemptionReason>();
+    public DbSet<TaxAccountingMapping> TaxAccountingMappings => Set<TaxAccountingMapping>();
+    public DbSet<TaxPeriod> TaxPeriods => Set<TaxPeriod>();
 
     public SmeAccountingDbContext(DbContextOptions<SmeAccountingDbContext> options)
         : base(options) { }
@@ -53,6 +57,15 @@ public class SmeAccountingDbContext : DbContext, IUnitOfWork
         modelBuilder.Ignore<TaxTreatmentCreated>();
         modelBuilder.Ignore<TaxAuthorityCreated>();
         modelBuilder.Ignore<TaxRateCreated>();
+        modelBuilder.Ignore<TaxRuleCreated>();
+        modelBuilder.Ignore<TaxExemptionReasonCreated>();
+        modelBuilder.Ignore<TaxAccountingMappingCreated>();
+        modelBuilder.Ignore<TaxPeriodCreated>();
+        modelBuilder.Ignore<TaxPeriodClosed>();
+        modelBuilder.Ignore<CustomerCreated>();
+        modelBuilder.Ignore<SupplierCreated>();
+        modelBuilder.Ignore<EmployeeCreated>();
+        modelBuilder.Ignore<PaymentTermCreated>();
 
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(SmeAccountingDbContext).Assembly);
         base.OnModelCreating(modelBuilder);

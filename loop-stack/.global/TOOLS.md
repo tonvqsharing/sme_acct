@@ -45,6 +45,20 @@
 - `jq` — not installed
 - `docker` — not installed
 
+## Newly Discovered Resources (Online — Unconfirmed Local)
+
+### Vietnamese Legal Databases (for Tax Research)
+1. **congbao.chinhphu.vn** — Official Government Gazette — laws, decrees, circulars
+2. **thuvienphapluat.vn** — Legal Library — comprehensive Vietnamese legal database
+3. **luatvietnam.vn** — Legal information portal with translations
+4. **vanban123.vn** — Legal document database
+
+### Tax Reference Sources
+1. **PwC Worldwide Tax Summaries** (taxsummaries.pwc.com) — Vietnam corporate tax rates
+2. **Vietnam Briefing** (vietnam-briefing.com) — Tax guides for foreign investors
+3. **EY Tax Updates** (ey.com) — Technical tax updates
+4. **MISA SME Accounting** (sme.misa.vn) — Vietnamese accounting software with tax guidance
+
 ## NuGet Sources
 
 - nuget.org (enabled): `https://api.nuget.org/v3/index.json`
@@ -80,3 +94,87 @@
 - VAS (Vietnamese Accounting Standards)
 - Circular 99/2025/TT-BTC compliance
 - ADRs in loop-stack/vietnamese-acct-architecture_DONE/docs/architecture/
+
+## Phase 3 — Tax Foundation (Existing Patterns to Follow)
+
+### Existing Domain Entities (19 files)
+Account, AccountGroup, JournalEntry, JournalEntryLine, FiscalYear, FiscalPeriod, PostingReference, Currency, ExchangeRate, PostingConfiguration, Company, Department, Project, CostCenter, VoucherType, DocumentNumberingSeries, TransactionReason, OpeningBalanceMapping, BaseEntity
+
+### Existing Port Interfaces
+Domain/Ports/: IAccountRepository, IJournalEntryRepository, IUnitOfWork, IForeignExchangeRateProvider, IAuditLogger, IPostingService, IClock
+
+### Existing EF Configurations (Infrastructure/Persistence/Configurations/)
+One `*Configuration.cs` per entity. Pattern: `EntityTypeBuilder<T>` with snake-case table names, xmin concurrency tokens, value object conversions.
+
+### Existing Repositories (Infrastructure/Repositories/)
+One `Ef*Repository.cs` per entity. Pattern: async CRUD, DbContext injection.
+
+### Existing Migrations (4 total)
+1. 20260916051341_InitialCreate
+2. 20260916051520_FixAccountNameColumn
+3. 20260916083803_AccountingFoundation
+4. 20260917013843_Phase2AccountingControlConfig
+
+### Key Patterns for Tax Entities
+- **Domain entity**: record class, extends BaseEntity, xmin concurrency, value objects for enums
+- **EF Configuration**: `IEntityTypeConfiguration<T>` → snake-case table, column types, FKs
+- **Repository**: `Ef*Repository : IRepository<T>` async methods
+- **Application**: MediatR command/query → handler → repository
+- **Validation**: FluentValidation `AbstractValidator<T>` in same project as command
+- **Migration**: `dotnet ef migrations add <Name> --project src/SmeAccounting.Infrastructure --startup-project src/SmeAccounting.Api`
+
+### G5 TaxPeriod — Key Pattern Notes
+- TaxPeriod is NOT FiscalPeriod (different business concepts)
+- 3 FKs: Company + FiscalPeriod + TaxType (all Restrict)
+- 2 new enums: FilingFrequency (Monthly/Quarterly), TaxPeriodStatus (Open/Filed/Closed)
+- Status workflow: Open → Filed (MarkFiled) → Closed (Close + event)
+- Unique index: (CompanyId, FiscalPeriodId, TaxTypeId) — no Code property
+- Two events: TaxPeriodCreated + TaxPeriodClosed
+
+### Commands Reference
+
+```bash
+# Build
+dotnet build SmeAccounting.sln
+
+# Tests
+dotnet test tests/SmeAccounting.ArchitectureTests/
+
+# Run
+dotnet run --project src/SmeAccounting.Api/
+
+# EF Migrations
+dotnet ef migrations add <Name> --project src/SmeAccounting.Infrastructure --startup-project src/SmeAccounting.Api
+dotnet ef database update --project src/SmeAccounting.Infrastructure --startup-project src/SmeAccounting.Api
+dotnet ef migrations list --project src/SmeAccounting.Infrastructure --startup-project src/SmeAccounting.Api
+
+# Database (psql)
+PGPASSWORD=123456 psql -h 172.21.208.1 -U dev -d sme_acct_dev
+```
+
+## Skills Relevant to Phase 3
+
+| Skill | Use For |
+|-------|---------|
+| domain-modeling | Design tax domain entities, value objects, aggregate boundaries |
+| ubiquitous-language | Establish Vietnamese tax terminology glossary |
+| source-driven-development | Research correct VAS/Circular tax treatment before coding |
+| test-driven-development | Write tests before implementation for all tax entities |
+| tdd | Red-green-refactor cycle for tax logic |
+| implement | Execute individual tax entity/feature tasks |
+| incremental-implementation | Break tax foundation into small, reviewable chunks |
+| code-review-and-quality | Review tax entity designs and implementations |
+| doubt-driven-development | Verify tax compliance requirements before coding |
+| documentation-and-adrs | Record tax domain decisions and regulatory mapping |
+| planning-and-task-breakdown | Break tax foundation into implementable tasks |
+| security-and-hardening | Validate tax input sanitization, prevent manipulation |
+
+## CodeGraph
+
+**Not available** — no `.codegraph/` directory in this project. Use grep/glob/read for code discovery.
+
+## MCP Servers
+
+| Server | Status |
+|--------|--------|
+| codegraph | Available (but no index for this project) |

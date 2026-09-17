@@ -84,6 +84,27 @@ Shared across all loops in this project.
 - **Final schema**: 13 tables total (7 original + 6 new), 14 entities (7 original + 6 new + BaseEntity)
 - **Architecture tests**: 22/22 pass post-migration — no test changes needed for new entities following established patterns
 
+### G3 TaxRule & TaxExemptionReason — Cross-Loop Reference (Sep 2026)
+- **TaxRule is the "glue entity"** linking TaxType + TaxRate (nullable FK for exempt) + TaxTreatment + Company — 4 FKs all Restrict
+- **Nullable TaxRateId:** exempt/non-taxable rules have no rate; 0% rate (ZeroRate) has TaxRateId present
+- **LegalReference (TaxRule) and LegalBasis (TaxExemptionReason) required** — audit trail non-negotiable
+- **TaxExemptionReason follows TaxTreatment two-FK pattern** (Company + TaxType), unique index on (CompanyId, Code)
+- **Conditions stored as text** — no JSON type needed; PostgreSQL maps string to text
+- **GetActiveRulesForDateAsync:** EffectiveFrom <= date AND (EffectiveTo IS NULL OR EffectiveTo >= date) AND IsActive
+- **No new enums** — uses existing entity FKs
+- **DbContext after G3:** 24 DbSets, 20 ignored events. DI: 19 registrations.
+- **All 22 architecture tests pass** — Domain.csproj zero NuGet refs preserved
+
+### G1 Tax Foundation — Cross-Loop Reference (Sep 2026)
+- **Enum naming rule:** When entity and enum share semantic name, enum gets suffix (TaxCategory, TaxTreatmentType, TaxAuthorityLevel) to avoid C# namespace collision — same as VoucherCategory/VoucherType
+- **All G1 entities follow VoucherType pattern exactly:** CompanyId + Code + Name + [Enum] + IsActive + optional Description
+- **Company-scoped repos use GetAllByCompanyAsync** (not GetAllAsync) — applies to TaxType, TaxTreatment, TaxAuthority
+- **TaxTreatment follows TransactionReason pattern:** two FKs (Company + parent entity) both Restrict, unique index on (CompanyId, Code) NOT composite with parent FK
+- **TaxAuthority is standalone** — no FK dependencies beyond CompanyId (unlike TaxTreatment → TaxType)
+- **InputCreditAllowed bool** captures Vietnamese VAT 0%-vs-exempt distinction — critical regulatory requirement
+- **DbContext after G1:** 21 DbSets, 17 ignored events, 16 DI registrations
+- **All 22 architecture tests pass** — Domain.csproj zero NuGet refs preserved
+
 ### T1 VoucherType — Cross-Loop Reference (Sep 2026)
 - **New entity file checklist:** Entity(`Domain/Entities/`), Enum(`Domain/ValueObjects/`), Event(`Domain/Events/`), Port(`Domain/Ports/`), EF Config(`Infrastructure/Persistence/Configurations/`), Repository(`Infrastructure/Repositories/`)
 - **DbContext edits:** `DbSet<T>` property + `modelBuilder.Ignore<Event>()` — always both
@@ -109,3 +130,21 @@ Shared across all loops in this project.
 - **EF config:** Two FKs both Restrict: Company + VoucherType
 - **DbContext:** 16 DbSets, 14 ignored events after T3
 - **Deactivate() no event:** Matches VoucherType pattern
+
+### G2 TaxRate — Cross-Loop Reference (Sep 2026)
+- **Effective-date pattern:** `DateOnly EffectiveFrom` (required) + `DateOnly? EffectiveTo` (nullable = indefinite) — same nullable DateOnly pattern as Project.StartDate/EndDate
+- **Unique index:** `(CompanyId, TaxTypeId, RateValue, EffectiveFrom)` — composite 4-column uniqueness for per-type rate versioning
+- **RateValue decimal(5,2):** Supports up to 999.99% — Vietnamese max is 50%
+- **Date range filter:** `EffectiveFrom <= date AND (EffectiveTo IS NULL OR EffectiveTo >= date) AND IsActive` — standard effective-date query
+- **No Code property:** TaxRate uses RateName (string) instead of Code — different from G1 entity pattern
+- **DbContext after G2:** 22 DbSets, 18 ignored events, 17 DI registrations
+
+### Vietnamese Tax Legislation (Sep 2026)
+- **VAT Law 48/2024/QH15** effective July 1, 2025 — rates: 10% standard, 8% temporary (until Dec 31, 2026), 5% essential, 0% exports
+- **CIT Law 67/2025/QH15** effective October 1, 2025 — rates: 20% standard, 15% small enterprise (≤VND 3B), 17% medium (VND 3-50B)
+- **PIT Law 109/2025/QH15** effective July 1, 2026 — 5 brackets: 5%, 10%, 20%, 30%, 35% (reduced from 7 brackets)
+- **Circular 99/2025/TT-BTC** effective January 1, 2026 — tax accounts: 1331 (VAT deductible goods), 1332 (VAT deductible fixed assets), 3331 (VAT payable), 33311 (output VAT), 33312 (import VAT), 3334 (CIT), 3335 (PIT)
+- **Decree 70/2025/NĐ-CP** effective June 1, 2025 — e-invoice requirements, XML format mandatory
+- **Key distinction:** 0% VAT rate (deductible input credit) vs. VAT-exempt (non-deductible input credit)
+- **Temporary 8% VAT reduction** via Resolution 204/2025/QH15 — excludes telecom, finance, real estate, etc.
+- **Non-cash payment evidence** required for input VAT credit on purchases ≥ VND 5 million
