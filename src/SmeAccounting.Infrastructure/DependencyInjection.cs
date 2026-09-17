@@ -41,6 +41,7 @@ public static class DependencyInjection
         services.AddScoped<ITaxTypeRepository, EfTaxTypeRepository>();
         services.AddScoped<ITaxTreatmentRepository, EfTaxTreatmentRepository>();
         services.AddScoped<ITaxAuthorityRepository, EfTaxAuthorityRepository>();
+        services.AddScoped<ITaxRateRepository, EfTaxRateRepository>();
 
         services.AddSingleton<IClock, SystemClock>();
         services.AddScoped<IAuditLogger, AuditLogger>();

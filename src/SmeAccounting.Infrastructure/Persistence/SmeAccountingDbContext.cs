@@ -28,6 +28,7 @@ public class SmeAccountingDbContext : DbContext, IUnitOfWork
     public DbSet<TaxType> TaxTypes => Set<TaxType>();
     public DbSet<TaxTreatment> TaxTreatments => Set<TaxTreatment>();
     public DbSet<TaxAuthority> TaxAuthorities => Set<TaxAuthority>();
+    public DbSet<TaxRate> TaxRates => Set<TaxRate>();
 
     public SmeAccountingDbContext(DbContextOptions<SmeAccountingDbContext> options)
         : base(options) { }
@@ -51,6 +52,7 @@ public class SmeAccountingDbContext : DbContext, IUnitOfWork
         modelBuilder.Ignore<TaxTypeCreated>();
         modelBuilder.Ignore<TaxTreatmentCreated>();
         modelBuilder.Ignore<TaxAuthorityCreated>();
+        modelBuilder.Ignore<TaxRateCreated>();
 
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(SmeAccountingDbContext).Assembly);
         base.OnModelCreating(modelBuilder);
