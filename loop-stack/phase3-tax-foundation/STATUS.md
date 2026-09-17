@@ -2,13 +2,15 @@
 ## State
 IN_PROGRESS
 ## Current Task
-TaxType domain foundation
+[G1] TaxAuthority domain foundation
 ## Task Progress
-1 / 9 complete
+3 / 9 complete
 ## Attempts On Current Task
-0
+1
 ## Completed Tasks
 [G1] TaxType domain foundation
+[G1] TaxTreatment domain foundation
+[G1] TaxAuthority domain foundation
 ## Skipped Tasks
 (none)
 ## Resource Scout
@@ -19,16 +21,11 @@ Researcher (TaxType G1): DONE — 2026-09-17 — 6 new files, 2 modified files. 
 
 Researcher (TaxAuthority G1): DONE — 2026-09-17 — 6 new files, 2 modified files. Standalone company-scoped entity (no FK dependencies). TaxAuthorityLevel enum: National/Provincial/District matches Vietnamese 3-tier hierarchy (GDT → Regional Sub-Departments → District Teams per Decision 381/QD-BTC). Entity pattern: CompanyId + Code + Name + AuthorityLevel + Address + Phone + IsActive. VoucherType pattern exactly. No namespace collision (TaxAuthorityLevel distinct from TaxAuthority entity). Parallel-safe with TaxType/TaxTreatment.
 ## Last Executor Result
-DONE — 2026-09-17 — Created TaxType domain foundation: TaxCategory enum (8 values), TaxType entity (VoucherType pattern), TaxTypeCreated event, ITaxTypeRepository port (GetAllByCompanyAsync), EfTaxTypeRepository (AsNoTracking for queries), TaxTypeConfiguration (snake_case table, unique index, FK Restrict, xmin). Modified DbContext (19 DbSets, 15 ignored events) and DI (14 registrations). Build: 0 warnings, 0 errors. Architecture tests: 22/22 passed.
+DONE — 2026-09-17 — Created TaxAuthority domain foundation: TaxAuthorityLevel enum (3 values: National, Provincial, District), TaxAuthority entity (CompanyId + Code + Name + AuthorityLevel + Address + Phone + IsActive + Description), TaxAuthorityCreated event, ITaxAuthorityRepository port (4 methods: GetByIdAsync, GetByCodeAsync, GetAllByCompanyAsync, AddAsync), EfTaxAuthorityRepository (AsNoTracking for queries), TaxAuthorityConfiguration (snake_case table `tax_authorities`, unique index on (CompanyId, Code), CompanyId FK Restrict, xmin row version). Modified DbContext (21 DbSets, 17 ignored events) and DI (16 registrations). Build: 0 warnings, 0 errors. Architecture tests: 22/22 passed.
 ## Last Audit Result
 (none)
 ## Active Heartbeats
-executor: TaxType domain foundation — DONE (6 new files, 2 edits, 22/22 tests pass)
-researcher: Writing RESEARCH.md with full schema/constraint analysis — DONE
-researcher: Environment research — investigating build config, DI, API, migrations, tests, config — DONE
-researcher: TaxType domain foundation — DONE — 2026-09-17
-researcher: TaxTreatment domain foundation — DONE — 2026-09-17
-researcher: TaxAuthority domain foundation — DONE — 2026-09-17
+executor: TaxAuthority domain foundation — DONE (6 new files, 2 edits, 22/22 tests pass)
 ## Blocked Reason
 (none)
 ## Planner

@@ -21,3 +21,29 @@ Updated continuously by all agents as they discover things.
 - **EF config:** composite unique index on (CompanyId, Code), CompanyId FK Restrict, TaxCategory HasConversion<string>()
 - **DbContext:** 19 DbSets, 15 ignored events after G1 TaxType
 - **DI:** 14 AddScoped registrations after G1 TaxType
+
+### G1 TaxTreatment Implementation (Sep 2026)
+- **Enum named TaxTreatmentType** (not TaxTreatment) to avoid namespace collision with entity class — same pattern as TaxCategory/VoucherCategory
+- **5 enum values:** StandardRate, ReducedRate, ZeroRate, Exempt, NonTaxable — maps to Vietnamese VAT Law 48/2024
+- **Critical distinction:** ZeroRate (0%) = deductible input credit; Exempt = non-deductible input credit — captured via InputCreditAllowed bool
+- **Entity follows TransactionReason pattern:** CompanyId + TaxTypeId FK + Code + Name + TaxTreatmentType + InputCreditAllowed + IsActive + Description
+- **Two FKs both Restrict:** Company + TaxType — matches TransactionReason (Company + VoucherType)
+- **Unique index on (CompanyId, Code)** — NOT composite with TaxTypeId — same scope as VoucherType/TransactionReason
+- **ITaxTreatmentRepository has 5 methods:** GetByIdAsync, GetByCodeAsync, GetAllByCompanyAsync, GetAllByTaxTypeAsync, AddAsync
+- **No domain event on Deactivate()** — matches all prior entities
+- **DbContext:** 20 DbSets, 16 ignored events after G1 TaxTreatment
+- **DI:** 15 AddScoped registrations after G1 TaxTreatment
+
+### G1 TaxAuthority Implementation (Sep 2026)
+- **Enum named TaxAuthorityLevel** (not TaxAuthority) — no collision since entity is TaxAuthority, enum is TaxAuthorityLevel
+- **3 enum values:** National (Tổng cục Thuế/GDT), Provincial (Cục Thuế/Regional Sub-Departments), District (Chi cục thuế/District Teams) — matches Vietnamese 3-tier hierarchy per Decision 381/QD-BTC
+- **Entity follows VoucherType pattern exactly:** CompanyId + Code + Name + AuthorityLevel + Address + Phone + IsActive + Description
+- **Address + Phone optional** — matches Company entity pattern for reference data
+- **ITaxAuthorityRepository has 4 methods:** GetByIdAsync, GetByCodeAsync, GetAllByCompanyAsync, AddAsync — matches VoucherType repo pattern
+- **Unique index on (CompanyId, Code)** — prevents duplicate authority codes per company
+- **EF config:** snake_case table `tax_authorities`, CompanyId FK Restrict, AuthorityLevel HasConversion<string>(), xmin row version
+- **No domain event on Deactivate()** — matches all prior entities
+- **Standalone entity** — no FK dependencies on TaxType/TaxTreatment/Account/FiscalPeriod
+- **DbContext:** 21 DbSets, 17 ignored events after G1 TaxAuthority
+- **DI:** 16 AddScoped registrations after G1 TaxAuthority
+- **Build:** 0 warnings, 0 errors. Architecture tests: 22/22 passed.
