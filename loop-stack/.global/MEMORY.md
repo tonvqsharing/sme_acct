@@ -99,3 +99,13 @@ Shared across all loops in this project.
 - **Deactivate() no event:** Matches plan; can add `XxxDeactivated` event later if needed
 - **Max lengths:** Code=20, Name=200, Description=500 — enforced in EF config, not domain
 - **Architecture tests:** 22/22 pass — entity in `Domain.Entities`, port starts with `I`, zero new NuGet refs
+
+### T3 TransactionReason — Cross-Loop Reference (Sep 2026)
+- **5 new files, 2 modified files:** Domain: entity, event, port; Infrastructure: EF config, repository; DbContext + DI edits
+- **Entity pattern:** VoucherType with added VoucherTypeId FK — CompanyId + VoucherTypeId + Code + Name + IsActive + Description
+- **Domain event:** TransactionReasonCreated(TransactionReasonId, CompanyId, occurredOn) — event minimalism (no VoucherTypeId)
+- **Port:** GetByCodeAsync(code, companyId) + GetAllByVoucherTypeAsync(voucherTypeId) — not GetAllAsync
+- **EF config:** Unique index on (CompanyId, Code) — NOT composite with VoucherTypeId. Same scope as VoucherType/Department
+- **EF config:** Two FKs both Restrict: Company + VoucherType
+- **DbContext:** 16 DbSets, 14 ignored events after T3
+- **Deactivate() no event:** Matches VoucherType pattern

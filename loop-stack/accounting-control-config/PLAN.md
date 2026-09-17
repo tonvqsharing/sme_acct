@@ -38,7 +38,7 @@ Create domain entity, enum, repository port, EF configuration, repository implem
 
 ---
 
-### [G2] Task 2 — Document Numbering Series Domain + Infrastructure
+### [x] [G2] Task 2 — Document Numbering Series Domain + Infrastructure
 
 **Slice:** Document Numbering Series
 **Depends on:** Task 1 (references VoucherType)
@@ -62,7 +62,7 @@ Create domain entity, repository port, EF configuration, repository, and DI.
 
 ---
 
-### [G2] Task 3 — Transaction Reason Domain + Infrastructure
+### [x] [G2] Task 3 — Transaction Reason Domain + Infrastructure
 
 **Slice:** Transaction Reason
 **Depends on:** Task 1 (references VoucherType)

@@ -22,3 +22,12 @@ Updated continuously by all agents as they discover things.
 - **No navigation properties on CompanyId FK:** `HasOne<Company>().WithMany()` — no nav on entity, no nav on Company
 - **Code max length 20, Name 200, Description 500:** Domain has no constraints; EF config enforces via HasMaxLength
 - **All 22 architecture tests pass** when entity follows established patterns — no test changes needed
+
+### T2: Document Numbering Series Domain + Infrastructure (Sep 2026)
+- **No domain event:** DocumentNumberingSeries constructor does NOT raise a domain event — intentional per plan. No event file, no `modelBuilder.Ignore<>()` needed in DbContext
+- **Dual FK pattern:** Two FKs (CompanyId + VoucherTypeId) both use `HasOne<X>().WithMany().HasForeignKey().OnDelete(Restrict)` — no navigation properties on entity
+- **Three-column unique index:** `(VoucherTypeId, CompanyId, Prefix)` — different from Department/VoucherType two-column `(CompanyId, Code)` pattern
+- **No Code property:** Uses `Prefix` instead. Repo has `GetDefaultAsync(voucherTypeId, companyId)` not `GetByCodeAsync`. `GetAllByCompanyAsync` scoped by CompanyId not `GetAllAsync()`
+- **Domain methods:** `Increment()` advances NextNumber by 1, `Reset(startFrom)` resets it — both validate invariants with `DomainException`
+- **DbSet naming:** `DocumentNumberingSeries` (singular) — must be consistent with table name `document_numbering_series` (snake_case plural via `ToTable()`)
+- **16 entities total now, 15 ports**

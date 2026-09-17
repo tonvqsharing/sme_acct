@@ -1102,3 +1102,735 @@ The migration will be created in Task 7, named `Phase2AccountingControlConfig`. 
 - `= true` default for IsActive
 - Nullable `string?` for optional description
 - Expression-bodied members for simple getters/methods (constructor body uses block)
+
+---
+
+## Task-Specific Research — Task 2: Document Numbering Series
+
+**Goal:** Create DocumentNumberingSeries entity, IDocumentNumberingSeriesRepository port, EF configuration, repository, and DI registration.
+
+**Depends on:** Task 1 (VoucherType entity already exists).
+
+### File List (4 new files, 2 modified files)
+
+| # | File Path | Layer | Status |
+|---|-----------|-------|--------|
+| 1 | `src/SmeAccounting.Domain/Entities/DocumentNumberingSeries.cs` | Domain | New |
+| 2 | `src/SmeAccounting.Domain/Ports/IDocumentNumberingSeriesRepository.cs` | Domain | New |
+| 3 | `src/SmeAccounting.Infrastructure/Persistence/Configurations/DocumentNumberingSeriesConfiguration.cs` | Infrastructure | New |
+| 4 | `src/SmeAccounting.Infrastructure/Repositories/EfDocumentNumberingSeriesRepository.cs` | Infrastructure | New |
+| 5 | `src/SmeAccounting.Infrastructure/Persistence/SmeAccountingDbContext.cs` | Infrastructure | Modify |
+| 6 | `src/SmeAccounting.Infrastructure/DependencyInjection.cs` | Infrastructure | Modify |
+
+**Total: 4 new files, 2 modified files.**
+
+---
+
+### 1. DocumentNumberingSeries Entity
+
+**File:** `src/SmeAccounting.Domain/Entities/DocumentNumberingSeries.cs`
+
+**Copy from:** `src/SmeAccounting.Domain/Entities/VoucherType.cs` (just created in T1 — same structure with dual FKs).
+
+**Properties (from PLAN.md):**
+
+| Property | Type | Default | Notes |
+|----------|------|---------|-------|
+| Id | long | BaseEntity | |
+| VoucherTypeId | long | — | FK to VoucherType |
+| CompanyId | long | — | FK to Company |
+| Prefix | string | — | Max 20, required |
+| NextNumber | int | 1 | Must be >= 1 |
+| PaddingLength | int | 6 | Must be 1–10 |
+| IsDefault | bool | false | One default series per voucher type per company |
+| IsActive | bool | true | Soft-delete |
+| Description | string? | null | Max 500 |
+
+**Invariants (throw `DomainException`):**
+- `CompanyId > 0` — same as VoucherType
+- `VoucherTypeId > 0` — FK must reference valid VoucherType
+- `NextNumber >= 1` — cannot start below 1
+- `PaddingLength >= 1 && PaddingLength <= 10` — reasonable padding bounds
+
+**Methods:**
+- `Increment()` — advances NextNumber by 1 (used in optimistic concurrency flow with xmin)
+- `Reset(int startFrom)` — resets NextNumber to startFrom (must be >= 1)
+
+**Domain events:** None — no DocumentNumberingSeriesCreated event in plan. Constructor validates invariants but does NOT raise an event. This is an intentional deviation from VoucherType/Department pattern. The plan does not specify a domain event for this entity.
+
+**Gotcha — No domain event:** Unlike VoucherType/Department/CostCenter/Project, the plan does NOT specify a domain event for DocumentNumberingSeries. Constructor should still validate invariants but skip `AddDomainEvent(...)`. This means no event file to create and no `modelBuilder.Ignore<>()` needed in DbContext.
+
+**Gotcha — Two FKs in constructor:** VoucherType only had one FK (CompanyId). DocumentNumberingSeries has two (CompanyId + VoucherTypeId). Both must be validated in constructor.
+
+**Pattern:**
+
+```csharp
+using SmeAccounting.Domain.Exceptions;
+
+namespace SmeAccounting.Domain.Entities;
+
+public class DocumentNumberingSeries : BaseEntity
+{
+    public long VoucherTypeId { get; private set; }
+    public long CompanyId { get; private set; }
+    public string Prefix { get; private set; } = string.Empty;
+    public int NextNumber { get; private set; } = 1;
+    public int PaddingLength { get; private set; } = 6;
+    public bool IsDefault { get; private set; }
+    public bool IsActive { get; private set; } = true;
+    public string? Description { get; private set; }
+
+    private DocumentNumberingSeries() { }
+
+    public DocumentNumberingSeries(
+        long companyId, long voucherTypeId, string prefix,
+        int paddingLength = 6, bool isDefault = false, string? description = null)
+    {
+        if (companyId <= 0)
+            throw new DomainException("CompanyId must be greater than zero.");
+        if (voucherTypeId <= 0)
+            throw new DomainException("VoucherTypeId must be greater than zero.");
+        if (string.IsNullOrWhiteSpace(prefix))
+            throw new DomainException("Prefix is required.");
+        if (paddingLength < 1 || paddingLength > 10)
+            throw new DomainException("PaddingLength must be between 1 and 10.");
+
+        CompanyId = companyId;
+        VoucherTypeId = voucherTypeId;
+        Prefix = prefix;
+        PaddingLength = paddingLength;
+        IsDefault = isDefault;
+        Description = description;
+    }
+
+    public void Increment()
+    {
+        NextNumber++;
+    }
+
+    public void Reset(int startFrom)
+    {
+        if (startFrom < 1)
+            throw new DomainException("StartFrom must be greater than zero.");
+        NextNumber = startFrom;
+    }
+}
+```
+
+---
+
+### 2. IDocumentNumberingSeriesRepository Port
+
+**File:** `src/SmeAccounting.Domain/Ports/IDocumentNumberingSeriesRepository.cs`
+
+**Methods (from PLAN.md):**
+
+```csharp
+using SmeAccounting.Domain.Entities;
+
+namespace SmeAccounting.Domain.Ports;
+
+public interface IDocumentNumberingSeriesRepository
+{
+    Task<DocumentNumberingSeries?> GetByIdAsync(long id);
+    Task<DocumentNumberingSeries?> GetDefaultAsync(long voucherTypeId, long companyId);
+    Task<IReadOnlyList<DocumentNumberingSeries>> GetAllByCompanyAsync(long companyId);
+    Task AddAsync(DocumentNumberingSeries series);
+}
+```
+
+**Gotcha — `GetDefaultAsync` not `GetByCodeAsync`:** Unlike VoucherType/Department which have `GetByCodeAsync(code, companyId)`, this repo uses `GetDefaultAsync(voucherTypeId, companyId)` — looks up the default series for a given voucher type + company. No `GetByCode` because there is no `Code` property on this entity.
+
+**Gotcha — `GetAllByCompanyAsync` not `GetAllAsync`:** Unlike VoucherType's `GetAllAsync()`, this repo scopes queries by CompanyId. Makes sense — you never want to list numbering series across all companies.
+
+**Gotcha — No `UpdateAsync`:** Matches all repos except EfAccountRepository. Change tracking handles it. The `Increment()` and `Reset()` methods modify tracked entity state; calling `SaveChangesAsync` via UoW persists it.
+
+---
+
+### 3. DocumentNumberingSeries EF Configuration
+
+**File:** `src/SmeAccounting.Infrastructure/Persistence/Configurations/DocumentNumberingSeriesConfiguration.cs`
+
+**Copy from:** `src/SmeAccounting.Infrastructure/Persistence/Configurations/VoucherTypeConfiguration.cs` (just created in T1).
+
+**Unique index (from PLAN.md):** `(VoucherTypeId, CompanyId, Prefix)` — three-column composite unique index. This is different from Department/VoucherType which use two-column `(CompanyId, Code)`.
+
+**FK pattern:** Two FKs — both Restrict:
+1. `HasOne<Company>().WithMany().HasForeignKey(e => e.CompanyId).OnDelete(DeleteBehavior.Restrict)` — universal
+2. `HasOne<VoucherType>().WithMany().HasForeignKey(e => e.VoucherTypeId).OnDelete(DeleteBehavior.Restrict)` — new FK to VoucherType
+
+**Gotcha — No VoucherType navigation property:** Same pattern as Company FK — `HasOne<VoucherType>().WithMany()` with no navigation on either side. Entity has `VoucherTypeId` (long) but no `VoucherType` property.
+
+**Pattern:**
+
+```csharp
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata.Builders;
+using SmeAccounting.Domain.Entities;
+
+namespace SmeAccounting.Infrastructure.Persistence.Configurations;
+
+internal sealed class DocumentNumberingSeriesConfiguration : IEntityTypeConfiguration<DocumentNumberingSeries>
+{
+    public void Configure(EntityTypeBuilder<DocumentNumberingSeries> builder)
+    {
+        builder.ToTable("document_numbering_series");
+        builder.HasKey(e => e.Id);
+
+        builder.Property(e => e.Id)
+            .HasColumnName("id")
+            .ValueGeneratedOnAdd();
+
+        builder.Property(e => e.VoucherTypeId)
+            .HasColumnName("voucher_type_id");
+
+        builder.Property(e => e.CompanyId)
+            .HasColumnName("company_id");
+
+        builder.Property(e => e.Prefix)
+            .HasColumnName("prefix")
+            .IsRequired()
+            .HasMaxLength(20);
+
+        builder.Property(e => e.NextNumber)
+            .HasColumnName("next_number");
+
+        builder.Property(e => e.PaddingLength)
+            .HasColumnName("padding_length");
+
+        builder.Property(e => e.IsDefault)
+            .HasColumnName("is_default");
+
+        builder.Property(e => e.IsActive)
+            .HasColumnName("is_active");
+
+        builder.Property(e => e.Description)
+            .HasColumnName("description")
+            .HasMaxLength(500);
+
+        builder.HasIndex(e => new { e.VoucherTypeId, e.CompanyId, e.Prefix })
+            .IsUnique();
+
+        builder.HasOne<Company>()
+            .WithMany()
+            .HasForeignKey(e => e.CompanyId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasOne<VoucherType>()
+            .WithMany()
+            .HasForeignKey(e => e.VoucherTypeId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.Property<uint>("xmin")
+            .IsRowVersion()
+            .HasColumnName("xmin");
+    }
+}
+```
+
+**Gotcha — `NextNumber`/`PaddingLength`/`IsDefault`/`IsActive` no HasMaxLength:** They're int/bool, not strings. Just `HasColumnName()` — no `.HasMaxLength()` or `.IsRequired()` needed.
+
+**Gotcha — Table name:** `document_numbering_series` — already snake_case plural from PLAN. No casing issues.
+
+---
+
+### 4. EfDocumentNumberingSeriesRepository
+
+**File:** `src/SmeAccounting.Infrastructure/Repositories/EfDocumentNumberingSeriesRepository.cs`
+
+**Copy from:** `src/SmeAccounting.Infrastructure/Repositories/EfVoucherTypeRepository.cs`.
+
+**Pattern:**
+
+```csharp
+using Microsoft.EntityFrameworkCore;
+using SmeAccounting.Domain.Entities;
+using SmeAccounting.Domain.Ports;
+using SmeAccounting.Infrastructure.Persistence;
+
+namespace SmeAccounting.Infrastructure.Repositories;
+
+public class EfDocumentNumberingSeriesRepository : IDocumentNumberingSeriesRepository
+{
+    private readonly SmeAccountingDbContext _context;
+
+    public EfDocumentNumberingSeriesRepository(SmeAccountingDbContext context) => _context = context;
+
+    public async Task<DocumentNumberingSeries?> GetByIdAsync(long id)
+    {
+        return await _context.DocumentNumberingSeries
+            .FirstOrDefaultAsync(e => e.Id == id);
+    }
+
+    public async Task<DocumentNumberingSeries?> GetDefaultAsync(long voucherTypeId, long companyId)
+    {
+        return await _context.DocumentNumberingSeries
+            .FirstOrDefaultAsync(e => e.VoucherTypeId == voucherTypeId
+                && e.CompanyId == companyId && e.IsDefault);
+    }
+
+    public async Task<IReadOnlyList<DocumentNumberingSeries>> GetAllByCompanyAsync(long companyId)
+    {
+        return await _context.DocumentNumberingSeries
+            .AsNoTracking()
+            .Where(e => e.CompanyId == companyId)
+            .OrderBy(e => e.Prefix)
+            .ToListAsync();
+    }
+
+    public async Task AddAsync(DocumentNumberingSeries series)
+    {
+        await _context.DocumentNumberingSeries.AddAsync(series);
+    }
+}
+```
+
+**Gotcha — DbSet name:** `DocumentNumberingSeries` (singular) — matches DbSet property name. Confirm DbSet is named `DocumentNumberingSeries` in DbContext (not `DocumentNumberingSerieses`).
+
+**Gotcha — `GetAllByCompanyAsync` ordering:** Order by `Prefix` (the closest equivalent to Code on this entity). No Code property exists.
+
+---
+
+### 5. DbContext Modifications
+
+**File:** `src/SmeAccounting.Infrastructure/Persistence/SmeAccountingDbContext.cs`
+
+**Current state (after T1):** 14 DbSets, 13 ignored events.
+
+**Add DbSet (after line 23):**
+```csharp
+public DbSet<DocumentNumberingSeries> DocumentNumberingSeries => Set<DocumentNumberingSeries>();
+```
+
+**No event to ignore** — DocumentNumberingSeries does NOT raise a domain event. No `modelBuilder.Ignore<>()` needed.
+
+**New count:** 15 DbSets, 13 ignored events (unchanged).
+
+---
+
+### 6. DI Registration
+
+**File:** `src/SmeAccounting.Infrastructure/DependencyInjection.cs`
+
+**Add (after line 36):**
+```csharp
+services.AddScoped<IDocumentNumberingSeriesRepository, EfDocumentNumberingSeriesRepository>();
+```
+
+**Pattern:** Same `AddScoped<IXxxRepository, EfXxxRepository>()` as all 9 existing registrations.
+
+---
+
+### Gotchas and Edge Cases
+
+#### 1. No Domain Event
+Unlike VoucherType/Department/CostCenter/Project, the plan does NOT specify a domain event for DocumentNumberingSeries. This means:
+- No event file to create in `Domain/Events/`
+- No `modelBuilder.Ignore<>()` in DbContext
+- Constructor does NOT call `AddDomainEvent(...)`
+
+This is intentional per the plan. If needed later, a `DocumentNumberingSeriesCreated` event can be added.
+
+#### 2. Dual FK Pattern
+This entity has two FKs (CompanyId + VoucherTypeId). Both use the universal `HasOne<X>().WithMany().HasForeignKey().OnDelete(Restrict)` pattern. No navigation properties on entity — FKs configured only in EF.
+
+#### 3. Three-Column Unique Index
+`HasIndex(e => new { e.VoucherTypeId, e.CompanyId, e.Prefix }).IsUnique()` — three columns, not two. This prevents duplicate prefixes per voucher type per company. Different from Department/VoucherType two-column `(CompanyId, Code)` pattern.
+
+#### 4. No Code Property
+Unlike VoucherType/Department/CostCenter/Project, DocumentNumberingSeries has NO `Code` property. The `Prefix` serves a similar role but is not a code. The repository uses `GetDefaultAsync` instead of `GetByCodeAsync`.
+
+#### 5. NextNumber Auto-Increment Behavior
+`Increment()` method advances NextNumber by 1. This is NOT an auto-increment DB column — it's a domain method. The Application layer (Task 6) will call `Increment()` within a transaction, relying on xmin optimistic concurrency to prevent race conditions.
+
+#### 6. Architecture Test Compliance
+- Entity inherits `BaseEntity` → must be in `SmeAccounting.Domain.Entities` ✓
+- Port interface `IDocumentNumberingSeriesRepository` starts with `I` ✓
+- Domain has zero NuGet refs → no new packages ✓
+- Infrastructure references Domain only → correct ✓
+- No Api references to Domain.Entities or Domain.Ports → correct ✓
+
+#### 7. Migration Timing
+Migration created in Task 7. DocumentNumberingSeries table will be `document_numbering_series` in the `Phase2AccountingControlConfig` migration alongside the other 4 new tables.
+
+#### 8. DbSet Naming
+DbSet property: `DocumentNumberingSeries` (singular). Table: `document_numbering_series` (snake_case plural). EF Core handles the mapping via `ToTable()`. The DbSet expression-bodied property pattern: `public DbSet<DocumentNumberingSeries> DocumentNumberingSeries => Set<DocumentNumberingSeries>();`
+
+#### 9. Default PaddingLength
+`PaddingLength` defaults to 6 in the constructor (matching PLAN.md). This means a prefix like "HD" with NextNumber=1 produces "HD000001". Domain has no formatting logic — that's Application layer responsibility (Task 6).
+
+---
+
+## Task-Specific Research — Task 3: Transaction Reason
+
+**Goal:** Create TransactionReason entity, ITransactionReasonRepository port, EF configuration, repository, and DI registration.
+
+**Depends on:** Task 1 (VoucherType entity already exists).
+
+### File List (4 new files, 2 modified files)
+
+| # | File Path | Layer | Status |
+|---|-----------|-------|--------|
+| 1 | `src/SmeAccounting.Domain/Entities/TransactionReason.cs` | Domain | New |
+| 2 | `src/SmeAccounting.Domain/Events/TransactionReasonCreated.cs` | Domain | New |
+| 3 | `src/SmeAccounting.Domain/Ports/ITransactionReasonRepository.cs` | Domain | New |
+| 4 | `src/SmeAccounting.Infrastructure/Persistence/Configurations/TransactionReasonConfiguration.cs` | Infrastructure | New |
+| 5 | `src/SmeAccounting.Infrastructure/Repositories/EfTransactionReasonRepository.cs` | Infrastructure | New |
+| 6 | `src/SmeAccounting.Infrastructure/Persistence/SmeAccountingDbContext.cs` | Infrastructure | Modify |
+| 7 | `src/SmeAccounting.Infrastructure/DependencyInjection.cs` | Infrastructure | Modify |
+
+**Total: 5 new files, 2 modified files.**
+
+---
+
+### 1. TransactionReason Entity
+
+**File:** `src/SmeAccounting.Domain/Entities/TransactionReason.cs`
+
+**Closest pattern to copy:** `src/SmeAccounting.Domain/Entities/VoucherType.cs` — same structure: CompanyId + Code + Name + IsActive + DomainException invariants + DomainCreated event + Description.
+
+**Key difference from VoucherType:** This entity has a `VoucherTypeId` FK (like DocumentNumberingSeries has two FKs). But unlike DocumentNumberingSeries, it DOES raise a domain event (per PLAN.md pattern from T1).
+
+**Properties (from PLAN.md):**
+
+| Property | Type | Default | Notes |
+|----------|------|---------|-------|
+| Id | long | BaseEntity | |
+| Code | string | — | Max 20, required |
+| Name | string | — | Max 200, required |
+| VoucherTypeId | long | — | FK to VoucherType |
+| CompanyId | long | — | FK to Company |
+| IsActive | bool | true | Soft-delete |
+| Description | string? | null | Max 500 |
+
+**Invariants (throw `DomainException`):**
+- `CompanyId > 0`
+- `VoucherTypeId > 0`
+- Code not empty
+- Name not empty
+
+**Domain event:** `TransactionReasonCreated(EntityId, CompanyId, occurredOn)` — same pattern as VoucherTypeCreated, DepartmentCreated, etc.
+
+**Pattern:**
+
+```csharp
+using SmeAccounting.Domain.Events;
+using SmeAccounting.Domain.Exceptions;
+
+namespace SmeAccounting.Domain.Entities;
+
+public class TransactionReason : BaseEntity
+{
+    public string Code { get; private set; } = string.Empty;
+    public string Name { get; private set; } = string.Empty;
+    public long VoucherTypeId { get; private set; }
+    public long CompanyId { get; private set; }
+    public bool IsActive { get; private set; } = true;
+    public string? Description { get; private set; }
+
+    private TransactionReason() { }
+
+    public TransactionReason(long companyId, long voucherTypeId, string code, string name, string? description = null)
+    {
+        if (companyId <= 0)
+            throw new DomainException("CompanyId must be greater than zero.");
+        if (voucherTypeId <= 0)
+            throw new DomainException("VoucherTypeId must be greater than zero.");
+        if (string.IsNullOrWhiteSpace(code))
+            throw new DomainException("Code is required.");
+        if (string.IsNullOrWhiteSpace(name))
+            throw new DomainException("Name is required.");
+
+        CompanyId = companyId;
+        VoucherTypeId = voucherTypeId;
+        Code = code;
+        Name = name;
+        Description = description;
+
+        AddDomainEvent(new TransactionReasonCreated(Id, companyId, DateTimeOffset.UtcNow));
+    }
+
+    public void Deactivate()
+    {
+        IsActive = false;
+    }
+}
+```
+
+**Gotcha — Dual FK with event:** Unlike DocumentNumberingSeries (two FKs, no event), TransactionReason has two FKs AND raises a domain event. Constructor takes both FK IDs and validates both.
+
+**Gotcha — Constructor parameter order:** `(companyId, voucherTypeId, code, name, description?)` —CompanyId first, then VoucherTypeId, then Code/Name. Matches VoucherType pattern of CompanyId-first.
+
+---
+
+### 2. TransactionReasonCreated Event
+
+**File:** `src/SmeAccounting.Domain/Events/TransactionReasonCreated.cs`
+
+**Copy from:** `src/SmeAccounting.Domain/Events/VoucherTypeCreated.cs` — identical structure.
+
+```csharp
+namespace SmeAccounting.Domain.Events;
+
+public class TransactionReasonCreated : DomainEvent
+{
+    public long TransactionReasonId { get; }
+    public long CompanyId { get; }
+
+    public TransactionReasonCreated(
+        long transactionReasonId,
+        long companyId,
+        DateTimeOffset occurredOn)
+        : base(occurredOn)
+    {
+        TransactionReasonId = transactionReasonId;
+        CompanyId = companyId;
+    }
+}
+```
+
+**Gotcha — Event property name:** `TransactionReasonId` (not `Id` or `ReasonId`). Matches VoucherTypeCreated's `VoucherTypeId`, DepartmentCreated's `DepartmentId`, etc.
+
+---
+
+### 3. ITransactionReasonRepository Port
+
+**File:** `src/SmeAccounting.Domain/Ports/ITransactionReasonRepository.cs`
+
+**Methods (from PLAN.md):**
+
+```csharp
+using SmeAccounting.Domain.Entities;
+
+namespace SmeAccounting.Domain.Ports;
+
+public interface ITransactionReasonRepository
+{
+    Task<TransactionReason?> GetByIdAsync(long id);
+    Task<TransactionReason?> GetByCodeAsync(string code, long companyId);
+    Task<IReadOnlyList<TransactionReason>> GetAllByVoucherTypeAsync(long voucherTypeId);
+    Task AddAsync(TransactionReason transactionReason);
+}
+```
+
+**Gotcha — `GetAllByVoucherTypeAsync` not `GetAllAsync`:** Unlike VoucherType's `GetAllAsync()`, this repo scopes by VoucherTypeId. Rationale: transaction reasons are meaningful within a voucher type context; listing all reasons across all voucher types is less useful.
+
+**Gotcha — `GetByCodeAsync(code, companyId)` not `(code, voucherTypeId)`:** Code uniqueness is scoped to company (not voucher type). This means the unique index in EF config is `(CompanyId, Code)` — same as Department/VoucherType. A code like "Thu tien ban hang" can exist under multiple voucher types within the same company.
+
+---
+
+### 4. TransactionReason EF Configuration
+
+**File:** `src/SmeAccounting.Infrastructure/Persistence/Configurations/TransactionReasonConfiguration.cs`
+
+**Copy from:** `src/SmeAccounting.Infrastructure/Persistence/Configurations/VoucherTypeConfiguration.cs` — add VoucherType FK.
+
+**Unique index (from PLAN.md):** `(CompanyId, Code)` — same as VoucherType/Department/CostCenter/Project. NOT `(VoucherTypeId, CompanyId, Code)`.
+
+**FK pattern:** Two FKs — both Restrict:
+1. `HasOne<Company>().WithMany().HasForeignKey(e => e.CompanyId).OnDelete(DeleteBehavior.Restrict)` — universal
+2. `HasOne<VoucherType>().WithMany().HasForeignKey(e => e.VoucherTypeId).OnDelete(DeleteBehavior.Restrict)` — same as DocumentNumberingSeries
+
+**Pattern:**
+
+```csharp
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata.Builders;
+using SmeAccounting.Domain.Entities;
+
+namespace SmeAccounting.Infrastructure.Persistence.Configurations;
+
+internal sealed class TransactionReasonConfiguration : IEntityTypeConfiguration<TransactionReason>
+{
+    public void Configure(EntityTypeBuilder<TransactionReason> builder)
+    {
+        builder.ToTable("transaction_reasons");
+        builder.HasKey(e => e.Id);
+
+        builder.Property(e => e.Id)
+            .HasColumnName("id")
+            .ValueGeneratedOnAdd();
+
+        builder.Property(e => e.CompanyId)
+            .HasColumnName("company_id");
+
+        builder.Property(e => e.VoucherTypeId)
+            .HasColumnName("voucher_type_id");
+
+        builder.Property(e => e.Code)
+            .HasColumnName("code")
+            .IsRequired()
+            .HasMaxLength(20);
+
+        builder.Property(e => e.Name)
+            .HasColumnName("name")
+            .IsRequired()
+            .HasMaxLength(200);
+
+        builder.Property(e => e.IsActive)
+            .HasColumnName("is_active");
+
+        builder.Property(e => e.Description)
+            .HasColumnName("description")
+            .HasMaxLength(500);
+
+        builder.HasIndex(e => new { e.CompanyId, e.Code })
+            .IsUnique();
+
+        builder.HasOne<Company>()
+            .WithMany()
+            .HasForeignKey(e => e.CompanyId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasOne<VoucherType>()
+            .WithMany()
+            .HasForeignKey(e => e.VoucherTypeId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.Property<uint>("xmin")
+            .IsRowVersion()
+            .HasColumnName("xmin");
+    }
+}
+```
+
+**Gotcha — Table name:** `transaction_reasons` (snake_case plural). Verify: `ToTable("transaction_reasons")`.
+
+**Gotcha — Property order:** CompanyId, VoucherTypeId, Code, Name, IsActive, Description — matches entity property declaration order. EF doesn't care about order, but consistency helps readability.
+
+---
+
+### 5. EfTransactionReasonRepository
+
+**File:** `src/SmeAccounting.Infrastructure/Repositories/EfTransactionReasonRepository.cs`
+
+**Copy from:** `src/SmeAccounting.Infrastructure/Repositories/EfVoucherTypeRepository.cs` — change GetAllAsync to GetAllByVoucherTypeAsync.
+
+**Pattern:**
+
+```csharp
+using Microsoft.EntityFrameworkCore;
+using SmeAccounting.Domain.Entities;
+using SmeAccounting.Domain.Ports;
+using SmeAccounting.Infrastructure.Persistence;
+
+namespace SmeAccounting.Infrastructure.Repositories;
+
+public class EfTransactionReasonRepository : ITransactionReasonRepository
+{
+    private readonly SmeAccountingDbContext _context;
+
+    public EfTransactionReasonRepository(SmeAccountingDbContext context) => _context = context;
+
+    public async Task<TransactionReason?> GetByIdAsync(long id)
+    {
+        return await _context.TransactionReasons
+            .FirstOrDefaultAsync(e => e.Id == id);
+    }
+
+    public async Task<TransactionReason?> GetByCodeAsync(string code, long companyId)
+    {
+        return await _context.TransactionReasons
+            .FirstOrDefaultAsync(e => e.Code == code && e.CompanyId == companyId);
+    }
+
+    public async Task<IReadOnlyList<TransactionReason>> GetAllByVoucherTypeAsync(long voucherTypeId)
+    {
+        return await _context.TransactionReasons
+            .AsNoTracking()
+            .Where(e => e.VoucherTypeId == voucherTypeId)
+            .OrderBy(e => e.Code)
+            .ToListAsync();
+    }
+
+    public async Task AddAsync(TransactionReason transactionReason)
+    {
+        await _context.TransactionReasons.AddAsync(transactionReason);
+    }
+}
+```
+
+**Gotcha — DbSet name:** `TransactionReasons` (plural) — matches DbSet property name pattern (`Departments`, `CostCenters`, `Projects`, `VoucherTypes`).
+
+**Gotcha — `GetAllByVoucherTypeAsync` filtering:** Uses `.Where(e => e.VoucherTypeId == voucherTypeId)` before `.ToListAsync()`. Orders by Code (matching VoucherType/Department pattern).
+
+---
+
+### 6. DbContext Modifications
+
+**File:** `src/SmeAccounting.Infrastructure/Persistence/SmeAccountingDbContext.cs`
+
+**Current state (after T2):** 15 DbSets, 13 ignored events.
+
+**Add DbSet (after line 24):**
+```csharp
+public DbSet<TransactionReason> TransactionReasons => Set<TransactionReason>();
+```
+
+**Add Ignore for new event (after line 43):**
+```csharp
+modelBuilder.Ignore<TransactionReasonCreated>();
+```
+
+**New count:** 16 DbSets, 14 ignored events.
+
+---
+
+### 7. DI Registration
+
+**File:** `src/SmeAccounting.Infrastructure/DependencyInjection.cs`
+
+**Add (after line 37):**
+```csharp
+services.AddScoped<ITransactionReasonRepository, EfTransactionReasonRepository>();
+```
+
+**Pattern:** Same `AddScoped<IXxxRepository, EfXxxRepository>()` as all 10 existing registrations.
+
+---
+
+### Gotchas and Edge Cases
+
+#### 1. Domain Event Present (Unlike DocumentNumberingSeries)
+TransactionReason DOES raise a domain event (`TransactionReasonCreated`). This means:
+- Create event file in `Domain/Events/TransactionReasonCreated.cs`
+- Add `modelBuilder.Ignore<TransactionReasonCreated>()` in DbContext
+- Constructor calls `AddDomainEvent(new TransactionReasonCreated(...))`
+
+This is the same pattern as VoucherType, Department, CostCenter, Project. DocumentNumberingSeries was the exception (no event).
+
+#### 2. Dual FK + Event Combination
+TransactionReason has two FKs (CompanyId + VoucherTypeId) AND raises a domain event. This is a combination not seen in existing entities:
+- VoucherType: one FK + event
+- DocumentNumberingSeries: two FKs, no event
+- Department/CostCenter/Project: one FK + event
+
+The pattern is straightforward: validate both FK IDs in constructor, raise event with CompanyId (not VoucherTypeId). Event carries entity ID + CompanyId only (event minimalism pattern).
+
+#### 3. Code Uniqueness Scope
+Unique index is `(CompanyId, Code)` — NOT `(VoucherTypeId, CompanyId, Code)`. This means:
+- Same code CAN exist under different voucher types within the same company
+- Same code CANNOT exist twice under the same company regardless of voucher type
+- Application layer (Task 6) must check for duplicates before insert
+
+#### 4. GetAllByVoucherTypeAsync vs GetAllAsync
+The repo method `GetAllByVoucherTypeAsync(long voucherTypeId)` replaces the generic `GetAllAsync()`. This is intentional — transaction reasons are queried in context of a voucher type. The Application layer (Task 6) query `GetTransactionReasonsByVoucherTypeQuery` will call this method.
+
+#### 5. No VoucherType Navigation Property
+Same pattern as all other FK relationships: entity has `VoucherTypeId` (long) but no `VoucherType` navigation property. FK configured in EF via `HasOne<VoucherType>().WithMany()` (no navigation on either side).
+
+#### 6. Architecture Test Compliance
+- Entity inherits `BaseEntity` → must be in `SmeAccounting.Domain.Entities` ✓
+- Port interface `ITransactionReasonRepository` starts with `I` ✓
+- Domain has zero NuGet refs → no new packages ✓
+- Infrastructure references Domain only → correct ✓
+- No Api references to Domain.Entities or Domain.Ports → correct ✓
+
+#### 7. Migration Timing
+Migration created in Task 7. TransactionReasons table will be `transaction_reasons` in the `Phase2AccountingControlConfig` migration alongside the other 4 new tables.
+
+#### 8. DbSet Naming
+DbSet property: `TransactionReasons` (plural). Table: `transaction_reasons` (snake_case plural). The DbSet expression-bodied property pattern: `public DbSet<TransactionReason> TransactionReasons => Set<TransactionReason>();`
+
+#### 9. Event Minimalism
+`TransactionReasonCreated` carries `TransactionReasonId` + `CompanyId` + `occurredOn`. Does NOT carry `VoucherTypeId`. This matches the event minimalism pattern: entity ID + company ID only. The Application layer can look up VoucherTypeId from the entity if needed.

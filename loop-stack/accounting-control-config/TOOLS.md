@@ -66,13 +66,13 @@ SmeAccounting.sln
 - **Microsoft.NET.Test.Sdk** 17.14.1 — test host
 - **coverlet.collector** 6.0.4 — code coverage
 
-## Domain Entities (15 total)
+## Domain Entities (16 total, after Task 2)
 
-Account, AccountGroup, BaseEntity (abstract), Company, CostCenter, Currency, Department, ExchangeRate, FiscalPeriod, FiscalYear, JournalEntry, JournalEntryLine, PostingReference, Project, VoucherType
+Account, AccountGroup, BaseEntity (abstract), Company, CostCenter, Currency, Department, DocumentNumberingSeries, ExchangeRate, FiscalPeriod, FiscalYear, JournalEntry, JournalEntryLine, PostingReference, Project, VoucherType
 
-## Domain Ports (14 interfaces)
+## Domain Ports (15 interfaces, after Task 2)
 
-IAccountRepository, IAuditLogger, IClock, ICompanyRepository, ICostCenterRepository, ICurrencyRepository, IDepartmentRepository, IExchangeRateRepository, IForeignExchangeRateProvider, IJournalEntryRepository, IPostingService, IProjectRepository, IUnitOfWork, IVoucherTypeRepository
+IAccountRepository, IAuditLogger, IClock, ICompanyRepository, ICostCenterRepository, ICurrencyRepository, IDepartmentRepository, IDocumentNumberingSeriesRepository, IExchangeRateRepository, IForeignExchangeRateProvider, IJournalEntryRepository, IPostingService, IProjectRepository, IUnitOfWork, IVoucherTypeRepository
 
 ## Code Style Rules (.editorconfig)
 
