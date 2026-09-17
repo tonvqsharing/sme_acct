@@ -38,6 +38,7 @@ public static class DependencyInjection
         services.AddScoped<ITransactionReasonRepository, EfTransactionReasonRepository>();
         services.AddScoped<IPostingConfigurationRepository, EfPostingConfigurationRepository>();
         services.AddScoped<IOpeningBalanceMappingRepository, EfOpeningBalanceMappingRepository>();
+        services.AddScoped<ITaxTypeRepository, EfTaxTypeRepository>();
 
         services.AddSingleton<IClock, SystemClock>();
         services.AddScoped<IAuditLogger, AuditLogger>();

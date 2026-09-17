@@ -25,6 +25,7 @@ public class SmeAccountingDbContext : DbContext, IUnitOfWork
     public DbSet<TransactionReason> TransactionReasons => Set<TransactionReason>();
     public DbSet<PostingConfiguration> PostingConfigurations => Set<PostingConfiguration>();
     public DbSet<OpeningBalanceMapping> OpeningBalanceMappings => Set<OpeningBalanceMapping>();
+    public DbSet<TaxType> TaxTypes => Set<TaxType>();
 
     public SmeAccountingDbContext(DbContextOptions<SmeAccountingDbContext> options)
         : base(options) { }
@@ -45,6 +46,7 @@ public class SmeAccountingDbContext : DbContext, IUnitOfWork
         modelBuilder.Ignore<ProjectCreated>();
         modelBuilder.Ignore<VoucherTypeCreated>();
         modelBuilder.Ignore<TransactionReasonCreated>();
+        modelBuilder.Ignore<TaxTypeCreated>();
 
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(SmeAccountingDbContext).Assembly);
         base.OnModelCreating(modelBuilder);
