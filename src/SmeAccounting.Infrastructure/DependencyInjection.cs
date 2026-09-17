@@ -36,6 +36,8 @@ public static class DependencyInjection
         services.AddScoped<IVoucherTypeRepository, EfVoucherTypeRepository>();
         services.AddScoped<IDocumentNumberingSeriesRepository, EfDocumentNumberingSeriesRepository>();
         services.AddScoped<ITransactionReasonRepository, EfTransactionReasonRepository>();
+        services.AddScoped<IPostingConfigurationRepository, EfPostingConfigurationRepository>();
+        services.AddScoped<IOpeningBalanceMappingRepository, EfOpeningBalanceMappingRepository>();
 
         services.AddSingleton<IClock, SystemClock>();
         services.AddScoped<IAuditLogger, AuditLogger>();

@@ -1834,3 +1834,807 @@ DbSet property: `TransactionReasons` (plural). Table: `transaction_reasons` (sna
 
 #### 9. Event Minimalism
 `TransactionReasonCreated` carries `TransactionReasonId` + `CompanyId` + `occurredOn`. Does NOT carry `VoucherTypeId`. This matches the event minimalism pattern: entity ID + company ID only. The Application layer can look up VoucherTypeId from the entity if needed.
+
+---
+
+## Task-Specific Research — Task 4: Posting Configuration
+
+**Goal:** Create PostingConfiguration entity, IPostingConfigurationRepository port, EF configuration, repository, and DI registration.
+
+**Depends on:** Task 1 (VoucherType), existing Account entity, Task 3 (TransactionReason — nullable FK).
+
+### File List (4 new files, 2 modified files)
+
+| # | File Path | Layer | Status |
+|---|-----------|-------|--------|
+| 1 | `src/SmeAccounting.Domain/Entities/PostingConfiguration.cs` | Domain | New |
+| 2 | `src/SmeAccounting.Domain/Ports/IPostingConfigurationRepository.cs` | Domain | New |
+| 3 | `src/SmeAccounting.Infrastructure/Persistence/Configurations/PostingConfigurationConfiguration.cs` | Infrastructure | New |
+| 4 | `src/SmeAccounting.Infrastructure/Repositories/EfPostingConfigurationRepository.cs` | Infrastructure | New |
+| 5 | `src/SmeAccounting.Infrastructure/Persistence/SmeAccountingDbContext.cs` | Infrastructure | Modify |
+| 6 | `src/SmeAccounting.Infrastructure/DependencyInjection.cs` | Infrastructure | Modify |
+
+**Total: 4 new files, 2 modified files.**
+
+**No domain event** — plan does not specify a PostingConfigurationCreated event. Same pattern as DocumentNumberingSeries (T2).
+
+---
+
+### 1. PostingConfiguration Entity
+
+**File:** `src/SmeAccounting.Domain/Entities/PostingConfiguration.cs`
+
+**Closest pattern:** `src/SmeAccounting.Domain/Entities/DocumentNumberingSeries.cs` — multiple FKs, no domain event, soft-delete via Deactivate().
+
+**Properties (from PLAN.md):**
+
+| Property | Type | Default | Notes |
+|----------|------|---------|-------|
+| Id | long | BaseEntity | |
+| VoucherTypeId | long | — | FK to VoucherType |
+| DebitAccountId | long | — | FK to Account |
+| CreditAccountId | long | — | FK to Account |
+| CompanyId | long | — | FK to Company |
+| TransactionReasonId | long? | null | FK to TransactionReason, nullable for default posting rules |
+| DisplayOrder | int | 0 | Ordering within voucher type |
+| IsActive | bool | true | Soft-delete |
+| Description | string? | null | Max 500 |
+
+**Invariants (throw `DomainException`):**
+- `CompanyId > 0`
+- `VoucherTypeId > 0`
+- `DebitAccountId > 0`
+- `CreditAccountId > 0`
+- `DebitAccountId != CreditAccountId` — core accounting invariant: debit and credit must be different accounts
+
+**Key gotcha — "Both accounts must belong to same company":** This is an APPLICATION-LEVEL invariant, NOT a domain constructor invariant. The entity does not have access to Account entities or their CompanyId values. The constructor only checks `DebitAccountId != CreditAccountId`. The Application layer (Task 6) must validate that both accounts belong to the same company before calling the constructor. This matches the existing pattern where `ExchangeRate` validates `FromCurrencyCode != ToCurrencyCode` in the constructor but cannot validate the currencies exist.
+
+**Key gotcha — TransactionReasonId is nullable:** Unlike all other FKs on this entity, `TransactionReasonId` is `long?`. A null value means "this is the default posting rule for this voucher type, not tied to a specific transaction reason." The constructor should NOT validate `TransactionReasonId > 0` because null is valid. Only validate non-null values: `if (transactionReasonId.HasValue && transactionReasonId <= 0) throw ...`.
+
+**Key gotcha — No domain event:** Same pattern as DocumentNumberingSeries (T2). No event file, no `modelBuilder.Ignore<>()` in DbContext, no `AddDomainEvent()` in constructor.
+
+**Key gotcha — Four/Five FKs:** This entity has the most FKs of any in the codebase:
+1. CompanyId → Company (Restrict)
+2. VoucherTypeId → VoucherType (Restrict)
+3. DebitAccountId → Account (Restrict)
+4. CreditAccountId → Account (Restrict)
+5. TransactionReasonId → TransactionReason (nullable, Restrict)
+
+**Key gotcha — Two Account FKs:** `DebitAccountId` and `CreditAccountId` both reference the Account entity. EF Core needs two separate `HasOne<Account>()` configurations with different foreign key properties. Use explicit FK configuration to avoid ambiguity:
+```csharp
+builder.HasOne<Account>()
+    .WithMany()
+    .HasForeignKey(e => e.DebitAccountId)
+    .OnDelete(DeleteBehavior.Restrict);
+
+builder.HasOne<Account>()
+    .WithMany()
+    .HasForeignKey(e => e.CreditAccountId)
+    .OnDelete(DeleteBehavior.Restrict);
+```
+
+**Key gotcha — TransactionReason FK nullable delete behavior:** Since `TransactionReasonId` is nullable, the FK could use `DeleteBehavior.SetNull` or `DeleteBehavior.Restrict`. PLAN.md says "Company/Account/VoucherType FKs Restrict" — does not specify TransactionReason behavior. **Recommendation:** Use `Restrict` for consistency with all other FKs. If a TransactionReason is deleted, the PostingConfiguration referencing it should be deactivated first (soft-delete), not cascade-null. This matches the accounting domain where referential integrity matters.
+
+**Pattern:**
+
+```csharp
+using SmeAccounting.Domain.Exceptions;
+
+namespace SmeAccounting.Domain.Entities;
+
+public class PostingConfiguration : BaseEntity
+{
+    public long VoucherTypeId { get; private set; }
+    public long DebitAccountId { get; private set; }
+    public long CreditAccountId { get; private set; }
+    public long CompanyId { get; private set; }
+    public long? TransactionReasonId { get; private set; }
+    public int DisplayOrder { get; private set; }
+    public bool IsActive { get; private set; } = true;
+    public string? Description { get; private set; }
+
+    private PostingConfiguration() { }
+
+    public PostingConfiguration(
+        long companyId, long voucherTypeId, long debitAccountId, long creditAccountId,
+        long? transactionReasonId = null, int displayOrder = 0, string? description = null)
+    {
+        if (companyId <= 0)
+            throw new DomainException("CompanyId must be greater than zero.");
+        if (voucherTypeId <= 0)
+            throw new DomainException("VoucherTypeId must be greater than zero.");
+        if (debitAccountId <= 0)
+            throw new DomainException("DebitAccountId must be greater than zero.");
+        if (creditAccountId <= 0)
+            throw new DomainException("CreditAccountId must be greater than zero.");
+        if (debitAccountId == creditAccountId)
+            throw new DomainException("DebitAccountId and CreditAccountId must be different.");
+        if (transactionReasonId.HasValue && transactionReasonId <= 0)
+            throw new DomainException("TransactionReasonId must be greater than zero when specified.");
+
+        CompanyId = companyId;
+        VoucherTypeId = voucherTypeId;
+        DebitAccountId = debitAccountId;
+        CreditAccountId = creditAccountId;
+        TransactionReasonId = transactionReasonId;
+        DisplayOrder = displayOrder;
+        Description = description;
+    }
+
+    public void Deactivate()
+    {
+        IsActive = false;
+    }
+}
+```
+
+**Gotcha — Constructor parameter order:** `(companyId, voucherTypeId, debitAccountId, creditAccountId, transactionReasonId?, displayOrder, description?)` — CompanyId first (matching all other entities), then VoucherTypeId, then the two account FKs, then optional TransactionReasonId, then optional display/description params.
+
+**Gotcha — No Id in constructor:** Id is 0 at constructor time. Real ID assigned by EF Core after SaveChanges. No domain event carries the provisional 0 (because there is no event).
+
+---
+
+### 2. IPostingConfigurationRepository Port
+
+**File:** `src/SmeAccounting.Domain/Ports/IPostingConfigurationRepository.cs`
+
+**Methods (from PLAN.md):**
+
+```csharp
+using SmeAccounting.Domain.Entities;
+
+namespace SmeAccounting.Domain.Ports;
+
+public interface IPostingConfigurationRepository
+{
+    Task<PostingConfiguration?> GetByIdAsync(long id);
+    Task<IReadOnlyList<PostingConfiguration>> GetAllByVoucherTypeAsync(long voucherTypeId, long companyId);
+    Task<IReadOnlyList<PostingConfiguration>> GetAllByCompanyAsync(long companyId);
+    Task AddAsync(PostingConfiguration postingConfiguration);
+}
+```
+
+**Gotcha — `GetAllByVoucherTypeAsync` takes two params:** Unlike TransactionReason's `GetAllByVoucherTypeAsync(voucherTypeId)` which is company-scoped via the entity's unique index, PostingConfiguration needs `(voucherTypeId, companyId)` because posting configurations are per-company AND per-voucher-type. The query filters on both.
+
+**Gotcha — No `GetByCodeAsync`:** PostingConfiguration has no `Code` property. No code-based lookup needed.
+
+**Gotcha — No `UpdateAsync`:** Matches all repos except EfAccountRepository. Change tracking handles it.
+
+---
+
+### 3. PostingConfiguration EF Configuration
+
+**File:** `src/SmeAccounting.Infrastructure/Persistence/Configurations/PostingConfigurationConfiguration.cs`
+
+**Copy from:** `src/SmeAccounting.Infrastructure/Persistence/Configurations/TransactionReasonConfiguration.cs` — add Account FKs and nullable TransactionReason FK.
+
+**Index (from PLAN.md):** `(VoucherTypeId, TransactionReasonId)` — composite index. This is a NON-UNIQUE index for query performance (find all posting configs for a voucher type + reason combination). Multiple posting configurations can share the same voucher type + reason (e.g., different debit/credit account pairs).
+
+**Gotcha — No unique business key:** Unlike Department/VoucherType/TransactionReason which have `(CompanyId, Code)` unique indexes, PostingConfiguration has NO unique business key. The entity is identified by its auto-generated ID. The composite index on `(VoucherTypeId, TransactionReasonId)` is for query performance only.
+
+**Gotcha — Five FK configurations including one nullable:**
+1. Company FK: `HasOne<Company>().WithMany().HasForeignKey(e => e.CompanyId).OnDelete(DeleteBehavior.Restrict)` — universal
+2. VoucherType FK: `HasOne<VoucherType>().WithMany().HasForeignKey(e => e.VoucherTypeId).OnDelete(DeleteBehavior.Restrict)` — same as T2/T3
+3. DebitAccount FK: `HasOne<Account>().WithMany().HasForeignKey(e => e.DebitAccountId).OnDelete(DeleteBehavior.Restrict)` — first Account FK
+4. CreditAccount FK: `HasOne<Account>().WithMany().HasForeignKey(e => e.CreditAccountId).OnDelete(DeleteBehavior.Restrict)` — second Account FK
+5. TransactionReason FK (nullable): `HasOne<TransactionReason>().WithMany().HasForeignKey(e => e.TransactionReasonId).OnDelete(DeleteBehavior.Restrict)` — nullable FK, Restrict delete
+
+**Pattern:**
+
+```csharp
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata.Builders;
+using SmeAccounting.Domain.Entities;
+
+namespace SmeAccounting.Infrastructure.Persistence.Configurations;
+
+internal sealed class PostingConfigurationConfiguration : IEntityTypeConfiguration<PostingConfiguration>
+{
+    public void Configure(EntityTypeBuilder<PostingConfiguration> builder)
+    {
+        builder.ToTable("posting_configurations");
+        builder.HasKey(e => e.Id);
+
+        builder.Property(e => e.Id)
+            .HasColumnName("id")
+            .ValueGeneratedOnAdd();
+
+        builder.Property(e => e.CompanyId)
+            .HasColumnName("company_id");
+
+        builder.Property(e => e.VoucherTypeId)
+            .HasColumnName("voucher_type_id");
+
+        builder.Property(e => e.DebitAccountId)
+            .HasColumnName("debit_account_id");
+
+        builder.Property(e => e.CreditAccountId)
+            .HasColumnName("credit_account_id");
+
+        builder.Property(e => e.TransactionReasonId)
+            .HasColumnName("transaction_reason_id");
+
+        builder.Property(e => e.DisplayOrder)
+            .HasColumnName("display_order");
+
+        builder.Property(e => e.IsActive)
+            .HasColumnName("is_active");
+
+        builder.Property(e => e.Description)
+            .HasColumnName("description")
+            .HasMaxLength(500);
+
+        builder.HasIndex(e => new { e.VoucherTypeId, e.TransactionReasonId });
+
+        builder.HasOne<Company>()
+            .WithMany()
+            .HasForeignKey(e => e.CompanyId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasOne<VoucherType>()
+            .WithMany()
+            .HasForeignKey(e => e.VoucherTypeId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasOne<Account>()
+            .WithMany()
+            .HasForeignKey(e => e.DebitAccountId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasOne<Account>()
+            .WithMany()
+            .HasForeignKey(e => e.CreditAccountId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasOne<TransactionReason>()
+            .WithMany()
+            .HasForeignKey(e => e.TransactionReasonId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.Property<uint>("xmin")
+            .IsRowVersion()
+            .HasColumnName("xmin");
+    }
+}
+```
+
+**Gotcha — Table name:** `posting_configurations` (snake_case plural). Verify: `ToTable("posting_configurations")`.
+
+**Gotcha — Composite index NOT unique:** `HasIndex(e => new { e.VoucherTypeId, e.TransactionReasonId })` — no `.IsUnique()`. This is different from Department/VoucherType/TransactionReason which all have `.IsUnique()` on their composite indexes.
+
+**Gotcha — Two Account FKs need explicit naming:** EF Core can infer the principal entity type from the property type, but when there are two FKs to the same principal entity, you MUST use `.HasForeignKey(e => e.DebitAccountId)` and `.HasForeignKey(e => e.CreditAccountId)` explicitly. Without explicit FK, EF Core throws ambiguous relationship error.
+
+**Gotcha — Nullable FK column:** `TransactionReasonId` is `long?` so the column `transaction_reason_id` will be nullable in the database. EF Core handles this automatically from the C# nullable type.
+
+---
+
+### 4. EfPostingConfigurationRepository
+
+**File:** `src/SmeAccounting.Infrastructure/Repositories/EfPostingConfigurationRepository.cs`
+
+**Copy from:** `src/SmeAccounting.Infrastructure/Repositories/EfTransactionReasonRepository.cs` — adjust for dual-scoped GetAll methods.
+
+**Pattern:**
+
+```csharp
+using Microsoft.EntityFrameworkCore;
+using SmeAccounting.Domain.Entities;
+using SmeAccounting.Domain.Ports;
+using SmeAccounting.Infrastructure.Persistence;
+
+namespace SmeAccounting.Infrastructure.Repositories;
+
+public class EfPostingConfigurationRepository : IPostingConfigurationRepository
+{
+    private readonly SmeAccountingDbContext _context;
+
+    public EfPostingConfigurationRepository(SmeAccountingDbContext context) => _context = context;
+
+    public async Task<PostingConfiguration?> GetByIdAsync(long id)
+    {
+        return await _context.PostingConfigurations
+            .FirstOrDefaultAsync(e => e.Id == id);
+    }
+
+    public async Task<IReadOnlyList<PostingConfiguration>> GetAllByVoucherTypeAsync(
+        long voucherTypeId, long companyId)
+    {
+        return await _context.PostingConfigurations
+            .AsNoTracking()
+            .Where(e => e.VoucherTypeId == voucherTypeId && e.CompanyId == companyId)
+            .OrderBy(e => e.DisplayOrder)
+            .ToListAsync();
+    }
+
+    public async Task<IReadOnlyList<PostingConfiguration>> GetAllByCompanyAsync(long companyId)
+    {
+        return await _context.PostingConfigurations
+            .AsNoTracking()
+            .Where(e => e.CompanyId == companyId)
+            .OrderBy(e => e.DisplayOrder)
+            .ToListAsync();
+    }
+
+    public async Task AddAsync(PostingConfiguration postingConfiguration)
+    {
+        await _context.PostingConfigurations.AddAsync(postingConfiguration);
+    }
+}
+```
+
+**Gotcha — DbSet name:** `PostingConfigurations` (plural) — matches DbSet property name pattern.
+
+**Gotcha — OrderBy `DisplayOrder`:** Both GetAll methods order by `DisplayOrder` (the entity's natural ordering property). Different from VoucherType/Department which order by Code. PostingConfiguration has no Code — DisplayOrder is the logical sort key.
+
+**Gotcha — `GetAllByVoucherTypeAsync` filters on two columns:** Both `VoucherTypeId` AND `CompanyId` are filtered. This ensures posting configs are scoped to a specific company even when querying by voucher type.
+
+---
+
+### 5. DbContext Modifications
+
+**File:** `src/SmeAccounting.Infrastructure/Persistence/SmeAccountingDbContext.cs`
+
+**Current state (after T3):** 16 DbSets, 14 ignored events.
+
+**Add DbSet (after line 25):**
+```csharp
+public DbSet<PostingConfiguration> PostingConfigurations => Set<PostingConfiguration>();
+```
+
+**No event to ignore** — PostingConfiguration does NOT raise a domain event. No `modelBuilder.Ignore<>()` needed.
+
+**New count:** 17 DbSets, 14 ignored events (unchanged).
+
+---
+
+### 6. DI Registration
+
+**File:** `src/SmeAccounting.Infrastructure/DependencyInjection.cs`
+
+**Add (after line 38):**
+```csharp
+services.AddScoped<IPostingConfigurationRepository, EfPostingConfigurationRepository>();
+```
+
+**Pattern:** Same `AddScoped<IXxxRepository, EfXxxRepository>()` as all 11 existing registrations.
+
+---
+
+### Gotchas and Edge Cases
+
+#### 1. No Domain Event
+Same pattern as DocumentNumberingSeries (T2). No event file, no `modelBuilder.Ignore<>()` in DbContext, no `AddDomainEvent()` in constructor. This is the second entity (after DocumentNumberingSeries) without a domain event.
+
+#### 2. Five FKs — Most in Codebase
+PostingConfiguration has the most FK relationships of any entity:
+- Company (required, Restrict)
+- VoucherType (required, Restrict)
+- Account as DebitAccount (required, Restrict)
+- Account as CreditAccount (required, Restrict)
+- TransactionReason (nullable, Restrict)
+
+All use the universal `HasOne<X>().WithMany().HasForeignKey().OnDelete(Restrict)` pattern. No navigation properties on entity.
+
+#### 3. Two Account FKs — Explicit Configuration Required
+Both `DebitAccountId` and `CreditAccountId` reference the Account entity. EF Core requires explicit FK configuration for each:
+```csharp
+builder.HasOne<Account>().WithMany().HasForeignKey(e => e.DebitAccountId)...
+builder.HasOne<Account>().WithMany().HasForeignKey(e => e.CreditAccountId)...
+```
+Without explicit FK names, EF Core throws: "The navigation 'Account' cannot be determined for the type 'PostingConfiguration'..."
+
+#### 4. DebitAccountId != CreditAccountId — Domain Invariant
+The constructor enforces this invariant with `DomainException`. This is a CORE accounting rule: you cannot debit and credit the same account in a single posting line. The Application layer (Task 6) validator will mirror this check with FluentValidation, but the domain invariant is the source of truth.
+
+#### 5. "Both Accounts Belong to Same Company" — Application-Level Only
+The plan says "both accounts must belong to same company" as an invariant. However, the entity constructor CANNOT enforce this — it only has account IDs (longs), not Account entities. The domain invariant is limited to `DebitAccountId != CreditAccountId`. The Application layer (Task 6) must:
+1. Load both Account entities via IAccountRepository
+2. Verify both have the same CompanyId
+3. Verify both belong to the requesting company
+4. THEN create the PostingConfiguration
+
+This matches the existing pattern where `ExchangeRate` validates `FromCurrencyCode != ToCurrencyCode` in the constructor but cannot validate the currencies exist (that's Application layer responsibility).
+
+#### 6. Nullable TransactionReasonId
+`TransactionReasonId` is `long?` — null means "default posting rule for this voucher type." The constructor validates:
+- If null: valid (no additional check needed)
+- If has value: must be > 0
+
+The EF configuration uses nullable FK column. Delete behavior is Restrict (not SetNull) — if a TransactionReason is referenced, it must be deactivated first, not cascade-deleted.
+
+#### 7. No Unique Business Key
+Unlike Department/VoucherType/TransactionReason which have `(CompanyId, Code)` unique indexes, PostingConfiguration has NO unique business key. The composite index on `(VoucherTypeId, TransactionReasonId)` is non-unique (query optimization only). Multiple posting configurations can exist for the same voucher type + reason combination with different account pairs.
+
+#### 8. DisplayOrder for Sorting
+`DisplayOrder` (int, default 0) controls the ordering of posting configurations within a voucher type. Repository sorts by `DisplayOrder` in both GetAll methods. This is the entity's natural sort key (replacing Code which doesn't exist on this entity).
+
+#### 9. Architecture Test Compliance
+- Entity inherits `BaseEntity` → must be in `SmeAccounting.Domain.Entities` ✓
+- Port interface `IPostingConfigurationRepository` starts with `I` ✓
+- Domain has zero NuGet refs → no new packages ✓
+- Infrastructure references Domain only → correct ✓
+- No Api references to Domain.Entities or Domain.Ports → correct ✓
+
+#### 10. Migration Timing
+Migration created in Task 7. PostingConfigurations table will be `posting_configurations` in the `Phase2AccountingControlConfig` migration alongside the other 4 new tables.
+
+#### 11. DbSet Naming
+DbSet property: `PostingConfigurations` (plural). Table: `posting_configurations` (snake_case plural). The DbSet expression-bodied property pattern: `public DbSet<PostingConfiguration> PostingConfigurations => Set<PostingConfiguration>();`
+
+#### 12. Account Entity Reference Points
+Key Account properties relevant to PostingConfiguration:
+- `Account.Id` (long) — referenced by DebitAccountId/CreditAccountId
+- `Account.CompanyId` (long) — used by Application layer to validate same-company constraint
+- `Account.IsActive` (bool) — Application layer should validate both accounts are active before creating posting config
+- `Account.NormalBalance` (NormalBalance enum: Debit/Credit) — Application layer could use this to validate posting rule consistency (optional, not enforced in domain)
+
+---
+
+## Task-Specific Research — Task 5: Opening Balance Mapping
+
+**Goal:** Create OpeningBalanceMapping entity, IOpeningBalanceMappingRepository port, EF configuration, repository, and DI registration.
+
+**Depends on:** Task 1 (VoucherType), existing Account entity, existing FiscalPeriod entity.
+
+### File List (4 new files, 2 modified files)
+
+| # | File Path | Layer | Status |
+|---|-----------|-------|--------|
+| 1 | `src/SmeAccounting.Domain/Entities/OpeningBalanceMapping.cs` | Domain | New |
+| 2 | `src/SmeAccounting.Domain/Ports/IOpeningBalanceMappingRepository.cs` | Domain | New |
+| 3 | `src/SmeAccounting.Infrastructure/Persistence/Configurations/OpeningBalanceMappingConfiguration.cs` | Infrastructure | New |
+| 4 | `src/SmeAccounting.Infrastructure/Repositories/EfOpeningBalanceMappingRepository.cs` | Infrastructure | New |
+| 5 | `src/SmeAccounting.Infrastructure/Persistence/SmeAccountingDbContext.cs` | Infrastructure | Modify |
+| 6 | `src/SmeAccounting.Infrastructure/DependencyInjection.cs` | Infrastructure | Modify |
+
+**Total: 4 new files, 2 modified files.**
+
+**No domain event** — plan does not specify an OpeningBalanceMappingCreated event. Same pattern as DocumentNumberingSeries (T2) and PostingConfiguration (T4).
+
+---
+
+### 1. OpeningBalanceMapping Entity
+
+**File:** `src/SmeAccounting.Domain/Entities/OpeningBalanceMapping.cs`
+
+**Closest pattern:** `src/SmeAccounting.Domain/Entities/PostingConfiguration.cs` — dual Account FK pattern (DebitAccountId + CreditAccountId), same invariant (debit != credit), no domain event, soft-delete via Deactivate().
+
+**Key differences from PostingConfiguration:**
+- NO `DisplayOrder` property (PostingConfiguration has it)
+- NO `TransactionReasonId` property (PostingConfiguration has nullable FK)
+- SIMPLER: only 4 FKs (Company, VoucherType, DebitAccount, CreditAccount) vs PostingConfiguration's 5
+- UNIQUE index on `(CompanyId, VoucherTypeId, DebitAccountId, CreditAccountId)` (PostingConfiguration has non-unique `(VoucherTypeId, TransactionReasonId)`)
+
+**Properties (from PLAN.md):**
+
+| Property | Type | Default | Notes |
+|----------|------|---------|-------|
+| Id | long | BaseEntity | |
+| CompanyId | long | — | FK to Company |
+| VoucherTypeId | long | — | FK to VoucherType (opening balance voucher type) |
+| DebitAccountId | long | — | FK to Account |
+| CreditAccountId | long | — | FK to Account |
+| IsActive | bool | true | Soft-delete |
+| Description | string? | null | Max 500 |
+
+**Invariants (throw `DomainException`):**
+- `CompanyId > 0`
+- `VoucherTypeId > 0`
+- `DebitAccountId > 0`
+- `CreditAccountId > 0`
+- `DebitAccountId != CreditAccountId` — core accounting invariant (same as PostingConfiguration)
+
+**Pattern:**
+
+```csharp
+using SmeAccounting.Domain.Exceptions;
+
+namespace SmeAccounting.Domain.Entities;
+
+public class OpeningBalanceMapping : BaseEntity
+{
+    public long CompanyId { get; private set; }
+    public long VoucherTypeId { get; private set; }
+    public long DebitAccountId { get; private set; }
+    public long CreditAccountId { get; private set; }
+    public bool IsActive { get; private set; } = true;
+    public string? Description { get; private set; }
+
+    private OpeningBalanceMapping() { }
+
+    public OpeningBalanceMapping(
+        long companyId, long voucherTypeId, long debitAccountId, long creditAccountId,
+        string? description = null)
+    {
+        if (companyId <= 0)
+            throw new DomainException("CompanyId must be greater than zero.");
+        if (voucherTypeId <= 0)
+            throw new DomainException("VoucherTypeId must be greater than zero.");
+        if (debitAccountId <= 0)
+            throw new DomainException("DebitAccountId must be greater than zero.");
+        if (creditAccountId <= 0)
+            throw new DomainException("CreditAccountId must be greater than zero.");
+        if (debitAccountId == creditAccountId)
+            throw new DomainException("Debit and credit accounts must be different.");
+
+        CompanyId = companyId;
+        VoucherTypeId = voucherTypeId;
+        DebitAccountId = debitAccountId;
+        CreditAccountId = creditAccountId;
+        Description = description;
+    }
+
+    public void Deactivate()
+    {
+        IsActive = false;
+    }
+}
+```
+
+**Gotcha — Constructor parameter order:** `(companyId, voucherTypeId, debitAccountId, creditAccountId, description?)` — CompanyId first (matching all other entities), then VoucherTypeId, then the two account FKs, then optional description. Simpler than PostingConfiguration (no transactionReasonId, no displayOrder).
+
+**Gotcha — No domain event:** Same as PostingConfiguration (T4) and DocumentNumberingSeries (T2). No event file, no `modelBuilder.Ignore<>()` in DbContext, no `AddDomainEvent()` in constructor.
+
+**Gotcha — Two Account FKs:** Same dual-Account FK pattern as PostingConfiguration. Entity only has account IDs (longs), cannot validate account ownership. Application layer (Task 6) must load accounts and verify CompanyId match.
+
+---
+
+### 2. IOpeningBalanceMappingRepository Port
+
+**File:** `src/SmeAccounting.Domain/Ports/IOpeningBalanceMappingRepository.cs`
+
+**Methods (from PLAN.md):**
+
+```csharp
+using SmeAccounting.Domain.Entities;
+
+namespace SmeAccounting.Domain.Ports;
+
+public interface IOpeningBalanceMappingRepository
+{
+    Task<OpeningBalanceMapping?> GetByIdAsync(long id);
+    Task<IReadOnlyList<OpeningBalanceMapping>> GetAllByCompanyAsync(long companyId);
+    Task AddAsync(OpeningBalanceMapping mapping);
+}
+```
+
+**Gotcha — Only 3 methods:** Fewer than PostingConfiguration (which has 4 methods including `GetAllByVoucherTypeAsync`). OpeningBalanceMapping only needs company-scoped listing, not voucher-type-scoped. This is simpler — one mapping per voucher type per company is expected.
+
+**Gotcha — No `GetByCodeAsync`:** OpeningBalanceMapping has no `Code` property. No code-based lookup needed.
+
+**Gotcha — No `GetAllByVoucherTypeAsync`:** Unlike PostingConfiguration, the plan does not specify a voucher-type-scoped query. The Application layer can filter the company list by VoucherTypeId if needed.
+
+---
+
+### 3. OpeningBalanceMapping EF Configuration
+
+**File:** `src/SmeAccounting.Infrastructure/Persistence/Configurations/OpeningBalanceMappingConfiguration.cs`
+
+**Copy from:** `src/SmeAccounting.Infrastructure/Persistence/Configurations/PostingConfigurationConfiguration.cs` — remove TransactionReason FK and DisplayOrder, simplify index to unique.
+
+**Unique index (from PLAN.md):** `(CompanyId, VoucherTypeId, DebitAccountId, CreditAccountId)` — four-column composite unique index. This prevents duplicate opening balance mappings for the same company + voucher type + account pair combination. Different from PostingConfiguration's non-unique `(VoucherTypeId, TransactionReasonId)`.
+
+**FK pattern:** Four FKs — all Restrict:
+1. `HasOne<Company>().WithMany().HasForeignKey(e => e.CompanyId).OnDelete(DeleteBehavior.Restrict)` — universal
+2. `HasOne<VoucherType>().WithMany().HasForeignKey(e => e.VoucherTypeId).OnDelete(DeleteBehavior.Restrict)` — same as T2/T3/T4
+3. `HasOne<Account>().WithMany().HasForeignKey(e => e.DebitAccountId).OnDelete(DeleteBehavior.Restrict)` — first Account FK
+4. `HasOne<Account>().WithMany().HasForeignKey(e => e.CreditAccountId).OnDelete(DeleteBehavior.Restrict)` — second Account FK
+
+**Pattern:**
+
+```csharp
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata.Builders;
+using SmeAccounting.Domain.Entities;
+
+namespace SmeAccounting.Infrastructure.Persistence.Configurations;
+
+internal sealed class OpeningBalanceMappingConfiguration : IEntityTypeConfiguration<OpeningBalanceMapping>
+{
+    public void Configure(EntityTypeBuilder<OpeningBalanceMapping> builder)
+    {
+        builder.ToTable("opening_balance_mappings");
+        builder.HasKey(e => e.Id);
+
+        builder.Property(e => e.Id)
+            .HasColumnName("id")
+            .ValueGeneratedOnAdd();
+
+        builder.Property(e => e.CompanyId)
+            .HasColumnName("company_id");
+
+        builder.Property(e => e.VoucherTypeId)
+            .HasColumnName("voucher_type_id");
+
+        builder.Property(e => e.DebitAccountId)
+            .HasColumnName("debit_account_id");
+
+        builder.Property(e => e.CreditAccountId)
+            .HasColumnName("credit_account_id");
+
+        builder.Property(e => e.IsActive)
+            .HasColumnName("is_active");
+
+        builder.Property(e => e.Description)
+            .HasColumnName("description")
+            .HasMaxLength(500);
+
+        builder.HasIndex(e => new { e.CompanyId, e.VoucherTypeId, e.DebitAccountId, e.CreditAccountId })
+            .IsUnique();
+
+        builder.HasOne<Company>()
+            .WithMany()
+            .HasForeignKey(e => e.CompanyId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasOne<VoucherType>()
+            .WithMany()
+            .HasForeignKey(e => e.VoucherTypeId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasOne<Account>()
+            .WithMany()
+            .HasForeignKey(e => e.DebitAccountId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasOne<Account>()
+            .WithMany()
+            .HasForeignKey(e => e.CreditAccountId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.Property<uint>("xmin")
+            .IsRowVersion()
+            .HasColumnName("xmin");
+    }
+}
+```
+
+**Gotcha — Table name:** `opening_balance_mappings` (snake_case plural). Verify: `ToTable("opening_balance_mappings")`.
+
+**Gotcha — Four-column unique index:** `HasIndex(e => new { e.CompanyId, e.VoucherTypeId, e.DebitAccountId, e.CreditAccountId }).IsUnique()` — four columns. This is the widest unique index in the codebase (PostingConfiguration's is 2 columns, DocumentNumberingSeries is 3). The order matters for index efficiency: CompanyId first (most selective per query), then VoucherTypeId, then the two account FKs.
+
+**Gotcha — Two Account FKs need explicit naming:** Same as PostingConfiguration. EF Core requires explicit FK configuration for each Account reference:
+```csharp
+builder.HasOne<Account>().WithMany().HasForeignKey(e => e.DebitAccountId)...
+builder.HasOne<Account>().WithMany().HasForeignKey(e => e.CreditAccountId)...
+```
+
+**Gotcha — No TransactionReason FK:** Unlike PostingConfiguration, OpeningBalanceMapping has no TransactionReason FK. This simplifies the configuration — only 4 FKs instead of 5.
+
+**Gotcha — No DisplayOrder:** Unlike PostingConfiguration, OpeningBalanceMapping has no DisplayOrder property. The repository will not have an OrderBy clause (or can order by VoucherTypeId, DebitAccountId).
+
+---
+
+### 4. EfOpeningBalanceMappingRepository
+
+**File:** `src/SmeAccounting.Infrastructure/Repositories/EfOpeningBalanceMappingRepository.cs`
+
+**Copy from:** `src/SmeAccounting.Infrastructure/Repositories/EfPostingConfigurationRepository.cs` — simplify to only 3 methods, remove DisplayOrder ordering.
+
+**Pattern:**
+
+```csharp
+using Microsoft.EntityFrameworkCore;
+using SmeAccounting.Domain.Entities;
+using SmeAccounting.Domain.Ports;
+using SmeAccounting.Infrastructure.Persistence;
+
+namespace SmeAccounting.Infrastructure.Repositories;
+
+public class EfOpeningBalanceMappingRepository : IOpeningBalanceMappingRepository
+{
+    private readonly SmeAccountingDbContext _context;
+
+    public EfOpeningBalanceMappingRepository(SmeAccountingDbContext context) => _context = context;
+
+    public async Task<OpeningBalanceMapping?> GetByIdAsync(long id)
+    {
+        return await _context.OpeningBalanceMappings
+            .FirstOrDefaultAsync(e => e.Id == id);
+    }
+
+    public async Task<IReadOnlyList<OpeningBalanceMapping>> GetAllByCompanyAsync(long companyId)
+    {
+        return await _context.OpeningBalanceMappings
+            .AsNoTracking()
+            .Where(e => e.CompanyId == companyId)
+            .OrderBy(e => e.VoucherTypeId)
+            .ThenBy(e => e.DebitAccountId)
+            .ToListAsync();
+    }
+
+    public async Task AddAsync(OpeningBalanceMapping mapping)
+    {
+        await _context.OpeningBalanceMappings.AddAsync(mapping);
+    }
+}
+```
+
+**Gotcha — DbSet name:** `OpeningBalanceMappings` (plural) — matches DbSet property name pattern.
+
+**Gotcha — No DisplayOrder ordering:** Unlike PostingConfiguration (which orders by DisplayOrder), OpeningBalanceMapping has no DisplayOrder. Order by `VoucherTypeId` then `DebitAccountId` as natural sort key.
+
+**Gotcha — Only 3 methods:** Simpler than PostingConfiguration's 4 methods. No `GetAllByVoucherTypeAsync` — the plan only specifies company-scoped listing.
+
+---
+
+### 5. DbContext Modifications
+
+**File:** `src/SmeAccounting.Infrastructure/Persistence/SmeAccountingDbContext.cs`
+
+**Current state (after T4):** 17 DbSets, 14 ignored events.
+
+**Add DbSet (after line 26):**
+```csharp
+public DbSet<OpeningBalanceMapping> OpeningBalanceMappings => Set<OpeningBalanceMapping>();
+```
+
+**No event to ignore** — OpeningBalanceMapping does NOT raise a domain event. No `modelBuilder.Ignore<>()` needed.
+
+**New count:** 18 DbSets, 14 ignored events (unchanged).
+
+---
+
+### 6. DI Registration
+
+**File:** `src/SmeAccounting.Infrastructure/DependencyInjection.cs`
+
+**Add (after line 39):**
+```csharp
+services.AddScoped<IOpeningBalanceMappingRepository, EfOpeningBalanceMappingRepository>();
+```
+
+**Pattern:** Same `AddScoped<IXxxRepository, EfXxxRepository>()` as all 12 existing registrations.
+
+---
+
+### Gotchas and Edge Cases
+
+#### 1. No Domain Event
+Same pattern as DocumentNumberingSeries (T2) and PostingConfiguration (T4). No event file, no `modelBuilder.Ignore<>()` in DbContext, no `AddDomainEvent()` in constructor. This is the third entity without a domain event in Phase 2.
+
+#### 2. Simplified PostingConfiguration
+OpeningBalanceMapping is essentially a stripped-down PostingConfiguration:
+- Same dual Account FK pattern (DebitAccountId, CreditAccountId)
+- Same DebitAccountId != CreditAccountId invariant
+- NO DisplayOrder (not needed for opening balance — order doesn't matter for a single mapping)
+- NO TransactionReasonId (opening balance entries are not tied to specific transaction reasons)
+- UNIQUE index instead of non-unique (one mapping per company + voucher type + account pair)
+
+#### 3. Two Account FKs — Explicit Configuration Required
+Same as PostingConfiguration. Both `DebitAccountId` and `CreditAccountId` reference the Account entity. EF Core requires explicit FK configuration:
+```csharp
+builder.HasOne<Account>().WithMany().HasForeignKey(e => e.DebitAccountId)...
+builder.HasOne<Account>().WithMany().HasForeignKey(e => e.CreditAccountId)...
+```
+
+#### 4. DebitAccountId != CreditAccountId — Domain Invariant
+Same core accounting rule as PostingConfiguration. Enforced in constructor via DomainException. Application layer (Task 6) mirrors with FluentValidation.
+
+#### 5. "Both Accounts Belong to Same Company" — Application-Level Only
+Same limitation as PostingConfiguration. Entity only has account IDs (longs), cannot validate account ownership. Application layer (Task 6) must load both Account entities via IAccountRepository and verify CompanyId match before creating the mapping.
+
+#### 6. Unique Index vs Non-Unique
+PostingConfiguration uses a non-unique composite index `(VoucherTypeId, TransactionReasonId)` for query performance. OpeningBalanceMapping uses a UNIQUE composite index `(CompanyId, VoucherTypeId, DebitAccountId, CreditAccountId)` to enforce business rule: one mapping per company + voucher type + account pair. The unique index prevents duplicate configurations at the DB level.
+
+#### 7. No DisplayOrder
+Unlike PostingConfiguration, OpeningBalanceMapping has no DisplayOrder property. The repository sorts by `VoucherTypeId` then `DebitAccountId` as the natural ordering. The Application layer (Task 6) does not need to display these in a specific order — they are configuration entries, not user-facing lists.
+
+#### 8. Architecture Test Compliance
+- Entity inherits `BaseEntity` → must be in `SmeAccounting.Domain.Entities` ✓
+- Port interface `IOpeningBalanceMappingRepository` starts with `I` ✓
+- Domain has zero NuGet refs → no new packages ✓
+- Infrastructure references Domain only → correct ✓
+- No Api references to Domain.Entities or Domain.Ports → correct ✓
+
+#### 9. Migration Timing
+Migration created in Task 7. OpeningBalanceMappings table will be `opening_balance_mappings` in the `Phase2AccountingControlConfig` migration alongside the other 4 new tables.
+
+#### 10. DbSet Naming
+DbSet property: `OpeningBalanceMappings` (plural). Table: `opening_balance_mappings` (snake_case plural). The DbSet expression-bodied property pattern: `public DbSet<OpeningBalanceMapping> OpeningBalanceMappings => Set<OpeningBalanceMapping>();`
+
+#### 11. Entity Is Smallest in Phase 2
+OpeningBalanceMapping has only 6 properties (CompanyId, VoucherTypeId, DebitAccountId, CreditAccountId, IsActive, Description) — the simplest entity in Phase 2. This makes it a quick implementation with minimal edge cases.
+
+#### 12. FiscalPeriod Reference
+The plan mentions "existing Account/FiscalPeriod entities" as dependencies. However, OpeningBalanceMapping does NOT have a FiscalPeriodId FK. FiscalPeriod is an indirect dependency — the Application layer (Task 6) will use FiscalPeriod to determine when opening balance entries should be posted, but the mapping entity itself only references VoucherType and Account.

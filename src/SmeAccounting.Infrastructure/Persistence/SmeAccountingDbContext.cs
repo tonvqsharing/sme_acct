@@ -23,6 +23,8 @@ public class SmeAccountingDbContext : DbContext, IUnitOfWork
     public DbSet<VoucherType> VoucherTypes => Set<VoucherType>();
     public DbSet<DocumentNumberingSeries> DocumentNumberingSeries => Set<DocumentNumberingSeries>();
     public DbSet<TransactionReason> TransactionReasons => Set<TransactionReason>();
+    public DbSet<PostingConfiguration> PostingConfigurations => Set<PostingConfiguration>();
+    public DbSet<OpeningBalanceMapping> OpeningBalanceMappings => Set<OpeningBalanceMapping>();
 
     public SmeAccountingDbContext(DbContextOptions<SmeAccountingDbContext> options)
         : base(options) { }

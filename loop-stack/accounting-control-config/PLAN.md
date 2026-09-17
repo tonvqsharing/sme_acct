@@ -85,7 +85,7 @@ Create domain entity, repository port, EF configuration, repository, and DI.
 
 ---
 
-### [G3] Task 4 — Posting Configuration Domain + Infrastructure
+### [x] [G3] Task 4 — Posting Configuration Domain + Infrastructure
 
 **Slice:** Posting Profile / Accounting Posting Configuration
 **Depends on:** Task 1 (VoucherType), existing Account entity
@@ -109,7 +109,7 @@ Create domain entity that maps voucher types to debit/credit account pairs, plus
 
 ---
 
-### [G3] Task 5 — Opening Balance Mapping Domain + Infrastructure
+### [x] [G3] Task 5 — Opening Balance Mapping Domain + Infrastructure
 
 **Slice:** Opening Balance Mapping
 **Depends on:** Task 1 (VoucherType), existing Account/FiscalPeriod entities
