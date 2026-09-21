@@ -2,9 +2,9 @@
 ## State
 IN_PROGRESS
 ## Current Task
-Implement Inventory Valuation Policy and Inventory Adjustment Reason domain entities, EF configs, repositories, application CQRS, API controllers, migration
+Implement Inventory Accounting Configuration and verify integration with P1-P4 foundation
 ## Task Progress
-5 / 7 complete
+6 / 7 complete
 ## Attempts On Current Task
 0
 ## Completed Tasks
@@ -13,6 +13,7 @@ Implement Inventory Valuation Policy and Inventory Adjustment Reason domain enti
 - [G1] Implement Warehouse domain entity, EF config, repository, application CQRS, API controller, migration
 - [G2] Implement UOM Conversion domain entity with invariants, EF config, repository, application CQRS, API controller, migration
 - [G2] Implement Item/Product and Service Item domain entities with relationships to Category/UOM, EF configs, repositories, application CQRS, API controllers, migration
+- [G2] Implement Inventory Valuation Policy and Inventory Adjustment Reason domain entities, EF configs, repositories, application CQRS, API controllers, migration
 - [Memory Keeper] Consolidated UOM learnings to loop-stack/.global/MEMORY.md and loop-stack/product-inventory-foundation/MEMORY.md; UOM master-data pattern documented for reuse in Product & Inventory Foundation tasks
 ## Skipped Tasks
 (none)
