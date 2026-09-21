@@ -2,9 +2,9 @@
 ## State
 IN_PROGRESS
 ## Current Task
-Implement Inventory Accounting Configuration and verify integration with P1-P4 foundation
+All tasks complete – loop stop condition met
 ## Task Progress
-6 / 7 complete
+7 / 7 complete
 ## Attempts On Current Task
 0
 ## Completed Tasks
@@ -14,6 +14,7 @@ Implement Inventory Accounting Configuration and verify integration with P1-P4 f
 - [G2] Implement UOM Conversion domain entity with invariants, EF config, repository, application CQRS, API controller, migration
 - [G2] Implement Item/Product and Service Item domain entities with relationships to Category/UOM, EF configs, repositories, application CQRS, API controllers, migration
 - [G2] Implement Inventory Valuation Policy and Inventory Adjustment Reason domain entities, EF configs, repositories, application CQRS, API controllers, migration
+- [G3] Implement Inventory Accounting Configuration domain entity linking Accounts and Valuation Policy, EF config, repository, application CQRS, API controller, migration, and integration verification with P1-P4
 - [Memory Keeper] Consolidated UOM learnings to loop-stack/.global/MEMORY.md and loop-stack/product-inventory-foundation/MEMORY.md; UOM master-data pattern documented for reuse in Product & Inventory Foundation tasks
 ## Skipped Tasks
 (none)
