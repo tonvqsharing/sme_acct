@@ -2,9 +2,9 @@
 ## State
 IN_PROGRESS
 ## Current Task
-Implement Item/Product and Service Item domain entities with relationships to Category/UOM, EF configs, repositories, application CQRS, API controllers, migration
+Implement Inventory Valuation Policy and Inventory Adjustment Reason domain entities, EF configs, repositories, application CQRS, API controllers, migration
 ## Task Progress
-4 / 7 complete
+5 / 7 complete
 ## Attempts On Current Task
 0
 ## Completed Tasks
@@ -12,6 +12,7 @@ Implement Item/Product and Service Item domain entities with relationships to Ca
 - [G1] Implement Item Category domain entity with self-reference hierarchy, EF config, repository, application CQRS, API controller, migration
 - [G1] Implement Warehouse domain entity, EF config, repository, application CQRS, API controller, migration
 - [G2] Implement UOM Conversion domain entity with invariants, EF config, repository, application CQRS, API controller, migration
+- [G2] Implement Item/Product and Service Item domain entities with relationships to Category/UOM, EF configs, repositories, application CQRS, API controllers, migration
 - [Memory Keeper] Consolidated UOM learnings to loop-stack/.global/MEMORY.md and loop-stack/product-inventory-foundation/MEMORY.md; UOM master-data pattern documented for reuse in Product & Inventory Foundation tasks
 ## Skipped Tasks
 (none)
