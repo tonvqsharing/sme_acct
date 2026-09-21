@@ -11,7 +11,7 @@ all tasks in loop-stack/product-inventory-foundation/PLAN.md checked
 yes
 ## Tasks
 - [x] [G1] Implement UOM domain entity, event, port, EF config, repository, application CQRS commands/queries, FluentValidation, API controller, and migration
-- [ ] [G1] Implement Item Category domain entity with self-reference hierarchy, EF config, repository, application CQRS, API controller, migration
+- [x] [G1] Implement Item Category domain entity with self-reference hierarchy, EF config, repository, application CQRS, API controller, migration
 - [ ] [G1] Implement Warehouse domain entity, EF config, repository, application CQRS, API controller, migration
 - [ ] [G2] Implement UOM Conversion domain entity with invariants, EF config, repository, application CQRS, API controller, migration
 - [ ] [G2] Implement Item/Product and Service Item domain entities with relationships to Category/UOM, EF configs, repositories, application CQRS, API controllers, migration
