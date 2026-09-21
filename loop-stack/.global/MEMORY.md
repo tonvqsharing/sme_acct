@@ -149,3 +149,87 @@ Shared across all loops in this project.
 - **Temporary 8% VAT reduction** via Resolution 204/2025/QH15 — excludes telecom, finance, real estate, etc.
 - **Non-cash payment evidence** required for input VAT credit on purchases ≥ VND 5 million
 - [product-inventory-foundation, task 1] UOM master-data pattern reusable for Product & Inventory Foundation: Company-scoped entity with Code/Name/Symbol/IsActive/Description, unique (CompanyId,Code) index, UomCreated domain event, IUomRepository port, EfUomRepository, snake_case EF config with xmin concurrency, DI registration, CQRS Create/Deactivate/Get with FluentValidation, thin MediatR API controller, migration AddUom succeeds, build 0 warnings, architecture tests 22/22 pass.
+
+### CompanySettings design & verification — company-opening-user-mgmt, 2026-09-21
+- Loop company-opening-user-mgmt G1 design verified VERIFIED_PASS: build succeeds, 22 NetArchTest rules pass.
+- What was built: domain scaffolding only — CompanySetting entity extending BaseEntity with CompanyId, LegalRepresentativeName, LegalRepresentativeTaxId, ChiefAccountantName, ChiefAccountantTaxId, FiscalYearStartMonth, Currency, ReportingSettingsJson; CompanySettingCreated domain event; ICompanySettingRepository port; CompanySettingConfiguration EF scaffold.
+- Design decisions confirmed:
+  - 1:1 per-company setting via unique index on CompanyId, FK to Company with DeleteBehavior.Restrict, no navigation property.
+  - Scalar fields for Legal Representative/Chief Accountant; FiscalYearStartMonth 1-12 validation; Currency as string code matching Money VO pattern.
+  - Extension data as jsonb column reporting_settings_json via HasColumnType("jsonb").
+  - Private parameterless ctor for EF, public ctor with DomainException validation, domain events via AddDomainEvent.
+- Patterns confirmed cross-loop:
+  - BaseEntity domain events minimalism: event carries SettingId, CompanyId, OccurredOn — matches DepartmentCreated pattern.
+  - EF configuration pattern: snake_case table company_settings, snake_case columns, xmin row version, unique index, HasOne<Company>().WithMany().HasForeignKey().OnDelete(Restrict).
+  - Clean Architecture purity: Domain zero NuGet refs, no ASP.NET Identity coupling.
+  - Validation via DomainException hierarchy, not ArgumentNullException.
+  - Event Id=0 at construction consistent with existing Company/Department pattern.
+- No Application/Infrastructure implementation yet per scope; design scaffolding only.
+
+### Opening Balances domain engine fix & audit — company-opening-user-mgmt, 2026-09-21
+- Source: loop-stack/company-opening-user-mgmt G1 Opening Balances fix executor and audit/verify.
+- What changed:
+  - OpeningBalanceEntry constructor no longer validates OpeningBalancePeriodId >0; transient aggregate Id=0 allowed, matching JournalEntryLine pattern where parent Id is 0 at construction time and EF populates FK on save.
+  - Domain events minimized to EntityId + CompanyId + OccurredOn:
+    - OpeningBalancePeriodCreated: PeriodId, CompanyId
+    - OpeningBalanceEntryCreated: EntryId, CompanyId (AccountId removed)
+    - OpeningBalancesPosted: PeriodId, CompanyId (JournalEntryId removed)
+  - Entry number generation removed from domain: no `OP-{Id}-{PeriodDate}` using Id=0; JournalEntry creation uses `"OP-{PeriodDate:yyyyMMdd}"` without Id; final numbering deferred to Application handler after Id assigned.
+  - FiscalPeriodId validation retained; no FiscalYearId confusion.
+- Design decisions confirmed:
+  - Transient aggregate pattern is canonical: child entities accept parent Id=0; EF Core sets relationships on persistence; events may carry provisional Id=0 at construction, as with Company/Department/JournalEntryLine.
+  - Domain event minimalism is enforced cross-loop: events should carry entity ID + company ID + timestamp only, never duplicate entity payload.
+  - Identifier formatting belongs to Application layer: domain should not format strings using transient IDs.
+  - Posting remains domain responsibility: OpeningBalancePeriod.PostOpeningBalances validates open status, debit=credit, creates JournalEntry via domain, calls JournalEntry.Post, raises minimal OpeningBalancesPosted event.
+- Patterns confirmed by audit:
+  - Build succeeds with 0 warnings, 22/22 NetArchTest rules pass.
+  - Transient aggregate works: OpeningBalanceEntry ctor accepts OpeningBalancePeriodId=0.
+  - Events minimal: OpeningBalanceEntryCreated contains no AccountId; OpeningBalancesPosted contains no JournalEntryId.
+  - EF configs: opening_balance_periods and opening_balance_entries tables with snake_case columns, xmin row version, FK Restrict to Company/FiscalPeriod/Account/OpeningBalancePeriod, unique indexes on (CompanyId,FiscalPeriodId) and (CompanyId,OpeningBalancePeriodId,AccountId).
+  - Clean Architecture maintained: Domain zero NuGet refs, private parameterless ctor for EF, public ctor with DomainException, BaseEntity events, no navigation properties, FK to Company with DeleteBehavior.Restrict.
+- Cross-loop impact:
+  - Reinforces transient Id=0 pattern for all aggregates with children.
+  - Reinforces domain event minimalism as global standard.
+  - Confirms separation of domain validation from identifier formatting.
+
+### User Management domain redesign — Microsoft-first — company-opening-user-mgmt, 2026-09-21
+- Redesign context:
+  - Initial Microsoft-first User Management domain model designed with User company-scoped (CompanyId on User), Email unique per company, UserCreated event carried CompanyId.
+  - Audit/research identified identity-agnostic requirement: User must be global for Microsoft Entra sign-in, not per-company.
+- Redesign applied:
+  - User entity global: CompanyId removed, mandatory ExternalId added for Microsoft ObjectId mapping, Email unique globally, DomainException if ExternalId empty.
+  - UserCreated domain event simplified to carry UserId only (no CompanyId).
+  - CompanyMembershipCreated event added and raised on CompanyMembership construction with MembershipId + CompanyId + OccurredOn.
+  - IUsersRepository updated to global queries: GetByExternalIdAsync, GetByEmailAsync, GetAllAsync (no company filter).
+  - UserConfiguration updated: table users with columns external_id, email, display_name, user_name, is_active, xmin; unique indexes on external_id and email separately; CompanyId FK removed.
+  - CompanyMembershipConfiguration: FK Restrict to User and Company, unique index (user_id, company_id).
+  - UserRoleConfiguration: FK Restrict to Company/User/Role, unique index (user_id, role_id, company_id) — per-company role assignment.
+  - Role remains company-scoped with CompanyId, Code, Name, unique index (company_id, code).
+- Patterns reinforced:
+  - Domain purity: Domain zero NuGet refs, no ASP.NET Identity coupling, no EF Core refs, authentication adapter lives in Infrastructure.
+  - Entity pattern: private parameterless ctor for EF, public ctor with DomainException validation, BaseEntity domain events, no navigation properties.
+  - FK Restrict to Company universal, snake_case naming, xmin concurrency, composite unique indexes for per-company uniqueness.
+  - Domain event minimalism: UserCreated(UserId only), RoleCreated(RoleId+CompanyId), CompanyMembershipCreated(MembershipId+CompanyId), UserRoleAssigned(UserRoleId+CompanyId).
+  - Separation of concerns: passwords/credentials not stored in Domain; Microsoft sign-in handled by Infrastructure adapter; Domain stores only identity-agnostic data (ExternalId, Email, DisplayName, IsActive).
+- Decisions:
+  - User global, CompanyMembership as explicit linking aggregate.
+  - Role company-scoped.
+  - ExternalId mandatory for Microsoft-first integration.
+  - Email globally unique.
+  - Build verified: 0 warnings, 22/22 NetArchTest rules pass.
+- Cross-loop impact:
+  - Establishes global User pattern for future multi-company SaaS scenarios.
+  - Reinforces domain event minimalism and FK Restrict patterns.
+  - Provides reference for authentication/authorization separation in Clean Architecture.
+
+### CompanySettings Application + Infrastructure consolidated learnings — company-opening-user-mgmt, 2026-09-21
+- Loop company-opening-user-mgmt G2 implementation complete and verified.
+- DbContext: DbSet<CompanySetting> CompanySettings added, CompanySettingCreated ignored in OnModelCreating to prevent EF mapping.
+- Infrastructure: EfCompanySettingRepository implements ICompanySettingRepository with async GetByIdAsync, GetByCompanyIdAsync, AddAsync using DbSet. No UpdateAsync; change tracking used.
+- DI: ICompanySettingRepository -> EfCompanySettingRepository registered scoped in Infrastructure DependencyInjection.
+- Application layer: CreateCompanySettingCommand record implements IRequest<CreateCompanySettingResult>. Handler CreateCompanySettingHandler constructs domain CompanySetting via public ctor, calls repository.AddAsync, unitOfWork.SaveChangesAsync, returns Id. DomainException validation runs in entity ctor.
+- Validation: CreateCompanySettingCommandValidator uses FluentValidation: CompanyId >0, LegalRepresentativeName required max200, LegalRepresentativeTaxId required max50, ChiefAccountant fields max length, FiscalYearStartMonth 1-12 when present, Currency max3 when present.
+- Queries: GetCompanySettingByIdQuery and GetCompanySettingByCompanyIdQuery with handlers returning CompanySettingDto. Manual mapping, no AutoMapper.
+- DTO: CompanySettingDto record mirrors entity properties, no domain entity reference.
+- Patterns reinforced: MediatR IRequest handlers, ValidationBehavior pipeline, DTO records, async EF Core repository, Unit of Work, domain events raised on construction, Clean Architecture maintained, build 0 warnings, 22/22 NetArchTest pass.
+- Cross-loop reference: CompanySettings now full CQRS stack example — domain scaffolding → application commands/queries + validation + DTO → infrastructure repository + DbContext + DI. Reusable pattern for future company-scoped configuration entities.

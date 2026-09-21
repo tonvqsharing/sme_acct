@@ -1,4 +1,5 @@
 using SmeAccounting.Domain.Events;
+using SmeAccounting.Domain.Exceptions;
 
 namespace SmeAccounting.Domain.Entities;
 
@@ -26,19 +27,27 @@ public class Company : BaseEntity
         int fiscalYearStartDay = 1,
         string functionalCurrencyCode = "VND")
     {
-        Name = name ?? throw new ArgumentNullException(nameof(name));
-        TaxCode = taxCode ?? throw new ArgumentNullException(nameof(taxCode));
-        Address = address ?? throw new ArgumentNullException(nameof(address));
-        Phone = phone;
-        Email = email;
-        FunctionalCurrencyCode = functionalCurrencyCode ?? throw new ArgumentNullException(nameof(functionalCurrencyCode));
+        if (string.IsNullOrWhiteSpace(name))
+            throw new DomainException("Name is required.");
+        if (string.IsNullOrWhiteSpace(taxCode))
+            throw new DomainException("TaxCode is required.");
+        if (string.IsNullOrWhiteSpace(address))
+            throw new DomainException("Address is required.");
+        if (string.IsNullOrWhiteSpace(functionalCurrencyCode))
+            throw new DomainException("FunctionalCurrencyCode is required.");
 
         if (fiscalYearStartMonth is < 1 or > 12)
-            throw new ArgumentOutOfRangeException(nameof(fiscalYearStartMonth), "Fiscal year start month must be between 1 and 12.");
+            throw new DomainException("FiscalYearStartMonth must be between 1 and 12.");
 
         if (fiscalYearStartDay is < 1 or > 28)
-            throw new ArgumentOutOfRangeException(nameof(fiscalYearStartDay), "Fiscal year start day must be between 1 and 28.");
+            throw new DomainException("FiscalYearStartDay must be between 1 and 28.");
 
+        Name = name;
+        TaxCode = taxCode;
+        Address = address;
+        Phone = phone;
+        Email = email;
+        FunctionalCurrencyCode = functionalCurrencyCode;
         FiscalYearStartMonth = fiscalYearStartMonth;
         FiscalYearStartDay = fiscalYearStartDay;
 

@@ -38,6 +38,8 @@ public static class DependencyInjection
         services.AddScoped<ITransactionReasonRepository, EfTransactionReasonRepository>();
         services.AddScoped<IPostingConfigurationRepository, EfPostingConfigurationRepository>();
         services.AddScoped<IOpeningBalanceMappingRepository, EfOpeningBalanceMappingRepository>();
+        services.AddScoped<IOpeningBalancePeriodRepository, EfOpeningBalancePeriodRepository>();
+        services.AddScoped<IOpeningBalanceEntryRepository, EfOpeningBalanceEntryRepository>();
         services.AddScoped<ITaxTypeRepository, EfTaxTypeRepository>();
         services.AddScoped<ITaxTreatmentRepository, EfTaxTreatmentRepository>();
         services.AddScoped<ITaxAuthorityRepository, EfTaxAuthorityRepository>();
@@ -59,10 +61,16 @@ public static class DependencyInjection
         services.AddScoped<IInventoryValuationPolicyRepository, EfInventoryValuationPolicyRepository>();
         services.AddScoped<IInventoryAdjustmentReasonRepository, EfInventoryAdjustmentReasonRepository>();
         services.AddScoped<IInventoryAccountingConfigurationRepository, EfInventoryAccountingConfigurationRepository>();
+        services.AddScoped<ICompanySettingRepository, EfCompanySettingRepository>();
+        services.AddScoped<IUsersRepository, EfUsersRepository>();
+        services.AddScoped<IRoleRepository, EfRoleRepository>();
+        services.AddScoped<IUserRoleRepository, EfUserRoleRepository>();
+        services.AddScoped<ICompanyMembershipRepository, EfCompanyMembershipRepository>();
 
         services.AddSingleton<IClock, SystemClock>();
         services.AddScoped<IAuditLogger, AuditLogger>();
         services.AddScoped<IForeignExchangeRateProvider, BankExchangeRateProvider>();
+        services.AddScoped<IMicrosoftSignInProvider, MicrosoftSignInProvider>();
 
         return services;
     }

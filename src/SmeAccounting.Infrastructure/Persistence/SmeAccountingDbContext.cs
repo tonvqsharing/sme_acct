@@ -42,6 +42,13 @@ public class SmeAccountingDbContext : DbContext, IUnitOfWork
     public DbSet<InventoryValuationPolicy> InventoryValuationPolicies => Set<InventoryValuationPolicy>();
     public DbSet<InventoryAdjustmentReason> InventoryAdjustmentReasons => Set<InventoryAdjustmentReason>();
     public DbSet<InventoryAccountingConfiguration> InventoryAccountingConfigurations => Set<InventoryAccountingConfiguration>();
+    public DbSet<CompanySetting> CompanySettings => Set<CompanySetting>();
+    public DbSet<OpeningBalancePeriod> OpeningBalancePeriods => Set<OpeningBalancePeriod>();
+    public DbSet<OpeningBalanceEntry> OpeningBalanceEntries => Set<OpeningBalanceEntry>();
+    public DbSet<User> Users => Set<User>();
+    public DbSet<Role> Roles => Set<Role>();
+    public DbSet<UserRole> UserRoles => Set<UserRole>();
+    public DbSet<CompanyMembership> CompanyMemberships => Set<CompanyMembership>();
 
     public SmeAccountingDbContext(DbContextOptions<SmeAccountingDbContext> options)
         : base(options) { }
@@ -84,6 +91,14 @@ public class SmeAccountingDbContext : DbContext, IUnitOfWork
         modelBuilder.Ignore<InventoryValuationPolicyCreated>();
         modelBuilder.Ignore<InventoryAdjustmentReasonCreated>();
         modelBuilder.Ignore<InventoryAccountingConfigurationCreated>();
+        modelBuilder.Ignore<CompanySettingCreated>();
+        modelBuilder.Ignore<OpeningBalancePeriodCreated>();
+        modelBuilder.Ignore<OpeningBalanceEntryCreated>();
+        modelBuilder.Ignore<OpeningBalancesPosted>();
+        modelBuilder.Ignore<UserCreated>();
+        modelBuilder.Ignore<RoleCreated>();
+        modelBuilder.Ignore<UserRoleAssigned>();
+        modelBuilder.Ignore<CompanyMembershipCreated>();
 
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(SmeAccountingDbContext).Assembly);
         base.OnModelCreating(modelBuilder);
