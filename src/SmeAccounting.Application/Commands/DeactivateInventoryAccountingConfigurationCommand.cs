@@ -1,0 +1,4 @@
+using MediatR;
+namespace SmeAccounting.Application.Commands;
+public record DeactivateInventoryAccountingConfigurationCommand(long Id) : IRequest<DeactivateInventoryAccountingConfigurationResult>;
+public record DeactivateInventoryAccountingConfigurationResult(bool Success);

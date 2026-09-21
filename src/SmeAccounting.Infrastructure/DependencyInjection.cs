@@ -50,6 +50,15 @@ public static class DependencyInjection
         services.AddScoped<ISupplierRepository, EfSupplierRepository>();
         services.AddScoped<IEmployeeRepository, EfEmployeeRepository>();
         services.AddScoped<IPaymentTermRepository, EfPaymentTermRepository>();
+        services.AddScoped<IUomRepository, EfUomRepository>();
+        services.AddScoped<IItemCategoryRepository, EfItemCategoryRepository>();
+        services.AddScoped<IWarehouseRepository, EfWarehouseRepository>();
+        services.AddScoped<IUomConversionRepository, EfUomConversionRepository>();
+        services.AddScoped<IItemRepository, EfItemRepository>();
+        services.AddScoped<IServiceItemRepository, EfServiceItemRepository>();
+        services.AddScoped<IInventoryValuationPolicyRepository, EfInventoryValuationPolicyRepository>();
+        services.AddScoped<IInventoryAdjustmentReasonRepository, EfInventoryAdjustmentReasonRepository>();
+        services.AddScoped<IInventoryAccountingConfigurationRepository, EfInventoryAccountingConfigurationRepository>();
 
         services.AddSingleton<IClock, SystemClock>();
         services.AddScoped<IAuditLogger, AuditLogger>();

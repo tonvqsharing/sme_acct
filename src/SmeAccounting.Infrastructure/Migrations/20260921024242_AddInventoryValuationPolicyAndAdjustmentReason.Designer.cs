@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using SmeAccounting.Infrastructure.Persistence;
@@ -11,9 +12,11 @@ using SmeAccounting.Infrastructure.Persistence;
 namespace SmeAccounting.Infrastructure.Migrations
 {
     [DbContext(typeof(SmeAccountingDbContext))]
-    partial class SmeAccountingDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260921024242_AddInventoryValuationPolicyAndAdjustmentReason")]
+    partial class AddInventoryValuationPolicyAndAdjustmentReason
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -709,61 +712,6 @@ namespace SmeAccounting.Infrastructure.Migrations
                     b.HasIndex("CompanyId");
 
                     b.ToTable("fiscal_years", (string)null);
-                });
-
-            modelBuilder.Entity("SmeAccounting.Domain.Entities.InventoryAccountingConfiguration", b =>
-                {
-                    b.Property<long>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint")
-                        .HasColumnName("id");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
-
-                    b.Property<long>("CogsAccountId")
-                        .HasColumnType("bigint")
-                        .HasColumnName("cogs_account_id");
-
-                    b.Property<long>("CompanyId")
-                        .HasColumnType("bigint")
-                        .HasColumnName("company_id");
-
-                    b.Property<long>("InventoryAccountId")
-                        .HasColumnType("bigint")
-                        .HasColumnName("inventory_account_id");
-
-                    b.Property<long?>("InventoryAdjustmentGainAccountId")
-                        .HasColumnType("bigint")
-                        .HasColumnName("inventory_adjustment_gain_account_id");
-
-                    b.Property<long?>("InventoryAdjustmentLossAccountId")
-                        .HasColumnType("bigint")
-                        .HasColumnName("inventory_adjustment_loss_account_id");
-
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("boolean")
-                        .HasColumnName("is_active");
-
-                    b.Property<uint>("xmin")
-                        .IsConcurrencyToken()
-                        .ValueGeneratedOnAddOrUpdate()
-                        .HasColumnType("xid")
-                        .HasColumnName("xmin");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("CogsAccountId");
-
-                    b.HasIndex("CompanyId")
-                        .IsUnique();
-
-                    b.HasIndex("InventoryAccountId");
-
-                    b.HasIndex("InventoryAdjustmentGainAccountId");
-
-                    b.HasIndex("InventoryAdjustmentLossAccountId");
-
-                    b.ToTable("inventory_accounting_configurations", (string)null);
                 });
 
             modelBuilder.Entity("SmeAccounting.Domain.Entities.InventoryAdjustmentReason", b =>
@@ -2395,38 +2343,6 @@ namespace SmeAccounting.Infrastructure.Migrations
                         .HasForeignKey("CompanyId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
-                });
-
-            modelBuilder.Entity("SmeAccounting.Domain.Entities.InventoryAccountingConfiguration", b =>
-                {
-                    b.HasOne("SmeAccounting.Domain.Entities.Account", null)
-                        .WithMany()
-                        .HasForeignKey("CogsAccountId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("SmeAccounting.Domain.Entities.Company", null)
-                        .WithMany()
-                        .HasForeignKey("CompanyId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("SmeAccounting.Domain.Entities.Account", null)
-                        .WithMany()
-                        .HasForeignKey("InventoryAccountId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("SmeAccounting.Domain.Entities.Account", null)
-                        .WithMany()
-                        .HasForeignKey("InventoryAdjustmentGainAccountId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
-                    b.HasOne("SmeAccounting.Domain.Entities.Account", null)
-                        .WithMany()
-                        .HasForeignKey("InventoryAdjustmentLossAccountId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .HasConstraintName("FK_inventory_accounting_configurations_accounts_inventory_adj~1");
                 });
 
             modelBuilder.Entity("SmeAccounting.Domain.Entities.InventoryAdjustmentReason", b =>

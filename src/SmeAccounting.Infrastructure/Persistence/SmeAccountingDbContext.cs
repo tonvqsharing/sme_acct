@@ -33,6 +33,15 @@ public class SmeAccountingDbContext : DbContext, IUnitOfWork
     public DbSet<TaxExemptionReason> TaxExemptionReasons => Set<TaxExemptionReason>();
     public DbSet<TaxAccountingMapping> TaxAccountingMappings => Set<TaxAccountingMapping>();
     public DbSet<TaxPeriod> TaxPeriods => Set<TaxPeriod>();
+    public DbSet<Uom> Uoms => Set<Uom>();
+    public DbSet<ItemCategory> ItemCategories => Set<ItemCategory>();
+    public DbSet<Warehouse> Warehouses => Set<Warehouse>();
+    public DbSet<UomConversion> UomConversions => Set<UomConversion>();
+    public DbSet<Item> Items => Set<Item>();
+    public DbSet<ServiceItem> ServiceItems => Set<ServiceItem>();
+    public DbSet<InventoryValuationPolicy> InventoryValuationPolicies => Set<InventoryValuationPolicy>();
+    public DbSet<InventoryAdjustmentReason> InventoryAdjustmentReasons => Set<InventoryAdjustmentReason>();
+    public DbSet<InventoryAccountingConfiguration> InventoryAccountingConfigurations => Set<InventoryAccountingConfiguration>();
 
     public SmeAccountingDbContext(DbContextOptions<SmeAccountingDbContext> options)
         : base(options) { }
@@ -66,6 +75,15 @@ public class SmeAccountingDbContext : DbContext, IUnitOfWork
         modelBuilder.Ignore<SupplierCreated>();
         modelBuilder.Ignore<EmployeeCreated>();
         modelBuilder.Ignore<PaymentTermCreated>();
+        modelBuilder.Ignore<UomCreated>();
+        modelBuilder.Ignore<ItemCategoryCreated>();
+        modelBuilder.Ignore<WarehouseCreated>();
+        modelBuilder.Ignore<UomConversionCreated>();
+        modelBuilder.Ignore<ItemCreated>();
+        modelBuilder.Ignore<ServiceItemCreated>();
+        modelBuilder.Ignore<InventoryValuationPolicyCreated>();
+        modelBuilder.Ignore<InventoryAdjustmentReasonCreated>();
+        modelBuilder.Ignore<InventoryAccountingConfigurationCreated>();
 
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(SmeAccountingDbContext).Assembly);
         base.OnModelCreating(modelBuilder);

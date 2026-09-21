@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using SmeAccounting.Infrastructure.Persistence;
@@ -11,9 +12,11 @@ using SmeAccounting.Infrastructure.Persistence;
 namespace SmeAccounting.Infrastructure.Migrations
 {
     [DbContext(typeof(SmeAccountingDbContext))]
-    partial class SmeAccountingDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260921020615_AddItemCategory")]
+    partial class AddItemCategory
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -711,230 +714,6 @@ namespace SmeAccounting.Infrastructure.Migrations
                     b.ToTable("fiscal_years", (string)null);
                 });
 
-            modelBuilder.Entity("SmeAccounting.Domain.Entities.InventoryAccountingConfiguration", b =>
-                {
-                    b.Property<long>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint")
-                        .HasColumnName("id");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
-
-                    b.Property<long>("CogsAccountId")
-                        .HasColumnType("bigint")
-                        .HasColumnName("cogs_account_id");
-
-                    b.Property<long>("CompanyId")
-                        .HasColumnType("bigint")
-                        .HasColumnName("company_id");
-
-                    b.Property<long>("InventoryAccountId")
-                        .HasColumnType("bigint")
-                        .HasColumnName("inventory_account_id");
-
-                    b.Property<long?>("InventoryAdjustmentGainAccountId")
-                        .HasColumnType("bigint")
-                        .HasColumnName("inventory_adjustment_gain_account_id");
-
-                    b.Property<long?>("InventoryAdjustmentLossAccountId")
-                        .HasColumnType("bigint")
-                        .HasColumnName("inventory_adjustment_loss_account_id");
-
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("boolean")
-                        .HasColumnName("is_active");
-
-                    b.Property<uint>("xmin")
-                        .IsConcurrencyToken()
-                        .ValueGeneratedOnAddOrUpdate()
-                        .HasColumnType("xid")
-                        .HasColumnName("xmin");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("CogsAccountId");
-
-                    b.HasIndex("CompanyId")
-                        .IsUnique();
-
-                    b.HasIndex("InventoryAccountId");
-
-                    b.HasIndex("InventoryAdjustmentGainAccountId");
-
-                    b.HasIndex("InventoryAdjustmentLossAccountId");
-
-                    b.ToTable("inventory_accounting_configurations", (string)null);
-                });
-
-            modelBuilder.Entity("SmeAccounting.Domain.Entities.InventoryAdjustmentReason", b =>
-                {
-                    b.Property<long>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint")
-                        .HasColumnName("id");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
-
-                    b.Property<string>("Code")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
-                        .HasColumnName("code");
-
-                    b.Property<long>("CompanyId")
-                        .HasColumnType("bigint")
-                        .HasColumnName("company_id");
-
-                    b.Property<string>("Description")
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)")
-                        .HasColumnName("description");
-
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("boolean")
-                        .HasColumnName("is_active");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)")
-                        .HasColumnName("name");
-
-                    b.Property<uint>("xmin")
-                        .IsConcurrencyToken()
-                        .ValueGeneratedOnAddOrUpdate()
-                        .HasColumnType("xid")
-                        .HasColumnName("xmin");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("CompanyId", "Code")
-                        .IsUnique();
-
-                    b.ToTable("inventory_adjustment_reasons", (string)null);
-                });
-
-            modelBuilder.Entity("SmeAccounting.Domain.Entities.InventoryValuationPolicy", b =>
-                {
-                    b.Property<long>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint")
-                        .HasColumnName("id");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
-
-                    b.Property<string>("Code")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
-                        .HasColumnName("code");
-
-                    b.Property<long>("CompanyId")
-                        .HasColumnType("bigint")
-                        .HasColumnName("company_id");
-
-                    b.Property<string>("Description")
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)")
-                        .HasColumnName("description");
-
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("boolean")
-                        .HasColumnName("is_active");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)")
-                        .HasColumnName("name");
-
-                    b.Property<string>("ValuationMethod")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("valuation_method");
-
-                    b.Property<uint>("xmin")
-                        .IsConcurrencyToken()
-                        .ValueGeneratedOnAddOrUpdate()
-                        .HasColumnType("xid")
-                        .HasColumnName("xmin");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("CompanyId", "Code")
-                        .IsUnique();
-
-                    b.ToTable("inventory_valuation_policies", (string)null);
-                });
-
-            modelBuilder.Entity("SmeAccounting.Domain.Entities.Item", b =>
-                {
-                    b.Property<long>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint")
-                        .HasColumnName("id");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
-
-                    b.Property<string>("Code")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
-                        .HasColumnName("code");
-
-                    b.Property<long>("CompanyId")
-                        .HasColumnType("bigint")
-                        .HasColumnName("company_id");
-
-                    b.Property<string>("Description")
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)")
-                        .HasColumnName("description");
-
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("boolean")
-                        .HasColumnName("is_active");
-
-                    b.Property<bool>("IsServiceItem")
-                        .HasColumnType("boolean")
-                        .HasColumnName("is_service_item");
-
-                    b.Property<bool>("IsStockItem")
-                        .HasColumnType("boolean")
-                        .HasColumnName("is_stock_item");
-
-                    b.Property<long?>("ItemCategoryId")
-                        .HasColumnType("bigint")
-                        .HasColumnName("item_category_id");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)")
-                        .HasColumnName("name");
-
-                    b.Property<long?>("UomId")
-                        .HasColumnType("bigint")
-                        .HasColumnName("uom_id");
-
-                    b.Property<uint>("xmin")
-                        .IsConcurrencyToken()
-                        .ValueGeneratedOnAddOrUpdate()
-                        .HasColumnType("xid")
-                        .HasColumnName("xmin");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("ItemCategoryId");
-
-                    b.HasIndex("UomId");
-
-                    b.HasIndex("CompanyId", "Code")
-                        .IsUnique();
-
-                    b.ToTable("items", (string)null);
-                });
-
             modelBuilder.Entity("SmeAccounting.Domain.Entities.ItemCategory", b =>
                 {
                     b.Property<long>("Id")
@@ -1375,60 +1154,6 @@ namespace SmeAccounting.Infrastructure.Migrations
                         .IsUnique();
 
                     b.ToTable("projects", (string)null);
-                });
-
-            modelBuilder.Entity("SmeAccounting.Domain.Entities.ServiceItem", b =>
-                {
-                    b.Property<long>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint")
-                        .HasColumnName("id");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
-
-                    b.Property<string>("Code")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
-                        .HasColumnName("code");
-
-                    b.Property<long>("CompanyId")
-                        .HasColumnType("bigint")
-                        .HasColumnName("company_id");
-
-                    b.Property<string>("Description")
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)")
-                        .HasColumnName("description");
-
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("boolean")
-                        .HasColumnName("is_active");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)")
-                        .HasColumnName("name");
-
-                    b.Property<long?>("UomId")
-                        .HasColumnType("bigint")
-                        .HasColumnName("uom_id");
-
-                    b.Property<uint>("xmin")
-                        .IsConcurrencyToken()
-                        .ValueGeneratedOnAddOrUpdate()
-                        .HasColumnType("xid")
-                        .HasColumnName("xmin");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("UomId");
-
-                    b.HasIndex("CompanyId", "Code")
-                        .IsUnique();
-
-                    b.ToTable("service_items", (string)null);
                 });
 
             modelBuilder.Entity("SmeAccounting.Domain.Entities.Supplier", b =>
@@ -2122,54 +1847,6 @@ namespace SmeAccounting.Infrastructure.Migrations
                     b.ToTable("uoms", (string)null);
                 });
 
-            modelBuilder.Entity("SmeAccounting.Domain.Entities.UomConversion", b =>
-                {
-                    b.Property<long>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint")
-                        .HasColumnName("id");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
-
-                    b.Property<long>("CompanyId")
-                        .HasColumnType("bigint")
-                        .HasColumnName("company_id");
-
-                    b.Property<decimal>("Factor")
-                        .HasPrecision(18, 6)
-                        .HasColumnType("numeric(18,6)")
-                        .HasColumnName("factor");
-
-                    b.Property<long>("FromUomId")
-                        .HasColumnType("bigint")
-                        .HasColumnName("from_uom_id");
-
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("boolean")
-                        .HasColumnName("is_active");
-
-                    b.Property<long>("ToUomId")
-                        .HasColumnType("bigint")
-                        .HasColumnName("to_uom_id");
-
-                    b.Property<uint>("xmin")
-                        .IsConcurrencyToken()
-                        .ValueGeneratedOnAddOrUpdate()
-                        .HasColumnType("xid")
-                        .HasColumnName("xmin");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("FromUomId");
-
-                    b.HasIndex("ToUomId");
-
-                    b.HasIndex("CompanyId", "FromUomId", "ToUomId")
-                        .IsUnique();
-
-                    b.ToTable("uom_conversions", (string)null);
-                });
-
             modelBuilder.Entity("SmeAccounting.Domain.Entities.VoucherType", b =>
                 {
                     b.Property<long>("Id")
@@ -2221,59 +1898,6 @@ namespace SmeAccounting.Infrastructure.Migrations
                         .IsUnique();
 
                     b.ToTable("voucher_types", (string)null);
-                });
-
-            modelBuilder.Entity("SmeAccounting.Domain.Entities.Warehouse", b =>
-                {
-                    b.Property<long>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint")
-                        .HasColumnName("id");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
-
-                    b.Property<string>("Address")
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)")
-                        .HasColumnName("address");
-
-                    b.Property<string>("Code")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
-                        .HasColumnName("code");
-
-                    b.Property<long>("CompanyId")
-                        .HasColumnType("bigint")
-                        .HasColumnName("company_id");
-
-                    b.Property<string>("Description")
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)")
-                        .HasColumnName("description");
-
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("boolean")
-                        .HasColumnName("is_active");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)")
-                        .HasColumnName("name");
-
-                    b.Property<uint>("xmin")
-                        .IsConcurrencyToken()
-                        .ValueGeneratedOnAddOrUpdate()
-                        .HasColumnType("xid")
-                        .HasColumnName("xmin");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("CompanyId", "Code")
-                        .IsUnique();
-
-                    b.ToTable("warehouses", (string)null);
                 });
 
             modelBuilder.Entity("SmeAccounting.Domain.Entities.Account", b =>
@@ -2395,75 +2019,6 @@ namespace SmeAccounting.Infrastructure.Migrations
                         .HasForeignKey("CompanyId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
-                });
-
-            modelBuilder.Entity("SmeAccounting.Domain.Entities.InventoryAccountingConfiguration", b =>
-                {
-                    b.HasOne("SmeAccounting.Domain.Entities.Account", null)
-                        .WithMany()
-                        .HasForeignKey("CogsAccountId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("SmeAccounting.Domain.Entities.Company", null)
-                        .WithMany()
-                        .HasForeignKey("CompanyId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("SmeAccounting.Domain.Entities.Account", null)
-                        .WithMany()
-                        .HasForeignKey("InventoryAccountId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("SmeAccounting.Domain.Entities.Account", null)
-                        .WithMany()
-                        .HasForeignKey("InventoryAdjustmentGainAccountId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
-                    b.HasOne("SmeAccounting.Domain.Entities.Account", null)
-                        .WithMany()
-                        .HasForeignKey("InventoryAdjustmentLossAccountId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .HasConstraintName("FK_inventory_accounting_configurations_accounts_inventory_adj~1");
-                });
-
-            modelBuilder.Entity("SmeAccounting.Domain.Entities.InventoryAdjustmentReason", b =>
-                {
-                    b.HasOne("SmeAccounting.Domain.Entities.Company", null)
-                        .WithMany()
-                        .HasForeignKey("CompanyId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-                });
-
-            modelBuilder.Entity("SmeAccounting.Domain.Entities.InventoryValuationPolicy", b =>
-                {
-                    b.HasOne("SmeAccounting.Domain.Entities.Company", null)
-                        .WithMany()
-                        .HasForeignKey("CompanyId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-                });
-
-            modelBuilder.Entity("SmeAccounting.Domain.Entities.Item", b =>
-                {
-                    b.HasOne("SmeAccounting.Domain.Entities.Company", null)
-                        .WithMany()
-                        .HasForeignKey("CompanyId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("SmeAccounting.Domain.Entities.ItemCategory", null)
-                        .WithMany()
-                        .HasForeignKey("ItemCategoryId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
-                    b.HasOne("SmeAccounting.Domain.Entities.Uom", null)
-                        .WithMany()
-                        .HasForeignKey("UomId")
-                        .OnDelete(DeleteBehavior.Restrict);
                 });
 
             modelBuilder.Entity("SmeAccounting.Domain.Entities.ItemCategory", b =>
@@ -2629,20 +2184,6 @@ namespace SmeAccounting.Infrastructure.Migrations
                         .HasForeignKey("CompanyId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
-                });
-
-            modelBuilder.Entity("SmeAccounting.Domain.Entities.ServiceItem", b =>
-                {
-                    b.HasOne("SmeAccounting.Domain.Entities.Company", null)
-                        .WithMany()
-                        .HasForeignKey("CompanyId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("SmeAccounting.Domain.Entities.Uom", null)
-                        .WithMany()
-                        .HasForeignKey("UomId")
-                        .OnDelete(DeleteBehavior.Restrict);
                 });
 
             modelBuilder.Entity("SmeAccounting.Domain.Entities.Supplier", b =>
@@ -2825,37 +2366,7 @@ namespace SmeAccounting.Infrastructure.Migrations
                         .IsRequired();
                 });
 
-            modelBuilder.Entity("SmeAccounting.Domain.Entities.UomConversion", b =>
-                {
-                    b.HasOne("SmeAccounting.Domain.Entities.Company", null)
-                        .WithMany()
-                        .HasForeignKey("CompanyId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("SmeAccounting.Domain.Entities.Uom", null)
-                        .WithMany()
-                        .HasForeignKey("FromUomId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("SmeAccounting.Domain.Entities.Uom", null)
-                        .WithMany()
-                        .HasForeignKey("ToUomId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-                });
-
             modelBuilder.Entity("SmeAccounting.Domain.Entities.VoucherType", b =>
-                {
-                    b.HasOne("SmeAccounting.Domain.Entities.Company", null)
-                        .WithMany()
-                        .HasForeignKey("CompanyId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-                });
-
-            modelBuilder.Entity("SmeAccounting.Domain.Entities.Warehouse", b =>
                 {
                     b.HasOne("SmeAccounting.Domain.Entities.Company", null)
                         .WithMany()

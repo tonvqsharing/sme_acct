@@ -148,3 +148,4 @@ Shared across all loops in this project.
 - **Key distinction:** 0% VAT rate (deductible input credit) vs. VAT-exempt (non-deductible input credit)
 - **Temporary 8% VAT reduction** via Resolution 204/2025/QH15 — excludes telecom, finance, real estate, etc.
 - **Non-cash payment evidence** required for input VAT credit on purchases ≥ VND 5 million
+- [product-inventory-foundation, task 1] UOM master-data pattern reusable for Product & Inventory Foundation: Company-scoped entity with Code/Name/Symbol/IsActive/Description, unique (CompanyId,Code) index, UomCreated domain event, IUomRepository port, EfUomRepository, snake_case EF config with xmin concurrency, DI registration, CQRS Create/Deactivate/Get with FluentValidation, thin MediatR API controller, migration AddUom succeeds, build 0 warnings, architecture tests 22/22 pass.
