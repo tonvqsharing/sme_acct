@@ -107,6 +107,8 @@ public class SmeAccountingDbContext : DbContext, IUnitOfWork
         modelBuilder.Ignore<BankBranchCreated>();
         modelBuilder.Ignore<BankAccountCreated>();
 
+        modelBuilder.Ignore<PostingReferenceCreated>();
+
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(SmeAccountingDbContext).Assembly);
         base.OnModelCreating(modelBuilder);
     }

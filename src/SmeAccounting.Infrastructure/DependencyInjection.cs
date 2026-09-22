@@ -66,6 +66,7 @@ public static class DependencyInjection
         services.AddScoped<IBankRepository, EfBankRepository>();
         services.AddScoped<IBankBranchRepository, EfBankBranchRepository>();
         services.AddScoped<IBankAccountRepository, EfBankAccountRepository>();
+        services.AddScoped<IPostingReferenceRepository, EfPostingReferenceRepository>();
         services.AddScoped<IUsersRepository, EfUsersRepository>();
         services.AddScoped<IRoleRepository, EfRoleRepository>();
         services.AddScoped<IUserRoleRepository, EfUserRoleRepository>();

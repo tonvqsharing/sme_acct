@@ -47,6 +47,25 @@ internal sealed class FakePaymentMethodRepository : IPaymentMethodRepository
     public IReadOnlyList<PaymentMethod> Stored => _items;
 }
 
+internal sealed class FakePostingReferenceRepository : IPostingReferenceRepository
+{
+    private readonly List<PostingReference> _items = new();
+
+    public Task<PostingReference?> GetByIdAsync(long id)
+        => Task.FromResult(_items.FirstOrDefault(x => x.Id == id));
+
+    public Task<PostingReference?> GetBySourceAsync(string sourceType, long sourceId, long companyId)
+        => Task.FromResult(_items.FirstOrDefault(x => x.SourceType == sourceType && x.SourceId == sourceId && x.CompanyId == companyId));
+
+    public Task AddAsync(PostingReference reference)
+    {
+        _items.Add(reference);
+        return Task.CompletedTask;
+    }
+
+    public IReadOnlyList<PostingReference> Stored => _items;
+}
+
 internal sealed class FakeUnitOfWork : IUnitOfWork
 {
     public int SaveCalledCount { get; private set; }
