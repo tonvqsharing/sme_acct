@@ -1,0 +1,17 @@
+# Loop Plan
+## Mode
+patch
+## Goal
+Harden PostingReference implementation in SME Accounting core to edge following discovery-first TDD rules
+## Stop Condition
+all tasks in loop-stack/posting-reference-harden/PLAN.md checked
+## Budget
+20 turns
+## Git Integration
+yes
+## Tasks
+- [x] [G1] Decide FK vs polymorphic + finalize design: resolve options A/B/C from RESEARCH.md Requirements §1-§6 using 1-live-SourceType (`OpeningBalancePeriod.cs:78`) evidence, CompanyId chain fragility (§4 unenforced PeriodId→YearId hops), idempotency unique `(SourceType,SourceId)` decision (§5), reversal out-of-scope unless evidenced (§3 zero hits), discarded-JE handler bug scoping, JournalEntry.SourceType/SourceId dual-write sync; write decision + hardening spec to `docs/PostingReference-Design-2026.md` (chosen option, CompanyId direct-vs-chain, unique index yes/no, scope exclusions); tools: `docs/Patterns-CompanyIsolation-EffectiveDating-2026.md`, `docs/PaymentMethod-Design-2026.md:79,136,158`, skills domain-modeling + doubt-driven-development
+- [ ] [G2] Harden Domain core via discovery-first TDD: harden `src/SmeAccounting.Domain/Entities/PostingReference.cs` (DomainException validation for JournalEntryId/SourceId ranges + SourceType empty/whitespace, optional CompanyId per G1, no navigation props, private parameterless ctor preserved), add minimal event `Domain/Events/PostingReferenceCreated.cs` (Id+CompanyId+occurredOn), harden `JournalEntry.SetSource` guards; add port `Domain/Ports/IPostingReferenceRepository.cs` if G1 requires; RED-first xunit tests in `tests/SmeAccounting.BankTests/` List-backed fakes (no EF InMemory, no new NuGet); tools: TOOLS.md Build+Arch commands, skills test-driven-development/tdd, MEMORY.md transient-Id=0 + event-minimalism + DomainException patterns
+- [ ] [G3] Harden EF persistence + repository wiring via TDD: update `Infrastructure/Persistence/Configurations/PostingReferenceConfiguration.cs` (G1-chosen HasOne<JournalEntry> Restrict or polymorphic shape, snake_case, CompanyId FK Restrict + composite/unique indexes per G1, xmin last), implement `Infrastructure/Repositories/EfPostingReferenceRepository.cs`, wire `DbSet`+`Ignore<Event>` in `SmeAccountingDbContext.cs` + `AddScoped` in `DependencyInjection.cs`; verify with BankTests fake-repo + `dotnet build SmeAccounting.sln`; tools: TOOLS.md EF + psql commands, MEMORY.md T1-VoucherType checklist + G2-Restrict/uniques/xmin patterns
+- [ ] [G3] Harden Application CQRS + Api edge via TDD: add flat-layout `Application/Commands|Handlers|Queries|Validators/DTOs` for PostingReference (record `IRequest<T>` create/get, FluentValidation `AbstractValidator`, manual DTO mapping, ValidationBehavior pipeline) + thin MediatR controller, no `Domain.Entities` reference from Api; RED-first BankTests for validator+handler happy/duplicate-post paths reusing FakeUnitOfWork; tools: TOOLS.md MediatR 14.2.0/FluentValidation 12.1.0, MEMORY.md CompanySettings full-CQRS + PaymentMethod flat-layout/Enum.Parse patterns
+- [ ] [G4] Verify core-to-edge: `dotnet build SmeAccounting.sln` 0 warn, `dotnet test tests/SmeAccounting.ArchitectureTests/` 22/22, BankTests regression + new PostingReference tests green, check-only `dotnet ef migrations add PostingReferenceHarden` SQL review (Up single Alter/Create + unique/FK Restrict + snake_case + xmin, Down reversal, R1-R7 verdicts) without `database update` without approval; tools: TOOLS.md Commands Reference, skill code-review-and-quality
