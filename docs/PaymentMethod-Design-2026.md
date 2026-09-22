@@ -25,7 +25,7 @@ Modeled exactly on `PaymentTerm.cs:7-43` + `PaymentTermConfiguration.cs:7-56`. D
 | CompanyId | `long`, required | Yes | `company_id`, FK `HasOne<Company>().WithMany().HasForeignKey(e => e.CompanyId).OnDelete(DeleteBehavior.Restrict)`, no navigation property on entity | PaymentTerm.cs:9, PaymentTermConfiguration.cs:48-51 |
 | Code | `string`, required non-empty | Yes | `code`, `IsRequired().HasMaxLength(20)` | PaymentTerm.cs:10, PaymentTermConfiguration.cs:21-24 |
 | Name | `string`, required non-empty | Yes | `name`, `IsRequired().HasMaxLength(200)` | PaymentTerm.cs:11, PaymentTermConfiguration.cs:26-29 |
-| Category | `PaymentMethodCategory` enum, required | Yes | `category`, `HasConversion<string>()`, required | PaymentTermType pattern: PaymentTerm.cs:12 + PaymentTermConfiguration.cs:31-33; column name `category` (alternative `payment_method_category` accepted if G2 keeps it consistent everywhere) |
+| Category | `PaymentMethodCategory` enum, required | Yes | `category`, `HasConversion<string>()`, required | PaymentTermType pattern: PaymentTerm.cs:12 + PaymentTermConfiguration.cs:31-33; column name `category`, locked (PaymentTerm precedent; no alternative) |
 | RequiresBankAccount | `bool`, required (default `false`) | Yes | `requires_bank_account`, required, default `false` | New scalar for G1 (see §4); no PaymentTerm precedent — bool flag instead of FK per §4 rationale |
 | IsActive | `bool = true` | Yes | `is_active`, required | PaymentTerm.cs:14 |
 | Description | `string?`, optional | No | `description`, `HasMaxLength(500)`, nullable | PaymentTerm.cs:15, PaymentTermConfiguration.cs:41-43 |
@@ -127,7 +127,7 @@ Validator lengths MUST match §6 (B2); FAIL if they diverge. DTO (`PaymentMethod
 - UNKNOWN-3 (RESOLVED): `RequiresBankAccount` in G1 scope with default `false` — YES, scalar bool, default false, required column.
 - UNKNOWN-4 (RESOLVED): Description — optional nullable, max 500 (PaymentTerm precedent).
 - UNKNOWN-5 (CARRIED FORWARD): any future FK from Supplier/Customer/documents to PaymentMethod — out of G1/G2 scope; follow Supplier nullable-FK-Restrict pattern only if later requested.
-- UNKNOWN-6 (CARRIED FORWARD): category column name `category` vs `payment_method_category` — either accepted provided G2 uses it consistently in config, migration, and queries; verifier checks string-conversion + snake_case, not the exact stem.
+- UNKNOWN-6 (RESOLVED): category column name locked to `category` per PaymentTerm precedent.
 
 ## 9. Non-Goals
 
