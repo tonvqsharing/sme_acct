@@ -43,6 +43,9 @@ public class SmeAccountingDbContext : DbContext, IUnitOfWork
     public DbSet<InventoryAdjustmentReason> InventoryAdjustmentReasons => Set<InventoryAdjustmentReason>();
     public DbSet<InventoryAccountingConfiguration> InventoryAccountingConfigurations => Set<InventoryAccountingConfiguration>();
     public DbSet<CompanySetting> CompanySettings => Set<CompanySetting>();
+    public DbSet<Bank> Banks => Set<Bank>();
+    public DbSet<BankBranch> BankBranches => Set<BankBranch>();
+    public DbSet<BankAccount> BankAccounts => Set<BankAccount>();
     public DbSet<OpeningBalancePeriod> OpeningBalancePeriods => Set<OpeningBalancePeriod>();
     public DbSet<OpeningBalanceEntry> OpeningBalanceEntries => Set<OpeningBalanceEntry>();
     public DbSet<User> Users => Set<User>();
@@ -99,6 +102,9 @@ public class SmeAccountingDbContext : DbContext, IUnitOfWork
         modelBuilder.Ignore<RoleCreated>();
         modelBuilder.Ignore<UserRoleAssigned>();
         modelBuilder.Ignore<CompanyMembershipCreated>();
+        modelBuilder.Ignore<BankCreated>();
+        modelBuilder.Ignore<BankBranchCreated>();
+        modelBuilder.Ignore<BankAccountCreated>();
 
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(SmeAccountingDbContext).Assembly);
         base.OnModelCreating(modelBuilder);

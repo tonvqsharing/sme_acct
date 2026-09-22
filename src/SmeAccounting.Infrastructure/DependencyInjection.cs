@@ -62,6 +62,9 @@ public static class DependencyInjection
         services.AddScoped<IInventoryAdjustmentReasonRepository, EfInventoryAdjustmentReasonRepository>();
         services.AddScoped<IInventoryAccountingConfigurationRepository, EfInventoryAccountingConfigurationRepository>();
         services.AddScoped<ICompanySettingRepository, EfCompanySettingRepository>();
+        services.AddScoped<IBankRepository, EfBankRepository>();
+        services.AddScoped<IBankBranchRepository, EfBankBranchRepository>();
+        services.AddScoped<IBankAccountRepository, EfBankAccountRepository>();
         services.AddScoped<IUsersRepository, EfUsersRepository>();
         services.AddScoped<IRoleRepository, EfRoleRepository>();
         services.AddScoped<IUserRoleRepository, EfUserRoleRepository>();

@@ -14,7 +14,7 @@ public static class SystemSecuritySeed
         // In production, seed via CreateCompanyWithDefaultsCommandHandler.
 
         // Example for CompanyId = 1
-        var companyId = 1;
+        // var companyId = 1;
 
         var voucherTypes = new[]
         {
