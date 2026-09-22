@@ -9,3 +9,12 @@ Updated continuously by all agents as they discover things.
 - Patterns confirmed: CompanyId FK Restrict universal, composite unique indexes, effective dating query pattern, soft delete via IsActive, enum HasConversion<string>(), xmin row version, snake_case naming, SetNull for dimensions, domain validation with DomainException, private parameterless ctor for EF
 - Gaps identified: Bank/BankBranch/BankAccount entities missing, PostingReference lacks FK to JournalEntry, CompanyId, repository, application layer; PaymentTerm exists without Bank integration
 - Discovery deliverable created at /home/projects/sme_acct/docs/Discovery-GeneralAccounting-Entities-2026.md
+### G1 Bank/PostingReference Discovery 2026-09-22
+- Bank/BankBranch/BankAccount entities confirmed absent: no domain entities, no EF configurations, no ports/repositories, no application commands/queries. Only BankExchangeRateProvider adapter exists.
+- PostingReference entity exists as stub: src/SmeAccounting.Domain/Entities/PostingReference.cs has Id, JournalEntryId, SourceType, SourceId; no CompanyId, no navigation, constructor uses ArgumentNullException not DomainException, no domain events.
+- PostingReferenceConfiguration maps to posting_references table with indexes but no FK constraint to journal_entries, no CompanyId column, no relationship configured.
+- Migration 20260916051341_InitialCreate creates posting_references without FK.
+- No IPostingReferenceRepository port or implementation; no Application layer coverage.
+- JournalEntry has SourceType/SourceId properties and SetSource method but does not create/manage PostingReference; source tracking duplicated.
+- Gaps: missing Company isolation, soft-delete, effective dating, enum validation for SourceType, repository, CQRS, domain events.
+- Discovery deliverable created at /home/projects/sme_acct/docs/Discovery-Bank-PostingReference-Gaps-2026.md
