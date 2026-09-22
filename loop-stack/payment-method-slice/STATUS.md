@@ -2,13 +2,14 @@
 ## State
 VERIFIED_PASS
 ## Current Task
-[G2] Implement PaymentMethod vertical slice via discovery-first TDD
+[G3] Verify PaymentMethod slice
 ## Task Progress
-1 / 3 complete
+2 / 3 complete
 ## Attempts On Current Task
 0
 ## Completed Tasks
 [G1] Finalize PaymentMethod design — VERIFIED_PASS 2026-09-22
+[G2] Implement PaymentMethod vertical slice via discovery-first TDD — VERIFIED_PASS 2026-09-22
 ## Skipped Tasks
 (none)
 ## Last Researcher Result
@@ -24,7 +25,7 @@ researcher: [G1] PaymentMethod field design appended to RESEARCH.md 2026-09-22
 ## Last Executor Result
 [G2] PaymentMethod slice implemented FULL GREEN 2026-09-22: 17 new files + FakePaymentMethodRepository + 1 Ignore + 1 AddScoped; build 0 warn 0 err, BankTests 27/27, arch 22/22.
 ## Last Audit Result
-WARN — docs/PaymentMethod-Design-2026.md passes G1 criteria A–E (ValueObjects placement, 20/200/500 sourced, (CompanyId,Code) unique + Restrict, no BankAccountId FK, no VAS-prescribed values, 0 placeholders, UNKNOWN-1..4 resolved / 5..6 carried forward). Minors: (1) PLAN.md G1 still points output to loop-stack/.../DESIGN.md while approved output is docs/PaymentMethod-Design-2026.md — update PLAN path; (2) category column dual-option `category` vs `payment_method_category` (UNKNOWN-6) leaves G2 naming ambiguity — recommend locking to one. Non-blocking.
+CLEAN — [G2] slice matches RESEARCH checklists: Domain 4 + Infra 2 + Application 12 + Api 2 + tests at exact paths, file-scoped namespaces, 20/200/500, unique (CompanyId,Code), Restrict, xmin last, payment_methods snake_case, category string col `category`, no BankAccountId FK, no VAS values, controller MediatR-only (ValueObjects Enum.Parse allowed, no Domain.Entities), DTO single-record, no TODOs, Domain zero-refs shape, commit 582dd06 scoped (slice + loop meta only).
 ## Active Heartbeats
 executor: [G1] drafting docs/PaymentMethod-Design-2026.md 2026-09-22
 executor: [G1] design doc written + verified, MEMORY/STATUS updated 2026-09-22
@@ -34,3 +35,6 @@ memory-keeper: [G1] learnings consolidated to loop + global MEMORY (design locks
 ## Blocked Reason
 (none)
 executor: [G2] implementing PaymentMethod slice via discovery-first TDD 2026-09-22
+auditor: starting audit of [G2] PaymentMethod slice 2026-09-22
+auditor: [G2] audit CLEAN — all checklist items pass, no TODOs/FK/VAS issues 2026-09-22
+memory-keeper: [G2] learnings consolidated to loop + global MEMORY (Deactivate extra, flat layout, DTO string + Enum.Parse thin controller, validator-only IsInEnum, Ignore-only wiring, BankTests 27/27 zero csproj edits); status → [G3] 2026-09-22
