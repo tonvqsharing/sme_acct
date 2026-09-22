@@ -16,9 +16,9 @@ VERIFIED_PASS
 ## Skipped Tasks
 (none)
 ## Last Researcher Result
-Company isolation, effective dating, soft delete, enum storage patterns extracted with concrete file paths, class names, code snippets. RESEARCH.md updated under Task-Specific Research — [G1] Extract company isolation, effective dating, soft delete, enum storage patterns for implementation reference
+G3 BankTests mapped from source: tests/ has only ArchitectureTests (xunit 2.9.3, no InMemory/Testcontainers anywhere); exact csproj copy-template + sln-add step captured; hand-fakes-first (zero new packages) with InMemory 10.0.4 optional + limitations; internal-handler InternalsVisibleTo caveat; ~10-Fact surface in RESEARCH.md
 ## Last Executor Result
-BankBranch and BankAccount completed with TDD: domain entities with CompanyId/BankId(/BranchId) + Code + Name/AccountNumber + IsActive + DomainException validation, BankBranchCreated/BankAccountCreated events, EF configs bank_branches/bank_accounts with snake_case + composite uniques (CompanyId,BankId,Code) and (CompanyId,BankId,BankBranchId,Code)+(CompanyId,AccountNumber) + FK Restrict + xmin, repositories + DI + DbSet/Ignore, Application commands/validators/handlers + queries + DTOs. Build 0 warn 0 err, arch tests 22/22. Fixed CS8955 duplicate DTO namespace and CS0246 missing using, CS0219 unused SystemSecuritySeed variable.
+[G3] Done: `dotnet build SmeAccounting.sln` → Build succeeded, 0 Warning(s), 0 Error(s); `dotnet test tests/SmeAccounting.ArchitectureTests/` → Passed 22/22; created tests/SmeAccounting.BankTests/ (xunit, Domain+Application refs only, zero new packages, `dotnet sln add` done) with Fakes.cs + BankAggregateTests.cs (13 Facts: domain ctor validation, Deactivate, events, validator pass/fail, handler happy path via List-backed fakes); added InternalsVisibleTo(SmeAccounting.BankTests) to Application csproj (one line, arch-safe); `dotnet test tests/SmeAccounting.BankTests/` → Passed 13/13; re-verified build 0/0 + arch 22/22 after changes.
 ## Last Audit Result
 CLEAN — BankBranch and BankAccount domain entities, EF configs, repositories, Application commands/validators/handlers, queries, DTOs exist. Domain entities have CompanyId FK Restrict, composite unique indexes (CompanyId,BankId,Code) and (CompanyId,BankId,BankBranchId,Code)+(CompanyId,AccountNumber), IsActive soft-delete, DomainException validation, domain events BankBranchCreated/BankAccountCreated. EF configs use snake_case tables bank_branches/bank_accounts, columns snake_case, xmin row version, FK Restrict to Company/Bank/BankBranch. Build succeeds 0 warnings 0 errors, architecture tests 22/22 passed.
 ## Active Heartbeats
@@ -37,3 +37,9 @@ executor: starting [G2] Implement Bank aggregate with Domain entity, EF configur
 memory-keeper: consolidated G2 Bank/BankBranch/BankAccount learnings, rolled STATUS to G3 5/6
 ## Blocked Reason
 (none)
+## Active Heartbeats
+researcher: completed [G3] verification and architecture compliance research, RESEARCH.md + STATUS.md updated
+researcher: completed [G3] minimal integration tests research — BankTests plan appended to RESEARCH.md
+executor: starting [G3] build + arch tests + BankTests
+executor: build 0 warn 0 err, arch 22/22 — scaffolding BankTests
+executor: [G3] all green — build 0/0, arch 22/22, BankTests 13/13; updating memory+status
