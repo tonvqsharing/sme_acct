@@ -4,7 +4,7 @@ VERIFIED_PASS
 ## Current Task
 [G3] Verify architecture compliance, run build and architecture tests, create minimal integration tests for Bank components
 ## Task Progress
-5 / 6 complete
+6 / 6 complete
 ## Attempts On Current Task
 0
 ## Completed Tasks
@@ -20,7 +20,7 @@ G3 BankTests mapped from source: tests/ has only ArchitectureTests (xunit 2.9.3,
 ## Last Executor Result
 [G3] Done: `dotnet build SmeAccounting.sln` → Build succeeded, 0 Warning(s), 0 Error(s); `dotnet test tests/SmeAccounting.ArchitectureTests/` → Passed 22/22; created tests/SmeAccounting.BankTests/ (xunit, Domain+Application refs only, zero new packages, `dotnet sln add` done) with Fakes.cs + BankAggregateTests.cs (13 Facts: domain ctor validation, Deactivate, events, validator pass/fail, handler happy path via List-backed fakes); added InternalsVisibleTo(SmeAccounting.BankTests) to Application csproj (one line, arch-safe); `dotnet test tests/SmeAccounting.BankTests/` → Passed 13/13; re-verified build 0/0 + arch 22/22 after changes.
 ## Last Audit Result
-CLEAN — BankBranch and BankAccount domain entities, EF configs, repositories, Application commands/validators/handlers, queries, DTOs exist. Domain entities have CompanyId FK Restrict, composite unique indexes (CompanyId,BankId,Code) and (CompanyId,BankId,BankBranchId,Code)+(CompanyId,AccountNumber), IsActive soft-delete, DomainException validation, domain events BankBranchCreated/BankAccountCreated. EF configs use snake_case tables bank_branches/bank_accounts, columns snake_case, xmin row version, FK Restrict to Company/Bank/BankBranch. Build succeeds 0 warnings 0 errors, architecture tests 22/22 passed.
+CLEAN — [G3] BankTests committed (HEAD 4c2fb51): csproj IsPackable false, xunit 2.9.3/runner/TestSdk/coverlet matching ArchitectureTests, refs Domain+Application only (no Infrastructure), zero new packages, sln-add done; Fakes.cs List-backed FakeBankRepository+FakeUnitOfWork; BankAggregateTests.cs 13 Facts (ctor/event/Deactivate/validator/handler); InternalsVisibleTo(BankTests) one block in Application csproj (arch-safe); no TODOs/placeholders, Domain csproj 0 PackageReference, no Domain changes in G3 commit, no unrelated refactors, output in tests/ not loop-stack.
 ## Active Heartbeats
 executor: starting [G2] Implement BankBranch and BankAccount domain entities with EF configurations, repositories and Application layer with TDD
 auditor: starting audit of [G1] Discover existing General Accounting entities, ports, EF configurations and architecture constraints via code exploration
@@ -43,3 +43,6 @@ researcher: completed [G3] minimal integration tests research — BankTests plan
 executor: starting [G3] build + arch tests + BankTests
 executor: build 0 warn 0 err, arch 22/22 — scaffolding BankTests
 executor: [G3] all green — build 0/0, arch 22/22, BankTests 13/13; updating memory+status
+auditor: starting audit of [G3] Verify architecture compliance, run build and architecture tests, create minimal integration tests for Bank components
+auditor: completed audit of [G3] — CLEAN, no arch/constraint violations
+memory-keeper: consolidated [G3] BankTests learnings (loop MEMORY already complete 39-45, global BankTests pattern appended), heartbeat updated

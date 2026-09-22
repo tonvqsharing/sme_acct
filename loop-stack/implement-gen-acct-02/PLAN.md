@@ -15,4 +15,4 @@ yes
 - [x] [G1] Extract company isolation, effective dating, soft delete, enum storage patterns for implementation reference
 - [x] [G2] Implement Bank aggregate with Domain entity, EF configuration, repository, Application commands/queries and FluentValidation using TDD
 - [x] [G2] Implement BankBranch and BankAccount domain entities with EF configurations, repositories and Application layer with TDD
-- [ ] [G3] Verify architecture compliance, run build and architecture tests, create minimal integration tests for Bank components
+- [x] [G3] Verify architecture compliance, run build and architecture tests, create minimal integration tests for Bank components
