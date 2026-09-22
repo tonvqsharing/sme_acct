@@ -233,3 +233,6 @@ Shared across all loops in this project.
 - DTO: CompanySettingDto record mirrors entity properties, no domain entity reference.
 - Patterns reinforced: MediatR IRequest handlers, ValidationBehavior pipeline, DTO records, async EF Core repository, Unit of Work, domain events raised on construction, Clean Architecture maintained, build 0 warnings, 22/22 NetArchTest pass.
 - Cross-loop reference: CompanySettings now full CQRS stack example — domain scaffolding → application commands/queries + validation + DTO → infrastructure repository + DbContext + DI. Reusable pattern for future company-scoped configuration entities.
+
+### Bank Hierarchy — Cross-Loop Reference (Sep 2026)
+- [implement-gen-acct-02, G2] Bank→BankBranch→BankAccount hierarchy: all Restrict FKs (never Cascade/SetNull for financial data), composite uniques (CompanyId,Code) / (CompanyId,BankId,Code) / (CompanyId,BankId,BankBranchId,Code)+(CompanyId,AccountNumber), snake_case tables banks/bank_branches/bank_accounts with xmin, BankCreated/BankBranchCreated/BankAccountCreated minimal events, MediatR+FluentValidation CQRS with manual DTO mapping, DbSet+Ignore<Event>+DI per aggregate, build 0 warn 0 err + 22/22 arch tests; fixes: single DTO file avoids CS8955, explicit usings avoid CS0246, remove unused vars avoids CS0219.

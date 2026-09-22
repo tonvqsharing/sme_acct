@@ -18,3 +18,21 @@ Updated continuously by all agents as they discover things.
 - JournalEntry has SourceType/SourceId properties and SetSource method but does not create/manage PostingReference; source tracking duplicated.
 - Gaps: missing Company isolation, soft-delete, effective dating, enum validation for SourceType, repository, CQRS, domain events.
 - Discovery deliverable created at /home/projects/sme_acct/docs/Discovery-Bank-PostingReference-Gaps-2026.md
+### G1 Patterns Extraction 2026-09-22
+- Company isolation pattern extracted: HasOne<Company>().WithMany().HasForeignKey(e => e.CompanyId).OnDelete(DeleteBehavior.Restrict) universal across DepartmentConfiguration, AccountConfiguration, ExchangeRateConfiguration, TaxRateConfiguration
+- Composite unique indexes extracted: (CompanyId, Code) for Department/CostCenter/Project; (CompanyId, TaxTypeId, RateValue, EffectiveFrom) for TaxRate; (CompanyId, FromCurrencyCode, ToCurrencyCode, RateType, EffectiveDate) for ExchangeRate
+- Effective dating pattern extracted: DateOnly EffectiveFrom + DateOnly? EffectiveTo on TaxRate, TaxRule; query pattern EffectiveFrom <= date AND (EffectiveTo IS NULL OR EffectiveTo >= date) AND IsActive
+- Soft delete pattern extracted: IsActive bool default true, Deactivate() sets false, Account.Deprecate() pattern, EF config HasColumnName("is_active")
+- Enum storage pattern extracted: HasConversion<string>() for AccountType, NormalBalance, RateType, etc.; enums live in Domain/ValueObjects
+- Supporting patterns: xmin row version IsRowVersion(), snake_case naming via EFCore.NamingConventions, SetNull for JournalEntryLine dimensions, DomainException validation with private parameterless ctor
+- Discovery deliverable created at /home/projects/sme_acct/docs/Patterns-CompanyIsolation-EffectiveDating-2026.md
+### G2 Bank Aggregate 2026-09-22
+- [G2 Bank] Bank entity follows Department/VoucherType template: CompanyId + Code + Name + IsActive + Description, private paramless ctor, public ctor with DomainException, BankCreated(BankId,CompanyId,OccurredOn), Deactivate() soft-delete.
+- [G2 Bank] Bank EF config pattern: ToTable(banks), snake_case columns, Code max 50 / Name max 200 / Description max 500, composite unique (CompanyId,Code), FK HasOne<Company>().WithMany().HasForeignKey().OnDelete(Restrict), xmin IsRowVersion last.
+- [G2 Bank] Bank repository port uses GetByIdAsync/GetByCodeAsync(code,companyId)/GetAllByCompanyAsync/AddAsync; impl uses FirstOrDefaultAsync tracked reads + AsNoTracking+Where+OrderBy(Code) list, AddAsync delegates to DbSet; DI AddScoped<IBankRepository,EfBankRepository>; DbContext DbSet<Bank> + modelBuilder.Ignore<BankCreated>().
+- [G2 Bank] Bank Application stack: CreateBankCommand record IRequest<CreateBankResult> + CreateBankCommandValidator (Code/Name NotEmpty+MaxLength, CompanyId>0) + handler constructs domain entity, AddAsync, SaveChangesAsync, returns Id; GetBankById/GetBanksByCompany queries return BankDto records via manual mapping, no AutoMapper, no domain refs in DTO.
+- [G2 Bank] Build-error fixes: duplicate DTO in same namespace causes CS8955 — keep single BankDto file; missing FluentValidation/MediatR usings cause CS0246 — add using explicitly; unused variable in SystemSecuritySeed causes CS0219 under TreatWarningsAsErrors — remove or discard with _.
+### G2 BankBranch/BankAccount 2026-09-22
+- [G2 BankBranch] Hierarchical child pattern: CompanyId + BankId + Code + Name + IsActive + Description, BankBranchCreated(BranchId,CompanyId,OccurredOn), both Company and Bank FKs Restrict, composite unique (CompanyId,BankId,Code) for per-bank code uniqueness.
+- [G2 BankAccount] Leaf pattern: CompanyId + BankId + BankBranchId + Code + AccountNumber + IsActive, BankAccountCreated(AccountId,CompanyId,OccurredOn), three FKs Restrict (Company/Bank/Branch), composite uniques (CompanyId,BankId,BankBranchId,Code) + (CompanyId,AccountNumber), snake_case tables bank_branches/bank_accounts with xmin.
+- [G2 BankBranch/BankAccount] Full-stack verification bar: build 0 warn 0 err + arch tests 22/22 CLEAN with zero new NuGet refs, DbSet + Ignore<Event> + DI registration required for each aggregate.
