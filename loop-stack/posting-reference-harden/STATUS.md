@@ -2,13 +2,14 @@
 ## State
 VERIFIED_PASS
 ## Current Task
-[G2] Harden Domain core via discovery-first TDD
+[G3] edge (EF wiring + CQRS in parallel)
 ## Task Progress
-1 / 5 complete
+2 / 5 complete
 ## Attempts On Current Task
 0
 ## Completed Tasks
 - [x] [G1] Decide FK vs polymorphic + finalize design (VERIFIED_PASS 2026-09-22)
+- [x] [G2] Harden Domain core via discovery-first TDD (VERIFIED_PASS 2026-09-22)
 ## Skipped Tasks
 (none)
 ## Last Researcher Result
@@ -22,12 +23,12 @@ researcher: done — G1 decision (Option A) appended to RESEARCH.md, STATUS upda
 ## Last Executor Result
 executor [G2]: RED-first PostingReferenceAggregateTests (6 Facts) failed vs stub then GREEN hardened Domain (PostingReference 4-param ctor + CompanyId + 4 DomainExceptions + event, PostingReferenceCreated minimal, IPostingReferenceRepository 3-method) — build 0/0, BankTests 33/33, arch 22/22; JournalEntry/OpeningBalancePeriod untouched per scope.
 ## Last Audit Result
-WARN — [G1] docs/PostingReference-Design-2026.md passes RESEARCH.md §0–§9 all items (Option A locked with reasons, source_type max100, unique(CompanyId,SourceType,SourceId), Restrict ×2, xmin last, 4 DomainExceptions no ArgumentNullException, minimal event, idempotency semantics, 8 out-of-scope with reasons, no placeholders, no invented VAS). One non-blocking note: file lives at docs/PostingReference-Design-2026.md, not PLAN-specified loop-stack/posting-reference-harden/DESIGN.md — content complete so downstream G2–G4 can consume as-is; suggest copy/symlink to DESIGN.md path or accept docs/ as canonical.
+CLEAN — [G2] Domain core matches RESEARCH [G2] spec §1–§10 all items: PostingReference 4-param CompanyId-first ctor, guard order companyId→JE→type→sourceId, 4 DomainException messages verbatim, IsNullOrWhiteSpace, zero ArgumentNullException, event raised last, private parameterless ctor kept, no nav props; PostingReferenceCreated minimal (PostingReferenceId+CompanyId+OccurredOn); port GetById/GetBySource(sourceType,sourceId,companyId)/AddAsync, no Update/Delete; 6 Facts incl. whitespace loop + reflection minimal-payload check; JournalEntry/OpeningBalancePeriod zero diff, no EF/Application/Api leak, Domain zero PackageReference, file-scoped namespaces, no TODOs; commit 1a1af3a scoped to 4 code files + MEMORY/STATUS. Note (non-blocking, planner awareness): PLAN.md G2 also lists JournalEntry.SetSource guards — executor deferred per spawn scope, untouched confirmed correct here; reconcile SetSource ownership before G3.
 ## Active Heartbeats
 researcher: mapping PostingReference/JournalEntry current state + writing RESEARCH.md
 researcher: done — RESEARCH.md Context & Prior Work written, STATUS updated
 ## Last Verifier Result
-VERIFIED_PASS — [G1] docs/PostingReference-Design-2026.md satisfies RESEARCH.md §0–§9: Option A locked, source_type max100 (not 20), unique(CompanyId,SourceType,SourceId) + Restrict ×2 + xmin-last, 4 DomainExceptions (no ArgumentNullException), minimal event (Id+CompanyId+occurredOn), 8-item out-of-scope with reasons, no placeholders; stop-condition ref loop-stack/01-system-security_DONE/PLAN.md all 7 tasks [x] checked.
+VERIFIED_PASS — [G2] Domain core: 4-param CompanyId-first ctor, guard order + 4 messages verbatim, no ArgumentNullException, minimal event, 3-method port, Domain zero refs; build 0/0, BankTests 33/33, arch 22/22, auditor CLEAN; scope respected (no EF/CQRS leak, callers untouched); SetSource deferral accepted with reason.
 ## Blocked Reason
 (none)
 researcher: writing [G1] verification criteria appendix to RESEARCH.md
@@ -45,3 +46,6 @@ memory-keeper: G1 learnings consolidated to loop + global MEMORY, status advance
 executor: [G2] starting RED — writing PostingReferenceAggregateTests (6 Facts)
 executor: [G2] RED confirmed (4-arg ctor missing vs stub) — writing GREEN domain files
 executor: [G2] done — build 0/0, BankTests 33/33, arch 22/22, MEMORY+STATUS updated, committing
+auditor: starting audit of [G2] harden Domain core via discovery-first TDD
+auditor: done — CLEAN (all spec items pass, commit scoped, no leaks), no code written
+memory-keeper: G2 learnings consolidated to loop + global MEMORY, status advanced to [G3] edge (EF wiring + CQRS in parallel) heartbeat
