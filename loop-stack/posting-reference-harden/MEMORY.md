@@ -1,0 +1,4 @@
+# Loop Memory
+Updated continuously by all agents as they discover things.
+## Learnings
+- [G1] Option A locked in docs/PostingReference-Design-2026.md (2026-09-22): FK JournalEntryId→journal_entries Restrict + direct CompanyId→companies Restrict + unique(CompanyId,SourceType,SourceId); JE SourceType/SourceId stay origin-trace cache, table canonical, same-UoW atomic write. Evidence: 1 live SourceType (OpeningBalancePeriod.cs:78), dead null/null command path (JournalEntryController.cs:39-41), 2 unenforced chain hops (JournalEntry/FiscalPeriod configs zero HasOne), 0 reversal hits, non-unique indexes (InitialCreate 94-108/200-208). Widths: source_type varchar100 (NOT Code-20), SourceId bigint. Event PostingReferenceCreated(Id,CompanyId,occurredOn) minimal; 4 DomainExceptions (companyId/journalEntryId/sourceId >0, sourceType non-whitespace), no ArgumentNullException; xmin rowversion last; 8-item out-of-scope list. Design only, no code changed.
