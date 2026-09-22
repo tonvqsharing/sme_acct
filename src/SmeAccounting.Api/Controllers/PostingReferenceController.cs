@@ -39,8 +39,8 @@ public class PostingReferenceController : Controller
                 model.JournalEntryId,
                 model.SourceType,
                 model.SourceId);
-            await _mediator.Send(command, ct);
-            return RedirectToAction(nameof(Details), new { id = model.JournalEntryId });
+            var result = await _mediator.Send(command, ct);
+            return RedirectToAction(nameof(Details), new { id = result.Id });
         }
         catch (ValidationException ex)
         {

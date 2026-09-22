@@ -2,9 +2,9 @@
 ## State
 VERIFIED_PASS
 ## Current Task
-[G3] edge (EF wiring + CQRS in parallel)
+[G4] Verify core-to-edge
 ## Task Progress
-2 / 5 complete
+4 / 5 complete
 ## Attempts On Current Task
 0
 ## Completed Tasks
@@ -23,12 +23,12 @@ researcher: done — G1 decision (Option A) appended to RESEARCH.md, STATUS upda
 ## Last Executor Result
 executor [G3-CQRS]: TDD CQRS+Api — RED 10-Fact PostingReferenceCqrsTests (compile-fail vs missing types), GREEN flat-layout command+result/validator/handler(duplicate-throw)/2 queries+handlers/DTO + PaymentTerm-shape controller minus Enum.Parse/Deactivate + ViewModel — build 0/0, BankTests 45/45, arch 22/22; fake reused verbatim, no infra/domain changes.
 ## Last Audit Result
-CLEAN — [G2] Domain core matches RESEARCH [G2] spec §1–§10 all items: PostingReference 4-param CompanyId-first ctor, guard order companyId→JE→type→sourceId, 4 DomainException messages verbatim, IsNullOrWhiteSpace, zero ArgumentNullException, event raised last, private parameterless ctor kept, no nav props; PostingReferenceCreated minimal (PostingReferenceId+CompanyId+OccurredOn); port GetById/GetBySource(sourceType,sourceId,companyId)/AddAsync, no Update/Delete; 6 Facts incl. whitespace loop + reflection minimal-payload check; JournalEntry/OpeningBalancePeriod zero diff, no EF/Application/Api leak, Domain zero PackageReference, file-scoped namespaces, no TODOs; commit 1a1af3a scoped to 4 code files + MEMORY/STATUS. Note (non-blocking, planner awareness): PLAN.md G2 also lists JournalEntry.SetSource guards — executor deferred per spawn scope, untouched confirmed correct here; reconcile SetSource ownership before G3.
+WARN — [G3-CQRS] matches RESEARCH [G3] CQRS spec §1–§7: 8 flat-layout files (command+result, validator, create-handler triple pre-check → InvalidOperationException, 2 queries + 2 handlers, DTO), validator GreaterThan ×3 + NotEmpty/Max100 + no IsInEnum, duplicate path throws (not return-existing), zero Domain.* usings in controller/DTO, no Enum.Parse/Deactivate, Fakes.cs untouched, no infra/domain/DI/migration diff, no TODOs. One non-blocking note: controller Create POST discards Send result and redirects Details with model.JournalEntryId instead of created reference Id (precedent PaymentTermController redirects Index with companyId) — cosmetic routing slip, compiles + routes, fix in follow-up.
 ## Active Heartbeats
 researcher: mapping PostingReference/JournalEntry current state + writing RESEARCH.md
 researcher: done — RESEARCH.md Context & Prior Work written, STATUS updated
 ## Last Verifier Result
-VERIFIED_PASS — [G2] Domain core: 4-param CompanyId-first ctor, guard order + 4 messages verbatim, no ArgumentNullException, minimal event, 3-method port, Domain zero refs; build 0/0, BankTests 33/33, arch 22/22, auditor CLEAN; scope respected (no EF/CQRS leak, callers untouched); SetSource deferral accepted with reason.
+VERIFIED_PASS — [G3-CQRS] Application + Api edge: 8 flat-layout files, validator GreaterThan×3 + NotEmpty/Max100 (no IsInEnum), duplicate triple → InvalidOperationException, DTO all-scalar, controller zero Domain.* usings; auditor WARN redirect slip FIXED (Send result Id used); build 0/0, BankTests 45/45, arch 22/22. Prior [G3-EF] also VERIFIED_PASS.
 ## Blocked Reason
 (none)
 researcher: writing [G1] verification criteria appendix to RESEARCH.md
@@ -54,5 +54,10 @@ researcher: writing [G3] CQRS spec (flat layout, validator, idempotency decision
 researcher: done — [G3] CQRS spec appended to RESEARCH.md, STATUS updated
 executor: [G3-EF] starting RED — FakePostingReferenceRepository + contract facts
 executor: [G3-EF] GREEN done — build 0/0, BankTests 35/35, arch 22/22, updating MEMORY+STATUS
+auditor: starting audit of [G3] Harden EF persistence + repository wiring via TDD
+auditor: done — CLEAN (config triple-unique + dual Restrict + xmin-last, repo tracked, Ignore+DI 1-line each, fake triple-match, no leaks), no code written
 executor: [G3-CQRS] starting RED — PostingReferenceCqrsTests (validator/handler/query Facts)
 executor: [G3-CQRS] GREEN done — build 0/0, BankTests 45/45, arch 22/22, committing
+auditor: starting audit of [G3] Harden Application CQRS + Api edge via TDD
+auditor: done — WARN (spec §1–§7 pass, one non-blocking redirect-target note), no code written
+memory-keeper: G3 learnings consolidated to loop + global MEMORY (redirect-slip Send-result-Id rule), status [G4] Verify core-to-edge heartbeat
