@@ -21,7 +21,7 @@ researcher: External Knowledge & Resources written — RESEARCH.md §External co
 researcher: G1 FK-vs-polymorphic decision research in progress (weighing A/B/C)
 researcher: done — G1 decision (Option A) appended to RESEARCH.md, STATUS updated
 ## Last Executor Result
-executor [G3-EF]: TDD EF wiring — RED FakePostingReferenceRepository (triple-match GetBySourceAsync) + 2 contract Facts, GREEN config (company_id + unique triple + dual Restrict, xmin last) + EfPostingReferenceRepository (tracked lookups, AddAsync delegate) + DbContext Ignore + DI AddScoped — build 0/0, BankTests 35/35, arch 22/22; fake landed for sibling CQRS reuse. No domain/Application/Api/migration changes.
+executor [G3-CQRS]: TDD CQRS+Api — RED 10-Fact PostingReferenceCqrsTests (compile-fail vs missing types), GREEN flat-layout command+result/validator/handler(duplicate-throw)/2 queries+handlers/DTO + PaymentTerm-shape controller minus Enum.Parse/Deactivate + ViewModel — build 0/0, BankTests 45/45, arch 22/22; fake reused verbatim, no infra/domain changes.
 ## Last Audit Result
 CLEAN — [G2] Domain core matches RESEARCH [G2] spec §1–§10 all items: PostingReference 4-param CompanyId-first ctor, guard order companyId→JE→type→sourceId, 4 DomainException messages verbatim, IsNullOrWhiteSpace, zero ArgumentNullException, event raised last, private parameterless ctor kept, no nav props; PostingReferenceCreated minimal (PostingReferenceId+CompanyId+OccurredOn); port GetById/GetBySource(sourceType,sourceId,companyId)/AddAsync, no Update/Delete; 6 Facts incl. whitespace loop + reflection minimal-payload check; JournalEntry/OpeningBalancePeriod zero diff, no EF/Application/Api leak, Domain zero PackageReference, file-scoped namespaces, no TODOs; commit 1a1af3a scoped to 4 code files + MEMORY/STATUS. Note (non-blocking, planner awareness): PLAN.md G2 also lists JournalEntry.SetSource guards — executor deferred per spawn scope, untouched confirmed correct here; reconcile SetSource ownership before G3.
 ## Active Heartbeats
@@ -54,3 +54,5 @@ researcher: writing [G3] CQRS spec (flat layout, validator, idempotency decision
 researcher: done — [G3] CQRS spec appended to RESEARCH.md, STATUS updated
 executor: [G3-EF] starting RED — FakePostingReferenceRepository + contract facts
 executor: [G3-EF] GREEN done — build 0/0, BankTests 35/35, arch 22/22, updating MEMORY+STATUS
+executor: [G3-CQRS] starting RED — PostingReferenceCqrsTests (validator/handler/query Facts)
+executor: [G3-CQRS] GREEN done — build 0/0, BankTests 45/45, arch 22/22, committing
