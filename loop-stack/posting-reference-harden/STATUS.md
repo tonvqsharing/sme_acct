@@ -2,9 +2,9 @@
 ## State
 VERIFIED_PASS
 ## Current Task
-[G4] Verify core-to-edge
+ALL DONE
 ## Task Progress
-4 / 5 complete
+5 / 5 complete
 ## Attempts On Current Task
 0
 ## Completed Tasks
@@ -26,7 +26,10 @@ researcher: done — G1 decision (Option A) appended to RESEARCH.md, STATUS upda
 executor [G4]: core-to-edge gate — (1) `dotnet build SmeAccounting.sln` → `Build succeeded. 0 Warning(s) 0 Error(s)` (20.13s); (2) `dotnet test tests/SmeAccounting.ArchitectureTests/` → `Passed! - Failed: 0, Passed: 22, Skipped: 0, Total: 22`; (3) `dotnet test tests/SmeAccounting.BankTests/` → `Passed! - Failed: 0, Passed: 45, Skipped: 0, Total: 45` (27+6+2+10); (4) check-only scaffold `20260922084832_PostingReferenceHarden`, Up = DropIndex old pair + AddColumn company_id bigint NOT NULL defaultValue 0L + CreateIndex UNIQUE(company_id,source_type,source_id) + 2×AddForeignKey Restrict, Down = exact reversal. R1 single-purpose PASS (only posting_references touched, no CreateTable); R2 unique-triple PASS (`unique: true` on company_id,source_type,source_id, old pair dropped); R3 Restrict PASS (2×Restrict, 0 Cascade/SetNull in new .cs); R4 widths PASS (source_type varying(100)/MaxLength 100, no Code-20, no length on bigints); R5 snake_case PASS; R6 xmin PASS (xid rowversion preserved); R7 Down-reversal PASS. RISK: defaultValue 0L + same-Up Company FK → apply-time FK violation on DBs with existing rows; backfill deferred per Design §9 item 7, scaffold NOT hand-edited, NO database update run. Full evidence in MEMORY.md [G4].
 executor: [G4] done — gates green, migration verified ALTER-only, MEMORY+STATUS updated, committing scaffold only
 ## Last Audit Result
-WARN — [G3-CQRS] matches RESEARCH [G3] CQRS spec §1–§7: 8 flat-layout files (command+result, validator, create-handler triple pre-check → InvalidOperationException, 2 queries + 2 handlers, DTO), validator GreaterThan ×3 + NotEmpty/Max100 + no IsInEnum, duplicate path throws (not return-existing), zero Domain.* usings in controller/DTO, no Enum.Parse/Deactivate, Fakes.cs untouched, no infra/domain/DI/migration diff, no TODOs. One non-blocking note: controller Create POST discards Send result and redirects Details with model.JournalEntryId instead of created reference Id (precedent PaymentTermController redirects Index with companyId) — cosmetic routing slip, compiles + routes, fix in follow-up.
+CLEAN — [G4] verify core-to-edge: migration Up = DropIndex old pair + AddColumn company_id bigint NOT NULL defaultValue 0L + CreateIndex UNIQUE(company_id,source_type,source_id) + 2×AddForeignKey Restrict (72-line file, no CreateTable/DropTable/Cascade/SetNull in Up, no TODOs); Down = exact reversal (drop 2 FKs → drop unique → drop column → restore old pair); Designer confirms source_type varchar(100)/MaxLength 100 + company_id bigint snake_case + xmin xid rowversion + dual Restrict IsRequired; snapshot updated (+22/-1, triple unique + dual Restrict); commit 01c5571 scoped (3 migration files only in src/, no src/tests hand-edits); backfill risk stated; no database update; output in project dir; PLAN [G4] gate protocol + RESEARCH [G4] R1–R7 all satisfied. No code written.
+## Active Heartbeats
+auditor: starting audit of [G4] Verify core-to-edge
+auditor: done — CLEAN, no code written
 ## Active Heartbeats
 researcher: mapping PostingReference/JournalEntry current state + writing RESEARCH.md
 researcher: done — RESEARCH.md Context & Prior Work written, STATUS updated
@@ -69,3 +72,4 @@ memory-keeper: G3 learnings consolidated to loop + global MEMORY (redirect-slip 
 executor: [G4] starting — build gate
 executor: [G4] gates green — scaffolding check-only migration
 executor: [G4] migration Up verified ALTER-only — writing MEMORY+STATUS, committing
+memory-keeper: G4 learnings consolidated to loop + global MEMORY (ALTER-only pattern + defaultValue-0 backfill risk rule), status ALL DONE heartbeat
