@@ -25,6 +25,28 @@ internal sealed class FakeBankRepository : IBankRepository
     public IReadOnlyList<Bank> Stored => _banks;
 }
 
+internal sealed class FakePaymentMethodRepository : IPaymentMethodRepository
+{
+    private readonly List<PaymentMethod> _items = new();
+
+    public Task<PaymentMethod?> GetByIdAsync(long id)
+        => Task.FromResult(_items.FirstOrDefault(x => x.Id == id));
+
+    public Task<PaymentMethod?> GetByCodeAsync(string code, long companyId)
+        => Task.FromResult(_items.FirstOrDefault(x => x.Code == code && x.CompanyId == companyId));
+
+    public Task<IReadOnlyList<PaymentMethod>> GetAllByCompanyAsync(long companyId)
+        => Task.FromResult<IReadOnlyList<PaymentMethod>>(_items.Where(x => x.CompanyId == companyId).ToList());
+
+    public Task AddAsync(PaymentMethod method)
+    {
+        _items.Add(method);
+        return Task.CompletedTask;
+    }
+
+    public IReadOnlyList<PaymentMethod> Stored => _items;
+}
+
 internal sealed class FakeUnitOfWork : IUnitOfWork
 {
     public int SaveCalledCount { get; private set; }

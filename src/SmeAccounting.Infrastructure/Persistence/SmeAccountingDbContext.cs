@@ -85,6 +85,7 @@ public class SmeAccountingDbContext : DbContext, IUnitOfWork
         modelBuilder.Ignore<SupplierCreated>();
         modelBuilder.Ignore<EmployeeCreated>();
         modelBuilder.Ignore<PaymentTermCreated>();
+        modelBuilder.Ignore<PaymentMethodCreated>();
         modelBuilder.Ignore<UomCreated>();
         modelBuilder.Ignore<ItemCategoryCreated>();
         modelBuilder.Ignore<WarehouseCreated>();
