@@ -14,9 +14,14 @@ VERIFIED_PASS
 ## Last Researcher Result
 [G1] verification criteria appended to RESEARCH.md: 3-guard SetSource set + Id<=0 caller message verbatim, SetSource/caller fact list, 2-file touch / no-touch list, build+arch+BankTests gates.
 ## Active Heartbeats
-- 2026-09-22: [G2] starting — design locked (docs/SetSource-CallerFix-Design-2026.md, VERIFIED_PASS); TDD failing Facts (a)-(i) first per design §5/RESEARCH V2 (copy PostingReferenceAggregateTests.cs + Fakes.cs List-backed FakeUnitOfWork), then 3 SetSource guards (JournalEntry.cs:32-36) + caller fail-fast (OpeningBalancePeriod.cs new :75) per design §3/§4; 2-file touch boundary; gates: build 0/0, arch 22/22, BankTests 45/45 + new Facts.
+- 2026-09-22: [G2] complete — awaiting verifier. RED first (4/9 new Facts failed), GREEN landed per design §3/§4, all gates green.
 ## Last Executor Result
-[G1] design locked: docs/SetSource-CallerFix-Design-2026.md created (Option 2 domain-only, full guard set + caller spec + tests + no-touch + gates), no code changed.
+[G2] core implemented via discovery-first TDD — DONE 2026-09-22:
+- RED: 9 Facts added to tests/SmeAccounting.BankTests/JournalEntrySourceTests.cs (facts a-i per design §5) + FakeOpeningBalancePeriodRepository in Fakes.cs; verified 4/9 failing (b,c,d,f guard-dependent), 5 passing (a,e,g,h,i unchanged-behavior), 54 total = 45 baseline + 9 new.
+- GREEN: JournalEntry.cs SetSource +3 guards (IsPosted → SourceType whitespace → sourceId<=0, verbatim messages, DomainException only, setter stays setter, no signature change); OpeningBalancePeriod.cs PostOpeningBalances +1 fail-fast `if (Id <= 0) throw new DomainException("Cannot post opening balances before the period is persisted.")` at new :75 (after balance check, before JE build); line 78 `SetSource("OpeningBalance", Id)` verbatim unchanged.
+- Touch boundary: exactly 2 production files (JournalEntry.cs +6, OpeningBalancePeriod.cs +3) + 2 test files. No handler/DI/EF/CQRS/PostingReference changes.
+- Gates: dotnet build 0 warnings 0 errors; BankTests 54/54 (45 baseline + 9 new green); arch 22/22.
+- No migration needed: domain in-memory guards + caller fail-fast reorder only — no new table/column/index/FK.
 ## Last Audit Result
 WARN — 2026-09-22, auditor, [G1] design doc audit vs RESEARCH.md [G1] verification criteria:
 - Content CLEAN on all criteria (Option 2 locked §1, rejected options §2, 3-guard set §3 verbatim, Id<=0 fail-fast §4, test list §5, no-touch §6, gates §7, no placeholders).
@@ -36,3 +41,5 @@ PASS — 2026-09-22, verifier, [G1] design doc verified against RESEARCH.md [G1]
 - No code changed (design-only, zero diff) — G2/G3 remain.
 ## Blocked Reason
 (none)
+- 2026-09-22: [G2] RED phase — writing 9 failing Facts to tests/SmeAccounting.BankTests/JournalEntrySourceTests.cs + FakeOpeningBalancePeriodRepository in Fakes.cs (Id public setter confirmed, InternalsVisibleTo present).
+- 2026-09-22: [G2] RED verified — 4/9 new Facts fail (b,c,d,f guard-dependent), 5 pass (a,e,g,h,i unchanged-behavior), 54 total = 45 baseline + 9 new. GREEN next.

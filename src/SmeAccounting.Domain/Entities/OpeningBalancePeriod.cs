@@ -73,6 +73,9 @@ public class OpeningBalancePeriod : BaseEntity
         if (totalDebit != totalCredit)
             throw new DomainException($"Opening balances do not balance. Debit: {totalDebit}, Credit: {totalCredit}.");
 
+        if (Id <= 0)
+            throw new DomainException("Cannot post opening balances before the period is persisted.");
+
         var entryNumber = $"OP-{PeriodDate:yyyyMMdd}";
         var journalEntry = new JournalEntry(entryNumber, postedAt, FiscalPeriodId, $"Opening balances for period {PeriodDate:yyyy-MM-dd}");
         journalEntry.SetSource("OpeningBalance", Id);

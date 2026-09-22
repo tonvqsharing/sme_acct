@@ -66,6 +66,28 @@ internal sealed class FakePostingReferenceRepository : IPostingReferenceReposito
     public IReadOnlyList<PostingReference> Stored => _items;
 }
 
+internal sealed class FakeOpeningBalancePeriodRepository : IOpeningBalancePeriodRepository
+{
+    private readonly List<OpeningBalancePeriod> _items = new();
+
+    public Task<OpeningBalancePeriod?> GetByIdAsync(long id)
+        => Task.FromResult(_items.FirstOrDefault(x => x.Id == id));
+
+    public Task<OpeningBalancePeriod?> GetByCompanyAndFiscalPeriodAsync(long companyId, long fiscalPeriodId)
+        => Task.FromResult(_items.FirstOrDefault(x => x.CompanyId == companyId && x.FiscalPeriodId == fiscalPeriodId));
+
+    public Task<IReadOnlyList<OpeningBalancePeriod>> GetAllByCompanyAsync(long companyId)
+        => Task.FromResult<IReadOnlyList<OpeningBalancePeriod>>(_items.Where(x => x.CompanyId == companyId).ToList());
+
+    public Task AddAsync(OpeningBalancePeriod period)
+    {
+        _items.Add(period);
+        return Task.CompletedTask;
+    }
+
+    public IReadOnlyList<OpeningBalancePeriod> Stored => _items;
+}
+
 internal sealed class FakeUnitOfWork : IUnitOfWork
 {
     public int SaveCalledCount { get; private set; }

@@ -31,6 +31,12 @@ public class JournalEntry : BaseEntity
 
     public void SetSource(string sourceType, long sourceId)
     {
+        if (IsPosted)
+            throw new DomainException("Cannot modify a posted journal entry.");
+        if (string.IsNullOrWhiteSpace(sourceType))
+            throw new DomainException("SourceType is required.");
+        if (sourceId <= 0)
+            throw new DomainException("SourceId must be greater than zero.");
         SourceType = sourceType;
         SourceId = sourceId;
     }
