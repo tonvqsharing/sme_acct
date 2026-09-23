@@ -19,9 +19,8 @@ public class JournalEntryController : Controller
     [HttpGet]
     public async Task<IActionResult> Index(CancellationToken ct)
     {
-        var entries = await _mediator.Send(new GetFiscalPeriodsQuery(null), ct);
-        var allEntries = new List<SmeAccounting.Application.DTOs.JournalEntryDto>();
-        var vm = new JournalEntryViewModel(allEntries);
+        var entries = await _mediator.Send(new GetJournalEntriesQuery(), ct);
+        var vm = new JournalEntryViewModel(entries);
         return View(vm);
     }
 
