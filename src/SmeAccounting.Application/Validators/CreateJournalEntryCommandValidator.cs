@@ -7,6 +7,9 @@ public class CreateJournalEntryCommandValidator : AbstractValidator<CreateJourna
 {
     public CreateJournalEntryCommandValidator()
     {
+        RuleFor(x => x.CompanyId)
+            .GreaterThan(0).WithMessage("Company ID is required.");
+
         RuleFor(x => x.PeriodId)
             .GreaterThan(0).WithMessage("Period ID is required.");
 

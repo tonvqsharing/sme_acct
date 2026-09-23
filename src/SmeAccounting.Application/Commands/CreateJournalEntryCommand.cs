@@ -4,6 +4,7 @@ using SmeAccounting.Application.DTOs;
 namespace SmeAccounting.Application.Commands;
 
 public record CreateJournalEntryCommand(
+    long CompanyId,
     DateTimeOffset Date,
     long PeriodId,
     string? Description,

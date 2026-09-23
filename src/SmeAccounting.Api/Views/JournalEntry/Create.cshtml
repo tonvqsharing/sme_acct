@@ -12,6 +12,12 @@
             <div asp-validation-summary="ModelOnly" class="text-danger"></div>
 
             <div class="mb-3">
+                <label asp-for="CompanyId" class="form-label"></label>
+                <input asp-for="CompanyId" class="form-control" type="number" />
+                <span asp-validation-for="CompanyId" class="text-danger"></span>
+            </div>
+
+            <div class="mb-3">
                 <label asp-for="Date" class="form-label"></label>
                 <input asp-for="Date" class="form-control" type="date" />
                 <span asp-validation-for="Date" class="text-danger"></span>

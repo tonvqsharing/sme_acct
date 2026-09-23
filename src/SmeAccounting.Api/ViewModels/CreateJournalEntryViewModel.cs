@@ -5,6 +5,10 @@ namespace SmeAccounting.Api.ViewModels;
 
 public class CreateJournalEntryViewModel
 {
+    [Required]
+    [Display(Name = "Mã công ty")]
+    public long CompanyId { get; set; }
+
     [Required(ErrorMessage = "Ngày hạch toán là bắt buộc")]
     [DataType(DataType.Date)]
     [Display(Name = "Ngày hạch toán")]

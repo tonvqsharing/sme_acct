@@ -36,7 +36,7 @@ public class JournalEntryController : Controller
         try
         {
             var command = new CreateJournalEntryCommand(
-                model.Date, model.PeriodId, model.Description,
+                model.CompanyId, model.Date, model.PeriodId, model.Description,
                 null, null, model.Lines);
             await _mediator.Send(command, ct);
             return RedirectToAction(nameof(Index));
