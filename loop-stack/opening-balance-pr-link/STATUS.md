@@ -36,5 +36,6 @@ auditor: starting audit of [G1] design note — done, CLEAN
 verifier: [G1] verified PASS — deliverable + all 6 areas + corrected no-migration evidence + no placeholders + auditor CLEAN — done
 memory-keeper: G1 learnings consolidated — Option B rationale + D4 both-facts correction appended to loop MEMORY; global MEMORY gets pre-check-replication lesson (opening-balance-pr-link G1); STATUS advanced to G2 — done
 memory-keeper: G2 learnings consolidated — fact-h rename + final commit 1f6ed8a (3 files) + independent gate re-run appended to loop MEMORY; global MEMORY gets fake-Id-simulation enabler lesson (opening-balance-pr-link G2); STATUS advanced to G3 — done
+memory-keeper: G3 learnings consolidated — test-blindness equality-assert lesson (period.CompanyId default 1 masks hardcoded constant) appended to loop MEMORY; global MEMORY gets RED-reconstruction canon refinement (revert production file only, whole-diff revert proves nothing); STATUS heartbeat updated — done
 ## Blocked Reason
 (none)
