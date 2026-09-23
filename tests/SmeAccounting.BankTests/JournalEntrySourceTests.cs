@@ -21,9 +21,9 @@ public sealed class JournalEntrySourceTests
         return entry;
     }
 
-    private static OpeningBalancePeriod NewBalancedPeriod()
+    private static OpeningBalancePeriod NewBalancedPeriod(long companyId = 1)
     {
-        var period = new OpeningBalancePeriod(1, 1, new DateOnly(2026, 1, 1));
+        var period = new OpeningBalancePeriod(companyId, 1, new DateOnly(2026, 1, 1));
         period.AddEntry(101, new Money(10m, "VND"), new Money(0m, "VND"));
         period.AddEntry(102, new Money(0m, "VND"), new Money(10m, "VND"));
         return period;
@@ -202,7 +202,7 @@ public sealed class JournalEntrySourceTests
         var journalEntryRepository = new FakeJournalEntryRepository();
         var postingReferenceRepository = new FakePostingReferenceRepository();
         var handler = new PostOpeningBalancesHandler(periodRepository, unitOfWork, journalEntryRepository, postingReferenceRepository);
-        var period = NewBalancedPeriod();
+        var period = NewBalancedPeriod(companyId: 7);
         await periodRepository.AddAsync(period);
         period.Id = 1;
 
@@ -214,7 +214,7 @@ public sealed class JournalEntrySourceTests
         Assert.Equal(period.Id, stored.SourceId);
         Assert.True(stored.IsPosted);
         var pr = Assert.Single(postingReferenceRepository.Stored);
-        Assert.Equal(period.CompanyId, pr.CompanyId);
+        Assert.Equal(7, pr.CompanyId);
         Assert.Equal(stored.Id, pr.JournalEntryId);
         Assert.True(pr.JournalEntryId > 0);
         Assert.Equal("OpeningBalance", pr.SourceType);
@@ -231,7 +231,7 @@ public sealed class JournalEntrySourceTests
         var journalEntryRepository = new FakeJournalEntryRepository();
         var postingReferenceRepository = new FakePostingReferenceRepository();
         var handler = new PostOpeningBalancesHandler(periodRepository, unitOfWork, journalEntryRepository, postingReferenceRepository);
-        var period = NewBalancedPeriod();
+        var period = NewBalancedPeriod(companyId: 7);
         await periodRepository.AddAsync(period);
         period.Id = 1;
 
@@ -240,7 +240,7 @@ public sealed class JournalEntrySourceTests
         Assert.True(result.Success);
         var stored = Assert.Single(journalEntryRepository.Stored);
         var pr = Assert.Single(postingReferenceRepository.Stored);
-        Assert.Equal(period.CompanyId, pr.CompanyId);
+        Assert.Equal(7, pr.CompanyId);
         Assert.Equal(stored.Id, pr.JournalEntryId);
         Assert.True(pr.JournalEntryId > 0);
         Assert.Equal("OpeningBalance", pr.SourceType);
