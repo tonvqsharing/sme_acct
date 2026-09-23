@@ -1,6 +1,14 @@
 # Loop Memory
 Updated continuously by all agents as they discover things.
 ## Learnings
+### G3 PostJournalEntryHandler (2026-09-23)
+- CS8629 trap on nullable `.Value`: `entry.PostedAt.Value` (DateTimeOffset?) fails under TreatWarningsAsErrors — compiler can't prove non-null after `entry.Post(...)` (void method, no [MemberNotNull]). Fixes: handler `entry.PostedAt!.Value` (null-forgiving); test `Assert.Equal(clock.Now, entry.PostedAt)` (implicit DateTimeOffset→DateTimeOffset? conversion, no warning). RESEARCH G3-3 claim "compiler allows .Value" was WRONG — compiler is arbiter.
+- RED was CS0246 at :39/:59/:74 — 3 ctor call sites (RESEARCH predicted 4; validator fact constructs no handler). Same deterministic compile-error RED mechanism.
+- First handler to inject IClock (grep Application for IClock = 0 hits before G3). FakeClock = settable Now property, 5 lines.
+- Handler: GetByIdAsync null-guard (InvalidOperationException, ResetNumberingSeriesHandler style) → entry.Post("system", clock.Now) → single SaveChangesAsync → PostJournalEntryResult(entry.Id, entry.PostedAt!.Value). No IPostingService (dead port).
+- G3 gates: build 0/0, arch 22/22, bank 72/72 (68 + 4 new facts: 1 validator + 1 happy path + 1 already-posted + 1 not-found). Commit e9ec524 (3 files: Fakes.cs +5, PostJournalEntryHandlerTests.cs 79, PostJournalEntryHandler.cs 26).
+- Already-posted fact asserts exact message "Journal entry is already posted." via Assert.ThrowsAsync<DomainException> — DomainException base also catches InvalidPostingRuleException subclass, but happy path is balanced so only already-posted throws.
+- Null-forgiving `!.Value` justification (auditor-accepted, STATUS audit check 4b): JournalEntry.Post() throws (already-posted, unbalanced ValidateBalance) BEFORE assigning PostedAt; on normal return PostedAt unconditionally set — throw precedes return, so `.Value` post-normal-return is safe. Same reasoning pattern reusable for any nullable property set inside a throwing domain method.
 ### G2 CreateJournalEntryHandler (2026-09-23)
 - `$"{x:D{width}}"` nested interpolation in format specifier is INVALID C# (CS1056 "Unexpected character '{'") — format string cannot contain `{`. Fix: `x.ToString($"D{width}")` — identical output ("JNRL000001"). Design-doc literal deviation; compiler is arbiter (MEMORY:253 precedent).
 - MEMORY:258 lesson reproduced: FakeVoucherTypeRepository without counter-based Id in AddAsync → `Stored[0].Id` = 0 → `new DocumentNumberingSeries(1, vtRepo.Stored[0].Id, ...)` throws DomainException "VoucherTypeId must be greater than zero" at runtime (test line 59). Runtime RED proven first, then counter enabler → green. Any fake feeding a domain ctor that guards Id>0 needs identity simulation.

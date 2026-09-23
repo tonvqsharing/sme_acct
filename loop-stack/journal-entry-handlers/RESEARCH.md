@@ -427,6 +427,118 @@ No try/catch (DomainException propagates), manual result construction, primary c
 4. GREEN: `src/SmeAccounting.Application/Handlers/CreateJournalEntryHandler.cs` — internal sealed, primary ctor (4 repos), GetByCodeAsync("JNRL", request.CompanyId) → null-guard → GetDefaultAsync(voucherType.Id, request.CompanyId) → null-guard → `$"{series.Prefix}{series.NextNumber:D{series.PaddingLength}}"` → series.Increment() → `new JournalEntry(entryNumber, request.Date, request.PeriodId, request.Description)` → foreach line AddLine(AccountId, new Money(DebitAmount,"VND"), new Money(CreditAmount,"VND"), Description) → AddAsync → **single** SaveChangesAsync → `new CreateJournalEntryResult(entry.Id, entry.EntryNumber)`.
 5. Gates: build 0/0, arch 22/22, bank green (61 + 7 = 68).
 
+## Task-Specific Research — [G3] PostJournalEntryHandler
+
+### G3-1. IClock port + SystemClock + FakeClock (source-verified 2026-09-23)
+
+**`src/SmeAccounting.Domain/Ports/IClock.cs`** (6 lines) — **property, not method**:
+```csharp
+public interface IClock
+{
+    DateTimeOffset Now { get; }
+}
+```
+- **`src/SmeAccounting.Infrastructure/Services/SystemClock.cs`** (8 lines): `public DateTimeOffset Now => DateTimeOffset.UtcNow;` — registered **singleton** (`DependencyInjection.cs:75` `services.AddSingleton<IClock, SystemClock>();`).
+- **NO FakeClock exists anywhere** (grep whole repo = 0 hits) — executor must add to Fakes.cs: `internal sealed class FakeClock : IClock { public DateTimeOffset Now { get; set; } }` (settable property; Fakes.cs already has `using SmeAccounting.Domain.Ports;`).
+- **NO Application handler currently injects IClock** (grep Application for IClock = 0 hits) — PostJournalEntryHandler is the FIRST handler to use it. No precedent to copy for clock usage; PLAN's ctor `(IJournalEntryRepository, IUnitOfWork, IClock)` is the spec.
+
+### G3-2. PostJournalEntryCommand + Result + Validator (source-verified)
+
+**`src/SmeAccounting.Application/Commands/PostJournalEntryCommand.cs`** (7 lines, unchanged since RESEARCH §1):
+```csharp
+public record PostJournalEntryCommand(long JournalEntryId) : IRequest<PostJournalEntryResult>;
+public record PostJournalEntryResult(long JournalEntryId, DateTimeOffset PostedAt);
+```
+**`src/SmeAccounting.Application/Validators/PostJournalEntryCommandValidator.cs`** (13 lines) — EXISTS, 1 rule only:
+```csharp
+RuleFor(x => x.JournalEntryId).GreaterThan(0).WithMessage("Journal entry ID is required.");
+```
+- Call sites: validator + `JournalEntryController.cs:56` (`await _mediator.Send(new PostJournalEntryCommand(id), ct);` → RedirectToAction(Index), **no try/catch** — DomainException → 500, existing behavior, out of scope). No handler exists → RED = CS0246 (handler missing), same mechanism as G2.
+
+### G3-3. JournalEntry.Post(postedBy, postedAt) — exact behavior (JournalEntry.cs:61-73)
+
+```csharp
+public void Post(string postedBy, DateTimeOffset postedAt)
+{
+    if (IsPosted)
+        throw new DomainException("Journal entry is already posted.");
+    ValidateBalance();
+    PostedBy = postedBy;
+    PostedAt = postedAt;
+    IsPosted = true;
+    AddDomainEvent(new JournalEntryPosted(Id, postedAt));
+}
+```
+- Already-posted → `DomainException` **exact message: "Journal entry is already posted."**
+- **Calls `ValidateBalance()` internally** (:66) → throws `InvalidPostingRuleException` (subclass of DomainException, `Domain/Exceptions/InvalidPostingRuleException.cs`) with message `"Journal entry {EntryNumber} does not balance. Debit: {totalDebit}, Credit: {totalCredit}."` — **no prior validation needed before Post()** (RESEARCH §2/R4 confirmed).
+- Sets PostedBy, PostedAt, IsPosted=true; raises `JournalEntryPosted(Id, postedAt)`.
+- **⚠ COMPILE GOTCHA:** `PostedAt` is `DateTimeOffset?` (nullable, :16). PLAN literal `return new PostJournalEntryResult(entry.Id, entry.PostedAt)` will NOT compile — CS0266 (cannot implicitly convert `DateTimeOffset?` to `DateTimeOffset`). Handler must use `entry.PostedAt.Value` (compiler allows `.Value` on nullable; runtime-safe because Post() just set it). Design-doc literal deviation — compiler is arbiter (MEMORY:253 precedent).
+
+### G3-4. DomainException assert precedent (JournalEntrySourceTests.cs)
+
+- Sync style (:74-81): `var ex = Assert.Throws<DomainException>(() => entry.SetSource("OpeningBalance", 9)); Assert.Equal("Cannot modify a posted journal entry.", ex.Message);`
+- Async handler style (G2 CreateJournalEntryHandlerTests.cs:82-83): `await Assert.ThrowsAsync<InvalidOperationException>(() => handler.Handle(...))` — G3 already-posted fact uses `await Assert.ThrowsAsync<DomainException>(() => handler.Handle(new PostJournalEntryCommand(entry.Id), CancellationToken.None))`. `Assert.Throws<DomainException>` also catches `InvalidPostingRuleException` (subclass) — but happy path must be balanced so only the already-posted path throws.
+- `DomainException` (`Domain/Exceptions/DomainException.cs`): `public class DomainException(string message) : Exception` — plain base, no inner-exception ctor.
+
+### G3-5. Not-found → exception precedent — TWO styles exist
+
+- **ResetNumberingSeriesHandler.cs:16-18** (PLAN-preferred): `var series = await repository.GetByIdAsync(request.SeriesId); if (series is null) throw new InvalidOperationException($"Numbering series with ID {request.SeriesId} not found.");`
+- **PostOpeningBalancesHandler.cs:19-20**: `?? throw new KeyNotFoundException($"Opening balance period {request.PeriodId} not found.")`
+- **PLAN says InvalidOperationException for G3**; G2 handler (this loop, CreateJournalEntryHandler.cs:21-26) used InvalidOperationException with descriptive message. Follow: `var entry = await journalEntryRepository.GetByIdAsync(request.JournalEntryId); if (entry is null) throw new InvalidOperationException($"Journal entry with ID {request.JournalEntryId} not found.");`
+
+### G3-6. FakeJournalEntryRepository.GetByIdAsync (Fakes.cs:69-88)
+
+```csharp
+public Task<JournalEntry?> GetByIdAsync(long id)
+    => Task.FromResult(_items.FirstOrDefault(x => x.Id == id));
+```
+- List-backed `FirstOrDefault(x => x.Id == id)` — unknown id → null → handler throws. **CONFIRMED not-found fact works.**
+- Counter-assigned Id in AddAsync (`entry.Id = _nextId++`, starts 1) — happy path: AddAsync assigns Id=1, then `Handle(new PostJournalEntryCommand(1))` finds it. Same object reference stored → handler's Post() mutation visible in `Stored[0]` (IsPosted/PostedAt asserts work).
+- FakeJournalEntryRepository implements all 3 IJournalEntryRepository members (GetByIdAsync, GetAllAsync, AddAsync) — no CS0535 risk, reuse as-is. FakeUnitOfWork (Fakes.cs:158-166): `SaveCalledCount`, returns 1 — reuse.
+
+### G3-7. Balance + period-open checks
+
+- **Balance: Post() self-validates** (G3-3) — handler needs NO balance check. Happy-path test MUST build a balanced entry (AddLine debit 10 + credit 10) or Post throws InvalidPostingRuleException.
+- **Period-open check: NONE exists anywhere in JE flow** (R4 confirmed: FiscalPeriod has Status but nothing checks it; `period_id` has no FK; no IFiscalPeriodRepository usage in JE handlers). **Out of scope — do NOT add.** Post() checks only IsPosted + balance.
+
+### G3-8. JournalEntryPosted event — NO consumers
+
+- Definition: `Domain/Events/JournalEntryPosted.cs` — `class JournalEntryPosted : DomainEvent`, `long EntryId` + occurredOn.
+- References (grep whole repo): definition + raise (JournalEntry.cs:72) + DbContext Ignore (SmeAccountingDbContext.cs:64). **Zero event handlers/consumers.**
+- DbContext SaveChangesAsync (:116-131) collects domain events and "publishes" to **no-op** `PublishDomainEventAsync` (:133-136 `await Task.CompletedTask;`) — nothing dispatches them.
+- **Handler job = Post + Save only** — no event wiring, no extra save.
+
+### G3-9. Executor checklist (from PLAN + verified source)
+
+1. **Fakes.cs**: append `FakeClock : IClock` — `internal sealed class FakeClock : IClock { public DateTimeOffset Now { get; set; } }`. No other fake changes (FakeJournalEntryRepository + FakeUnitOfWork already exist and are complete).
+2. **New file** `tests/SmeAccounting.BankTests/PostJournalEntryHandlerTests.cs` — usings: `SmeAccounting.Application.Commands`, `SmeAccounting.Application.Handlers`, `SmeAccounting.Application.Validators`, `SmeAccounting.Domain.Entities`, `SmeAccounting.Domain.Exceptions` (DomainException). Class `public sealed class PostJournalEntryHandlerTests`. **4 facts**:
+   - Validator: `new PostJournalEntryCommandValidator().ValidateAsync(new PostJournalEntryCommand(0))` → `Assert.False(result.IsValid)` (JournalEntryId 0 fails; direct-call style per G2-6).
+   - Happy path: build `new JournalEntry("JE-1", TestDate, 1)` + AddLine(101, Money(10m,"VND"), Money(0m,"VND")) + AddLine(102, Money(0m,"VND"), Money(10m,"VND")) → `await jeRepo.AddAsync(entry)` (Id=1) → `var clock = new FakeClock { Now = TestDate };` → `new PostJournalEntryHandler(jeRepo, uow, clock)` → `Handle(new PostJournalEntryCommand(entry.Id), CancellationToken.None)` → assert `Stored[0].IsPosted` true, `Stored[0].PostedAt == clock.Now`, `result.JournalEntryId == entry.Id`, `result.PostedAt == clock.Now`, `uow.SaveCalledCount == 1`.
+   - Already-posted: happy-path setup + `entry.Post("system", TestDate)` BEFORE Handle (or first Handle then second) → `await Assert.ThrowsAsync<DomainException>(() => handler.Handle(...))`.
+   - Not-found: empty repo → `await Assert.ThrowsAsync<InvalidOperationException>(() => handler.Handle(new PostJournalEntryCommand(999), CancellationToken.None))`.
+3. Run `dotnet test tests/SmeAccounting.BankTests/` → record compile-error RED (CS0246 `PostJournalEntryHandler` not found — 4 constructor call sites). Record actual error code + lines (MEMORY:254).
+4. **GREEN**: `src/SmeAccounting.Application/Handlers/PostJournalEntryHandler.cs`:
+   ```csharp
+   internal sealed class PostJournalEntryHandler(
+       IJournalEntryRepository journalEntryRepository,
+       IUnitOfWork unitOfWork,
+       IClock clock)
+       : IRequestHandler<PostJournalEntryCommand, PostJournalEntryResult>
+   {
+       public async Task<PostJournalEntryResult> Handle(PostJournalEntryCommand request, CancellationToken cancellationToken)
+       {
+           var entry = await journalEntryRepository.GetByIdAsync(request.JournalEntryId);
+           if (entry is null)
+               throw new InvalidOperationException($"Journal entry with ID {request.JournalEntryId} not found.");
+           entry.Post("system", clock.Now);
+           await unitOfWork.SaveChangesAsync(cancellationToken);
+           return new PostJournalEntryResult(entry.Id, entry.PostedAt.Value);
+       }
+   }
+   ```
+   Usings: MediatR, SmeAccounting.Application.Commands, SmeAccounting.Domain.Entities, SmeAccounting.Domain.Ports. **No IPostingService** (dead port — RESEARCH §3/R9.8). **postedBy fixed "system"** per PLAN (PostOpeningBalancesCommand carries PostedBy explicitly, but PostJournalEntryCommand does NOT — PLAN says fixed string).
+5. Gates: build 0/0, arch 22/22, bank green (**68 + 4 = 72**). No migration (Application/tests only — no Domain/Infrastructure/schema changes).
+
 ## Prior Attempt Analysis
 
 - No prior executor attempts in this loop (STATUS.md: planning in progress, 0 attempts).
