@@ -253,6 +253,70 @@ No prior failures in this loop (fresh loop, planning in progress). Relevant prio
 - **No-migration evidence — corrected pattern** (global MEMORY:252, :256): Migrations dir file count == 35 (17 migrations × 2 + snapshot) — verified this pass; latest `20260922084832_PostingReferenceHarden` predates loop commits (git log: loop commits not yet started — last commit ae62ae4 closes opening-balance-persist); zero NEW migration files (count + `git show --stat` per loop commit). **grep over Migrations INVALID** — 134-style pre-existing 'openingbalance'/'postingreference' hits from prior loops.
 - **No-touch audit**: `git show --stat` per commit cross-checked against D5 list (zero code changes ⇒ state-files-only commits).
 
+## Task-Specific Research — [G2] verification criteria
+
+**Purpose:** executor/verifier checklist for G2 TDD handler change. All line refs re-verified against source this pass (2026-09-23, HEAD 3c4f3dd). Binding spec = `docs/OpeningBalance-PRLink-Design-2026.md` §2/§3/§4/§5/§6.
+
+### 1) Exact handler change — PostOpeningBalancesHandler.cs (28 lines, verified this pass)
+
+Current full body (verbatim, line numbers current):
+- Ctor :7-10 — `(IOpeningBalancePeriodRepository periodRepository, IUnitOfWork unitOfWork, IJournalEntryRepository journalEntryRepository)` — 3 params, primary ctor.
+- :17-18 `GetByIdAsync(request.PeriodId)` → `?? throw new KeyNotFoundException(...)`.
+- :20 `var journalEntry = period.PostOpeningBalances(request.PostedBy, request.PostedAt);`
+- :22 `await journalEntryRepository.AddAsync(journalEntry);`
+- :24 `await unitOfWork.SaveChangesAsync(cancellationToken);` — **save 1**.
+- :26 `return new PostOpeningBalancesResult(true);` — **return**.
+
+**PR build + AddAsync + save 2 land BETWEEN :24 and :26** (after save 1, before return):
+1. `var reference = new PostingReference(period.CompanyId, journalEntry.Id, "OpeningBalance", period.Id);` — `period.CompanyId` direct (OpeningBalancePeriod.cs:9, ctor-guarded >0 :22-23); `journalEntry.Id` post-save; `period.Id` real (loaded via GetByIdAsync, domain fail-fast :76-77 guarantees >0).
+2. `await postingReferenceRepository.AddAsync(reference);`
+3. `await unitOfWork.SaveChangesAsync(cancellationToken);` — **save 2**, same UoW/DbContext, second transaction.
+4. Return :26 unchanged.
+
+**`journalEntry.Id` post-save non-zero in real EF — CONFIRMED**: `JournalEntryConfiguration.cs:14-16` — `builder.Property(e => e.Id).HasColumnName("id").ValueGeneratedOnAdd();` — identity PK, EF assigns during `SaveChangesAsync`. Persist-loop-proven in this exact handler (OpeningBalance-Persist-Design-2026.md §1). Shape precedent: `CreatePostingReferenceHandler.cs:21-28` (build :21-25 → AddAsync :27 → SaveChangesAsync :28).
+
+### 2) Test RED surface — ALL handler ctor call sites enumerated (grep `PostOpeningBalancesHandler` across repo)
+
+**Only 2 existing ctor call sites in the entire repo** (src has zero — production wiring is MediatR DI):
+- `JournalEntrySourceTests.cs:176` — fact (h) `PostOpeningBalancesHandler_PersistsPeriodFlags_SaveCalledOnce` (:171-187). Ctor :176 3-arg; `SaveCalledCount == 1` :184 → **== 2**.
+- `JournalEntrySourceTests.cs:202` — fact (i) `PostOpeningBalancesHandler_PersistsJournalEntry_AddsToRepository` (:191-215). Ctor :202 3-arg; `SaveCalledCount == 1` :214 → **== 2**; :211-212 already asserts JE cache columns (`stored.SourceType == "OpeningBalance"`, `stored.SourceId == period.Id`).
+- **No other test file references the handler** (grep across tests = JournalEntrySourceTests.cs only). No other fact calls the handler ctor or handler flow.
+- **Fact (i) reflection assert :193-197 survives 4th param**: `GetConstructors().Single().GetParameters()` + `Assert.Contains(parameters, p => p.ParameterType == typeof(IJournalEntryRepository))` — `Contains`, NOT exact-count → adding a 4th param does NOT break it. Zero change needed to the reflection assert.
+- **New PR-link fact adds a THIRD ctor call site** (4-arg, with `new FakePostingReferenceRepository()`).
+
+**Compile-error RED = CS1729 at THREE sites** (2 existing :176/:202 + new fact's ctor call): 4-arg call vs stale 3-param ctor → `CS1729: 'PostOpeningBalancesHandler' does not contain a constructor that takes 4 arguments`. Same mechanism as persist-loop G3 (global MEMORY:254 — actual was CS1729 for 3-arg vs 2-param; record actual code + lines, don't force predicted).
+
+### 3) FakeJournalEntryRepository AddAsync Id-assignment change
+
+- **Port signature**: `IJournalEntryRepository.cs:9` — `Task AddAsync(JournalEntry entry)` — returns **Task** (NOT `Task<JournalEntry>`). Fake must keep the signature, assign Id to the instance, return `Task.CompletedTask`.
+- **Current** `Fakes.cs:79-83`: `_items.Add(entry); return Task.CompletedTask;` — no Id assignment → `journalEntry.Id` stays 0 in fake path.
+- **Target** (counter-based, simulates EF identity): `entry.Id = _nextId++;` (or `++_nextId` starting 1) then `_items.Add(entry); return Task.CompletedTask;`. `BaseEntity.Id` has PUBLIC setter (BaseEntity.cs:7) — direct assignment, no reflection.
+- **Correctness**: fake is list-backed → stored instance IS the same object the handler builds the PR from → `Stored[0].Id` (assigned) == `PR.JournalEntryId`. Assertion `JournalEntryId == stored JE Id (>0)` is exact.
+- **Safety**: only JE `Id == 0` assert in suite is fact G2-3 (`JournalEntrySourceTests.cs:166`) on the domain-created JE BEFORE the handler — never passes through the fake, unaffected (design §3).
+- **Side effect (benign)**: fake `GetByIdAsync` (`x.Id == id`) starts matching stored entries — no existing fact asserts it, no breakage.
+
+### 4) New PR-row fact — exact assert shape + interaction with fact (i)
+
+- **Fact (i) already asserts JE SourceType/SourceId** (:211-212) — those are the JE **cache columns** (read-model). The new PR-row assert targets the **canonical** `posting_references` row — same values, different object/layer. **Complementary, NOT duplication** (design §1 Option A: JE SourceType/SourceId = origin-trace cache; PR = canonical audit/idempotency row).
+- **Design doc §4 is binding**: fact (i) :202 gains 4th arg, :214 SaveCalledCount → 2, AND gains PR-row assertion `postingReferenceRepository.Stored` Single {`CompanyId == period.CompanyId`, `JournalEntryId == stored JE Id (>0)`, `SourceType == "OpeningBalance"`, `SourceId == period.Id`}. PLUS a **new dedicated PR-link fact** (follows fact (i) shape): `period.Id = 1` (BaseEntity.Id public setter), run handler, assert PR row + `SaveCalledCount == 2`. The new fact is what satisfies the **≥58 gate** (57 + 1 new).
+- **New fact shape** (from PLAN + design §4): `var postingReferenceRepository = new FakePostingReferenceRepository();` → 4-arg handler ctor → `period.Id = 1` after `periodRepository.AddAsync(period)` (FakeOpeningBalancePeriodRepository list-backed :88-108 → GetByIdAsync returns SAME instance → handler sees Id=1) → `handler.Handle(new PostOpeningBalancesCommand(1, "tester", TestDate), ...)` → `var pr = Assert.Single(postingReferenceRepository.Stored);` → assert `pr.CompanyId == period.CompanyId`, `pr.JournalEntryId == stored.Id` (stored = `Assert.Single(journalEntryRepository.Stored)`), `pr.SourceType == "OpeningBalance"`, `pr.SourceId == period.Id`, `unitOfWork.SaveCalledCount == 2`.
+- **No new fakes**: `FakePostingReferenceRepository` (Fakes.cs:50-67) + `FakeUnitOfWork` (:110-118) already exist. `using SmeAccounting.Domain.Ports;` already at JournalEntrySourceTests.cs:6; FakePostingReferenceRepository is same namespace `SmeAccounting.BankTests` → zero using changes.
+
+### 5) RED strategy — two-stage RED, both captured
+
+1. **Compile-error RED** (tests first): write new fact + update facts (h)/(i) ctor calls to 4-arg against stale 3-param ctor → build fails **CS1729** at :176, :202, + new fact's ctor call (3 sites). Record actual error code + lines (MEMORY:254 — don't force predicted).
+2. **Runtime RED** (handler changed, fake NOT yet): build passes, but EVERY fact running the handler — (h), (i), AND the new fact — fails with `DomainException("JournalEntryId must be greater than zero.")` (PR ctor V2 guard, PostingReference.cs:19-20) because fake JE Id stays 0. **Capture this runtime RED too** (brief item 5) — run BankTests after handler change, record the 3 failing facts + exception, then apply the enabler.
+3. **Enabler → GREEN**: FakeJournalEntryRepository.AddAsync assigns counter-based Id → all 58 facts green.
+
+### 6) Gates (G3 verify core→edge)
+
+- `dotnet build SmeAccounting.sln` — 0 warnings / 0 errors (TreatWarningsAsErrors).
+- `dotnet test tests/SmeAccounting.ArchitectureTests/` — 22/22 (test-project changes never affect count).
+- `dotnet test tests/SmeAccounting.BankTests/` — **58 green** (57 baseline verified this pass: BankAggregateTests 13 + JournalEntrySourceTests 12 + PaymentMethodAggregateTests 14 + PostingReferenceAggregateTests 6 + PostingReferenceCqrsTests 10 + PostingReferenceRepositoryTests 2 = 57; + 1 new PR-link fact).
+- **No-migration unchanged**: Migrations dir = 35 files (17×2 + snapshot, verified this pass), latest `20260922084832_PostingReferenceHarden` predates loop commits (42ec4e5/3c4f3dd = G1, 2026-09-23), zero NEW. grep over Migrations INVALID (G1 trap, global MEMORY:252).
+- **No-touch audit**: `git show --stat` per commit vs design §5 list (touched = handler + JournalEntrySourceTests + Fakes only). Working tree note: `.opencode/agents/verifier.md` has pre-existing unstaged modification (loop MEMORY:7) — not from this loop, do not stage.
+- **RED-reconstruction canon** (G3, global MEMORY:255): `git checkout <GREEN commit>~1 -- <changed files>`, rebuild → CS1729 reproduces deterministically, restore after.
+
 ## Environment & Integration
 
 - E1: Gates baseline — build 0/0, arch 22/22, BankTests 57/57 (cite opening-balance-persist_DONE/REPORT.md)
