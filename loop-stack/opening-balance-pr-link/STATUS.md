@@ -1,14 +1,14 @@
 # Loop Status
 ## State
-IN_PROGRESS
+VERIFIED_PASS (G1) — G2 pending
 ## Current Task
-G1 — Write design note docs/OpeningBalance-PRLink-Design-2026.md (lock R1 Option B decision + two-save + fake-Id enabler + SaveCalledCount==2 + no-touch + gates)
+G2 — TDD handler change: RED PR-link facts (CS1729 at :176/:202) → GREEN 4th ctor param + PR build/Add/save-2 → enabler FakeJournalEntryRepository.AddAsync Id assignment
 ## Task Progress
-0 / 3 complete
+1 / 3 complete
 ## Attempts On Current Task
 0
 ## Completed Tasks
-(none)
+- [x] [G1] Write design note docs/OpeningBalance-PRLink-Design-2026.md — VERIFIED_PASS 2026-09-23
 ## Skipped Tasks
 (none)
 ## Last Researcher Result
@@ -16,11 +16,16 @@ G1 design decisions D1-D6 locked + appended to RESEARCH.md "## Task-Specific Res
 ## Last Executor Result
 G1 design note written: docs/OpeningBalance-PRLink-Design-2026.md (89 lines, no placeholders). All 6 locked items: (1) Option B no GetBySourceAsync pre-check with exact rationale (IsPosted :61-62 sequential pre-persistence; xmin on period row catches race at save 1 → DbUpdateConcurrencyException → JE never persists; unique index (CompanyId,SourceType,SourceId) last resort; CreatePostingReferenceHandler pre-check :17-19 exists only because that handler lacks domain guard — TOCTOU-ineffective, adds round-trip, dangling-JE risk post-save-1); (2) handler surface — 4th ctor param IPostingReferenceRepository appended end, save 1 (:24) → new PostingReference(period.CompanyId :9, journalEntry.Id post-save, "OpeningBalance", period.Id) → AddAsync → second SaveChangesAsync, return PostOpeningBalancesResult(bool) unchanged; (3) enabler — FakeJournalEntryRepository.AddAsync counter-based Id (safe: only JE Id==0 assert is G2-3 :166 pre-handler); (4) test surface — BOTH facts (h) :184 and (i) :214 SaveCalledCount 1→2, fact (i) adds PR-row Single assert, fact (h) ctor gains 4th arg, CS1729 RED at :176/:202; (5) no-touch list — CreatePostingReferenceHandler/command/validator/controller/EF/DbContext/DI(:69 already)/migration/unique index; (6) gates — build 0/0, arch 22/22, BankTests ≥58, corrected no-migration evidence (Migrations count 35 + latest 20260922084832 predates loop commits + zero NEW; grep INVALID). Cites PostingReference-Design-2026.md §7 + OpeningBalance-Persist-Design-2026.md §1/§5. All line refs re-verified against source. Zero code changes (design-only).
 ## Last Audit Result
-(none)
+CLEAN — design note matches RESEARCH D1-D6 exactly; all file:line citations re-verified against source (handler :7-26, IsPosted :61-62, PR ctor :15-24, pre-check :17-19, tests :171-215, Fakes :50-118, DI :69, migration :24-28, config :33-34, Migrations 35, design-doc §7/§1/§5 quotes verbatim). Option B rationale complete, both facts h/i SaveCalledCount→2 locked, no-touch list matches R5, gates incl. corrected no-migration evidence. Path matches PLAN. No placeholders. Trivial: §6(b) "HEAD ae62ae4" parenthetical now stale (G1 commit landed) — substantive claim holds.
+## Last Verifier Result
+VERIFIED_PASS — deliverable docs/OpeningBalance-PRLink-Design-2026.md (90 lines) in project docs, path matches PLAN. All 6 areas re-verified against source this pass: D1 Option B (IsPosted :61-62, xmin save-1 race :90-91, unique index migration :24-28 + config :33-34, pre-check rationale a/b/c + exact wording); D2 handler surface (4th ctor param end-appended, save 1 :24 → build PR → AddAsync → save 2, return :26 unchanged); D3 fake-Id enabler (Fakes.cs:79-83 confirmed no Id assignment, G2-3 :166 safety); D4 test surface (BOTH facts h :184 and i :214 → SaveCalledCount 2, ctor calls :176/:202 → CS1729 RED, D4 correction locked); D5 no-touch (matches R5, touched 3 files only); D6 gates (build 0/0, arch 22/22, BankTests ≥58, corrected no-migration evidence: Migrations count 35 verified, latest 20260922084832 predates loop commits verified via git log, zero NEW, grep INVALID). Edge cases covered: concurrent race, dangling-JE hazard, fake-Id runtime V2 failure. No placeholders (grep clean). Auditor CLEAN. G1 commit 42ec4e5 = design doc + state files only, zero code. Trivial stale parenthetical §6(b) HEAD ae62ae4 — non-blocking.
 ## Active Heartbeats
 resource-scout: TOOLS.md reused from global cache (2026-09-21, verified 2026-09-23) — dotnet 10.0.401, git 2.51.0, no .codegraph, skills present — done
 researcher: D1-D6 design decisions locked + appended to RESEARCH.md, all line refs re-verified — done
 executor: G1 writing design note docs/OpeningBalance-PRLink-Design-2026.md — all source line refs re-verified (handler :7-26, IsPosted :61-62, PR ctor :15-24, pre-check :17-19, Fakes :50-118, tests :171-215, DI :69, migration :24-28, Migrations 35, HEAD ae62ae4)
 executor: G1 design note written + MEMORY/STATUS updated — done
+auditor: starting audit of [G1] design note — done, CLEAN
+verifier: [G1] verified PASS — deliverable + all 6 areas + corrected no-migration evidence + no placeholders + auditor CLEAN — done
+memory-keeper: G1 learnings consolidated — Option B rationale + D4 both-facts correction appended to loop MEMORY; global MEMORY gets pre-check-replication lesson (opening-balance-pr-link G1); STATUS advanced to G2 — done
 ## Blocked Reason
 (none)
