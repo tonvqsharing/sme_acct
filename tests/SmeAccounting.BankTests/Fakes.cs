@@ -165,3 +165,8 @@ internal sealed class FakeUnitOfWork : IUnitOfWork
         return Task.FromResult(1);
     }
 }
+
+internal sealed class FakeClock : IClock
+{
+    public DateTimeOffset Now { get; set; }
+}
