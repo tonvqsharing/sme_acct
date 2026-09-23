@@ -109,6 +109,52 @@ internal sealed class FakeOpeningBalancePeriodRepository : IOpeningBalancePeriod
     public IReadOnlyList<OpeningBalancePeriod> Stored => _items;
 }
 
+internal sealed class FakeVoucherTypeRepository : IVoucherTypeRepository
+{
+    private readonly List<VoucherType> _items = new();
+    private long _nextId = 1;
+
+    public Task<VoucherType?> GetByIdAsync(long id)
+        => Task.FromResult(_items.FirstOrDefault(x => x.Id == id));
+
+    public Task<VoucherType?> GetByCodeAsync(string code, long companyId)
+        => Task.FromResult(_items.FirstOrDefault(x => x.Code == code && x.CompanyId == companyId));
+
+    public Task<IReadOnlyList<VoucherType>> GetAllAsync()
+        => Task.FromResult<IReadOnlyList<VoucherType>>(_items.ToList());
+
+    public Task AddAsync(VoucherType voucherType)
+    {
+        voucherType.Id = _nextId++;
+        _items.Add(voucherType);
+        return Task.CompletedTask;
+    }
+
+    public IReadOnlyList<VoucherType> Stored => _items;
+}
+
+internal sealed class FakeDocumentNumberingSeriesRepository : IDocumentNumberingSeriesRepository
+{
+    private readonly List<DocumentNumberingSeries> _items = new();
+
+    public Task<DocumentNumberingSeries?> GetByIdAsync(long id)
+        => Task.FromResult(_items.FirstOrDefault(x => x.Id == id));
+
+    public Task<DocumentNumberingSeries?> GetDefaultAsync(long voucherTypeId, long companyId)
+        => Task.FromResult(_items.FirstOrDefault(x => x.VoucherTypeId == voucherTypeId && x.CompanyId == companyId && x.IsDefault));
+
+    public Task<IReadOnlyList<DocumentNumberingSeries>> GetAllByCompanyAsync(long companyId)
+        => Task.FromResult<IReadOnlyList<DocumentNumberingSeries>>(_items.Where(x => x.CompanyId == companyId).ToList());
+
+    public Task AddAsync(DocumentNumberingSeries series)
+    {
+        _items.Add(series);
+        return Task.CompletedTask;
+    }
+
+    public IReadOnlyList<DocumentNumberingSeries> Stored => _items;
+}
+
 internal sealed class FakeUnitOfWork : IUnitOfWork
 {
     public int SaveCalledCount { get; private set; }
