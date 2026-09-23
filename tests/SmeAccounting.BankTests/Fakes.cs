@@ -66,6 +66,25 @@ internal sealed class FakePostingReferenceRepository : IPostingReferenceReposito
     public IReadOnlyList<PostingReference> Stored => _items;
 }
 
+internal sealed class FakeJournalEntryRepository : IJournalEntryRepository
+{
+    private readonly List<JournalEntry> _items = new();
+
+    public Task<JournalEntry?> GetByIdAsync(long id)
+        => Task.FromResult(_items.FirstOrDefault(x => x.Id == id));
+
+    public Task<IReadOnlyList<JournalEntry>> GetAllAsync()
+        => Task.FromResult<IReadOnlyList<JournalEntry>>(_items.ToList());
+
+    public Task AddAsync(JournalEntry entry)
+    {
+        _items.Add(entry);
+        return Task.CompletedTask;
+    }
+
+    public IReadOnlyList<JournalEntry> Stored => _items;
+}
+
 internal sealed class FakeOpeningBalancePeriodRepository : IOpeningBalancePeriodRepository
 {
     private readonly List<OpeningBalancePeriod> _items = new();

@@ -172,7 +172,8 @@ public sealed class JournalEntrySourceTests
     {
         var periodRepository = new FakeOpeningBalancePeriodRepository();
         var unitOfWork = new FakeUnitOfWork();
-        var handler = new PostOpeningBalancesHandler(periodRepository, unitOfWork);
+        var journalEntryRepository = new FakeJournalEntryRepository();
+        var handler = new PostOpeningBalancesHandler(periodRepository, unitOfWork, journalEntryRepository);
         var period = NewBalancedPeriod();
         await periodRepository.AddAsync(period);
         period.Id = 1;
@@ -185,15 +186,31 @@ public sealed class JournalEntrySourceTests
         Assert.Equal(PeriodStatus.Closed, period.Status);
     }
 
-    // (i) JE discard recorded — handler has zero IJournalEntryRepository (assert-and-record; never asserting JE persisted).
+    // (i) handler persists the domain-created JE — ctor HAS IJournalEntryRepository, AddAsync stores it, Save called once.
     [Fact]
-    public void PostOpeningBalancesHandler_DiscardsJournalEntry_NoJournalEntryRepository()
+    public async Task PostOpeningBalancesHandler_PersistsJournalEntry_AddsToRepository()
     {
         var parameters = typeof(PostOpeningBalancesHandler)
             .GetConstructors()
             .Single()
             .GetParameters();
+        Assert.Contains(parameters, p => p.ParameterType == typeof(IJournalEntryRepository));
 
-        Assert.DoesNotContain(parameters, p => p.ParameterType == typeof(IJournalEntryRepository));
+        var periodRepository = new FakeOpeningBalancePeriodRepository();
+        var unitOfWork = new FakeUnitOfWork();
+        var journalEntryRepository = new FakeJournalEntryRepository();
+        var handler = new PostOpeningBalancesHandler(periodRepository, unitOfWork, journalEntryRepository);
+        var period = NewBalancedPeriod();
+        await periodRepository.AddAsync(period);
+        period.Id = 1;
+
+        var result = await handler.Handle(new PostOpeningBalancesCommand(1, "tester", TestDate), CancellationToken.None);
+
+        Assert.True(result.Success);
+        var stored = Assert.Single(journalEntryRepository.Stored);
+        Assert.Equal("OpeningBalance", stored.SourceType);
+        Assert.Equal(period.Id, stored.SourceId);
+        Assert.True(stored.IsPosted);
+        Assert.Equal(1, unitOfWork.SaveCalledCount);
     }
 }

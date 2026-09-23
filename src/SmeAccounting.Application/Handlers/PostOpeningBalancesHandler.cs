@@ -6,7 +6,8 @@ namespace SmeAccounting.Application.Handlers;
 
 internal sealed class PostOpeningBalancesHandler(
     IOpeningBalancePeriodRepository periodRepository,
-    IUnitOfWork unitOfWork)
+    IUnitOfWork unitOfWork,
+    IJournalEntryRepository journalEntryRepository)
     : IRequestHandler<PostOpeningBalancesCommand, PostOpeningBalancesResult>
 {
     public async Task<PostOpeningBalancesResult> Handle(
@@ -16,7 +17,9 @@ internal sealed class PostOpeningBalancesHandler(
         var period = await periodRepository.GetByIdAsync(request.PeriodId)
             ?? throw new KeyNotFoundException($"Opening balance period {request.PeriodId} not found.");
 
-        period.PostOpeningBalances(request.PostedBy, request.PostedAt);
+        var journalEntry = period.PostOpeningBalances(request.PostedBy, request.PostedAt);
+
+        await journalEntryRepository.AddAsync(journalEntry);
 
         await unitOfWork.SaveChangesAsync(cancellationToken);
 
