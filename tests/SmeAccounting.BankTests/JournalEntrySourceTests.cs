@@ -168,12 +168,13 @@ public sealed class JournalEntrySourceTests
 
     // (h) handler persists period flags — FakeUnitOfWork.SaveCalledCount == 1.
     [Fact]
-    public async Task PostOpeningBalancesHandler_PersistsPeriodFlags_SaveCalledOnce()
+    public async Task PostOpeningBalancesHandler_PersistsPeriodFlags_SavesJournalEntryAndPostingReference()
     {
         var periodRepository = new FakeOpeningBalancePeriodRepository();
         var unitOfWork = new FakeUnitOfWork();
         var journalEntryRepository = new FakeJournalEntryRepository();
-        var handler = new PostOpeningBalancesHandler(periodRepository, unitOfWork, journalEntryRepository);
+        var postingReferenceRepository = new FakePostingReferenceRepository();
+        var handler = new PostOpeningBalancesHandler(periodRepository, unitOfWork, journalEntryRepository, postingReferenceRepository);
         var period = NewBalancedPeriod();
         await periodRepository.AddAsync(period);
         period.Id = 1;
@@ -181,7 +182,7 @@ public sealed class JournalEntrySourceTests
         var result = await handler.Handle(new PostOpeningBalancesCommand(1, "tester", TestDate), CancellationToken.None);
 
         Assert.True(result.Success);
-        Assert.Equal(1, unitOfWork.SaveCalledCount);
+        Assert.Equal(2, unitOfWork.SaveCalledCount);
         Assert.True(period.IsPosted);
         Assert.Equal(PeriodStatus.Closed, period.Status);
     }
@@ -199,7 +200,8 @@ public sealed class JournalEntrySourceTests
         var periodRepository = new FakeOpeningBalancePeriodRepository();
         var unitOfWork = new FakeUnitOfWork();
         var journalEntryRepository = new FakeJournalEntryRepository();
-        var handler = new PostOpeningBalancesHandler(periodRepository, unitOfWork, journalEntryRepository);
+        var postingReferenceRepository = new FakePostingReferenceRepository();
+        var handler = new PostOpeningBalancesHandler(periodRepository, unitOfWork, journalEntryRepository, postingReferenceRepository);
         var period = NewBalancedPeriod();
         await periodRepository.AddAsync(period);
         period.Id = 1;
@@ -211,6 +213,38 @@ public sealed class JournalEntrySourceTests
         Assert.Equal("OpeningBalance", stored.SourceType);
         Assert.Equal(period.Id, stored.SourceId);
         Assert.True(stored.IsPosted);
-        Assert.Equal(1, unitOfWork.SaveCalledCount);
+        var pr = Assert.Single(postingReferenceRepository.Stored);
+        Assert.Equal(period.CompanyId, pr.CompanyId);
+        Assert.Equal(stored.Id, pr.JournalEntryId);
+        Assert.True(pr.JournalEntryId > 0);
+        Assert.Equal("OpeningBalance", pr.SourceType);
+        Assert.Equal(period.Id, pr.SourceId);
+        Assert.Equal(2, unitOfWork.SaveCalledCount);
+    }
+
+    // (j) handler persists canonical posting_references row — PR built post-save-1 with real JE Id, second save.
+    [Fact]
+    public async Task PostOpeningBalancesHandler_CreatesPostingReference_CanonicalRow()
+    {
+        var periodRepository = new FakeOpeningBalancePeriodRepository();
+        var unitOfWork = new FakeUnitOfWork();
+        var journalEntryRepository = new FakeJournalEntryRepository();
+        var postingReferenceRepository = new FakePostingReferenceRepository();
+        var handler = new PostOpeningBalancesHandler(periodRepository, unitOfWork, journalEntryRepository, postingReferenceRepository);
+        var period = NewBalancedPeriod();
+        await periodRepository.AddAsync(period);
+        period.Id = 1;
+
+        var result = await handler.Handle(new PostOpeningBalancesCommand(1, "tester", TestDate), CancellationToken.None);
+
+        Assert.True(result.Success);
+        var stored = Assert.Single(journalEntryRepository.Stored);
+        var pr = Assert.Single(postingReferenceRepository.Stored);
+        Assert.Equal(period.CompanyId, pr.CompanyId);
+        Assert.Equal(stored.Id, pr.JournalEntryId);
+        Assert.True(pr.JournalEntryId > 0);
+        Assert.Equal("OpeningBalance", pr.SourceType);
+        Assert.Equal(period.Id, pr.SourceId);
+        Assert.Equal(2, unitOfWork.SaveCalledCount);
     }
 }

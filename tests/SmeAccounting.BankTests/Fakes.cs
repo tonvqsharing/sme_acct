@@ -69,6 +69,7 @@ internal sealed class FakePostingReferenceRepository : IPostingReferenceReposito
 internal sealed class FakeJournalEntryRepository : IJournalEntryRepository
 {
     private readonly List<JournalEntry> _items = new();
+    private long _nextId = 1;
 
     public Task<JournalEntry?> GetByIdAsync(long id)
         => Task.FromResult(_items.FirstOrDefault(x => x.Id == id));
@@ -78,6 +79,7 @@ internal sealed class FakeJournalEntryRepository : IJournalEntryRepository
 
     public Task AddAsync(JournalEntry entry)
     {
+        entry.Id = _nextId++;
         _items.Add(entry);
         return Task.CompletedTask;
     }

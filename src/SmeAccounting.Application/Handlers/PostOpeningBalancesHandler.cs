@@ -1,5 +1,6 @@
 using MediatR;
 using SmeAccounting.Application.Commands;
+using SmeAccounting.Domain.Entities;
 using SmeAccounting.Domain.Ports;
 
 namespace SmeAccounting.Application.Handlers;
@@ -7,7 +8,8 @@ namespace SmeAccounting.Application.Handlers;
 internal sealed class PostOpeningBalancesHandler(
     IOpeningBalancePeriodRepository periodRepository,
     IUnitOfWork unitOfWork,
-    IJournalEntryRepository journalEntryRepository)
+    IJournalEntryRepository journalEntryRepository,
+    IPostingReferenceRepository postingReferenceRepository)
     : IRequestHandler<PostOpeningBalancesCommand, PostOpeningBalancesResult>
 {
     public async Task<PostOpeningBalancesResult> Handle(
@@ -21,6 +23,10 @@ internal sealed class PostOpeningBalancesHandler(
 
         await journalEntryRepository.AddAsync(journalEntry);
 
+        await unitOfWork.SaveChangesAsync(cancellationToken);
+
+        var postingReference = new PostingReference(period.CompanyId, journalEntry.Id, "OpeningBalance", period.Id);
+        await postingReferenceRepository.AddAsync(postingReference);
         await unitOfWork.SaveChangesAsync(cancellationToken);
 
         return new PostOpeningBalancesResult(true);
