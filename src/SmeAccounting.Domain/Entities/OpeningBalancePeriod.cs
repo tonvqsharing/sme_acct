@@ -56,7 +56,7 @@ public class OpeningBalancePeriod : BaseEntity
         return entry;
     }
 
-    public void PostOpeningBalances(string postedBy, DateTimeOffset postedAt)
+    public JournalEntry PostOpeningBalances(string postedBy, DateTimeOffset postedAt)
     {
         if (IsPosted)
             throw new DomainException("Opening balances are already posted.");
@@ -91,5 +91,7 @@ public class OpeningBalancePeriod : BaseEntity
         Status = PeriodStatus.Closed;
 
         AddDomainEvent(new OpeningBalancesPosted(Id, CompanyId, DateTimeOffset.UtcNow));
+
+        return journalEntry;
     }
 }

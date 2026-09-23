@@ -124,6 +124,48 @@ public sealed class JournalEntrySourceTests
         Assert.Equal(5, evt.PeriodId);
     }
 
+    // (G2-1) PostOpeningBalances returns the created JE — non-null, source-traced, posted.
+    [Fact]
+    public void PostOpeningBalances_ReturnsJournalEntry_SourceAndPosted()
+    {
+        var period = NewBalancedPeriod();
+        period.Id = 5;
+
+        var journalEntry = period.PostOpeningBalances("tester", TestDate);
+
+        Assert.NotNull(journalEntry);
+        Assert.Equal("OpeningBalance", journalEntry.SourceType);
+        Assert.Equal(period.Id, journalEntry.SourceId);
+        Assert.True(journalEntry.IsPosted);
+    }
+
+    // (G2-2) returned JE carries the balanced lines built from the period entries.
+    [Fact]
+    public void PostOpeningBalances_ReturnsJournalEntry_BalancedLines()
+    {
+        var period = NewBalancedPeriod();
+        period.Id = 5;
+
+        var journalEntry = period.PostOpeningBalances("tester", TestDate);
+
+        Assert.Equal(2, journalEntry.Lines.Count);
+        Assert.Equal(
+            journalEntry.Lines.Sum(l => l.Debit.Amount),
+            journalEntry.Lines.Sum(l => l.Credit.Amount));
+    }
+
+    // (G2-3) returned JE is transient (Id == 0) — domain never persists; G3 handler Add+Save assigns Id.
+    [Fact]
+    public void PostOpeningBalances_ReturnsJournalEntry_TransientIdZero()
+    {
+        var period = NewBalancedPeriod();
+        period.Id = 5;
+
+        var journalEntry = period.PostOpeningBalances("tester", TestDate);
+
+        Assert.Equal(0, journalEntry.Id);
+    }
+
     // (h) handler persists period flags — FakeUnitOfWork.SaveCalledCount == 1.
     [Fact]
     public async Task PostOpeningBalancesHandler_PersistsPeriodFlags_SaveCalledOnce()
