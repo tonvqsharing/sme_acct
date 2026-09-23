@@ -288,6 +288,145 @@ public record CreateJournalEntryResult(long Id, string EntryNumber);
 - `dotnet test tests/SmeAccounting.BankTests/`: **still 61** — no behavior change; no test touches CreateJournalEntryCommand yet (validator rule addition is untested until G2 adds validator facts).
 - No migration files; no Domain/Infrastructure file changes (git diff scope check).
 
+## Task-Specific Research — [G2] CreateJournalEntryHandler
+
+### G2-1. IVoucherTypeRepository + VoucherType + VoucherCategory (source-verified 2026-09-23)
+
+**`src/SmeAccounting.Domain/Ports/IVoucherTypeRepository.cs`** (11 lines) — **4 members, ALL must be implemented by the fake**:
+```csharp
+Task<VoucherType?> GetByIdAsync(long id);
+Task<VoucherType?> GetByCodeAsync(string code, long companyId);   // companyId param CONFIRMED
+Task<IReadOnlyList<VoucherType>> GetAllAsync();
+Task AddAsync(VoucherType voucherType);
+```
+⚠ MEMORY:254 lesson: FakeVoucherTypeRepository must implement **GetAllAsync too** — copying FakeBankRepository shape verbatim (which lacks GetAllAsync) → CS0535.
+
+**`src/SmeAccounting.Domain/Entities/VoucherType.cs`** (40 lines): `Code` (string), `Name`, `VoucherCategory` (enum), `CompanyId` (long), `IsActive` (bool, default true), `Description` (string?). Public ctor `(long companyId, string code, string name, VoucherCategory voucherCategory, string? description = null)` — DomainException guards (companyId>0, code/name non-blank). Raises VoucherTypeCreated(Id=0, companyId, UtcNow) in ctor — harmless in fakes (no event handling).
+
+**`src/SmeAccounting.Domain/ValueObjects/VoucherCategory.cs`** (10 lines): `enum VoucherCategory { Receipt, Payment, Journal, Adjustment, Opening }` — **`Journal` member EXISTS** (value 2). Test needs `using SmeAccounting.Domain.ValueObjects;` to construct `new VoucherType(1, "JNRL", "Journal", VoucherCategory.Journal)`.
+
+### G2-2. IDocumentNumberingSeriesRepository + DocumentNumberingSeries (source-verified)
+
+**`src/SmeAccounting.Domain/Ports/IDocumentNumberingSeriesRepository.cs`** (11 lines) — **4 members, ALL required by fake**:
+```csharp
+Task<DocumentNumberingSeries?> GetByIdAsync(long id);
+Task<DocumentNumberingSeries?> GetDefaultAsync(long voucherTypeId, long companyId);  // CONFIRMED exact signature
+Task<IReadOnlyList<DocumentNumberingSeries>> GetAllByCompanyAsync(long companyId);
+Task AddAsync(DocumentNumberingSeries series);
+```
+⚠ Fake must implement **GetAllByCompanyAsync** too (FakeBankRepository lacks it — CS0535 if copied verbatim).
+
+**`src/SmeAccounting.Domain/Entities/DocumentNumberingSeries.cs`** (55 lines): `VoucherTypeId`, `CompanyId`, `Prefix` (string), `NextNumber` (int, **default 1**), `PaddingLength` (int, **default 6**), `IsDefault` (bool), `IsActive`, `Description`. Public ctor `(long companyId, long voucherTypeId, string prefix, int paddingLength = 6, bool isDefault = false, string? description = null)`. `Increment()` → `NextNumber++` (line 39-42). **No formatting method** — handler formats `$"{Prefix}{NextNumber:D{PaddingLength}}"` → with Prefix="JNRL", NextNumber=1, PaddingLength=6 → **"JNRL000001"** (D6 pads to 6 digits). Test asserts `Stored[0].EntryNumber == "JNRL000001"` and `seriesRepo.Stored[0].NextNumber == 2` (fake stores same object reference; handler's Increment() mutates it).
+
+### G2-3. FakeBankRepository pattern — exact style to copy (Fakes.cs:6-26)
+
+```csharp
+internal sealed class FakeBankRepository : IBankRepository
+{
+    private readonly List<Bank> _banks = new();
+    public Task<Bank?> GetByCodeAsync(string code, long companyId)
+        => Task.FromResult(_banks.FirstOrDefault(b => b.Code == code && b.CompanyId == companyId));
+    public Task AddAsync(Bank bank) { _banks.Add(bank); return Task.CompletedTask; }
+    public IReadOnlyList<Bank> Stored => _banks;
+}
+```
+Style: `internal sealed class`, `private readonly List<T> _items = new();`, `Task.FromResult(FirstOrDefault(...))` filters, `AddAsync` adds + `Task.CompletedTask`, `public IReadOnlyList<T> Stored => _items;`. **New fakes:**
+- `FakeVoucherTypeRepository : IVoucherTypeRepository` — GetByCodeAsync filters `Code == code && CompanyId == companyId`; + GetByIdAsync + **GetAllAsync** + AddAsync + Stored.
+- `FakeDocumentNumberingSeriesRepository : IDocumentNumberingSeriesRepository` — GetDefaultAsync filters `VoucherTypeId == voucherTypeId && CompanyId == companyId && IsDefault`; + GetByIdAsync + **GetAllByCompanyAsync** + AddAsync + Stored.
+- `FakeUnitOfWork` (Fakes.cs:112-121): `SaveCalledCount` property, `SaveChangesAsync` increments + returns 1. Already exists — reuse.
+- `FakeJournalEntryRepository` (Fakes.cs:69-88): counter Id in AddAsync (`entry.Id = _nextId++`), Stored. Already exists — reuse. `result.Id == Stored[0].Id` works.
+
+### G2-4. Handler constructor injection + InternalsVisibleTo (confirmed)
+
+- `SmeAccounting.Application.csproj:14`: `<InternalsVisibleTo Include="SmeAccounting.BankTests" />` — internal handler directly testable, **zero csproj edits**.
+- Handler shape (CreatePaymentMethodHandler.cs:8-29): `internal sealed class XxxHandler(...primary ctor params...) : IRequestHandler<Command, Result>` + `Handle(Command request, CancellationToken cancellationToken)`.
+- G2 handler ctor: `(IVoucherTypeRepository voucherTypeRepository, IDocumentNumberingSeriesRepository numberingSeriesRepository, IJournalEntryRepository journalEntryRepository, IUnitOfWork unitOfWork)` — 4 params, order per PLAN.
+- Required usings in handler: `MediatR`, `SmeAccounting.Application.Commands`, `SmeAccounting.Domain.Entities` (JournalEntry), `SmeAccounting.Domain.Ports`, `SmeAccounting.Domain.ValueObjects` (Money).
+
+### G2-5. ResetNumberingSeriesHandler — null-guard + mutate-tracked-entity precedent (read fully, 25 lines)
+
+```csharp
+var series = await repository.GetByIdAsync(request.SeriesId);
+if (series is null)
+    throw new InvalidOperationException($"Numbering series with ID {request.SeriesId} not found.");
+series.Reset(request.StartFrom);
+await unitOfWork.SaveChangesAsync(cancellationToken);
+```
+- Null-guard style: `InvalidOperationException` with descriptive message. G2 mirrors: voucherType null → `InvalidOperationException`; series null → `InvalidOperationException`.
+- **No UpdateAsync on port** — mutate tracked entity → single SaveChangesAsync persists. G2: series.Increment() mutates tracked series; single SaveChangesAsync persists series + entry atomically (R2 confirmed).
+
+### G2-6. Validator invocation in tests — DIRECT, not pipeline (PostingReferenceCqrsTests.cs:11-54)
+
+```csharp
+var validator = new CreatePostingReferenceCommandValidator();
+var result = await validator.ValidateAsync(new CreatePostingReferenceCommand(1, 7, "OpeningBalance", 9));
+Assert.True(result.IsValid);
+```
+- **Tests call validator directly** — ValidationBehavior auto-pipeline NOT exercised in unit tests. One fact per invalid case, `Assert.False(result.IsValid)`.
+- G2 validator facts (PLAN): valid (CompanyId 1, PeriodId 1, 1+ lines) → True; CompanyId 0 → False; PeriodId 0 → False; empty Lines → False. Command ctor: `new CreateJournalEntryCommand(companyId, date, periodId, description, null, null, lines)` — SourceType/SourceId null OK (record positional).
+- Current validator (post-G1, 25 lines): CompanyId > 0 ("Company ID is required."), PeriodId > 0, Lines NotEmpty, per-line AccountId > 0. **No Date/Description/amount rules** — don't add.
+
+### G2-7. Money — confirmed (ValueObjects/Money.cs:10-14)
+
+`public Money(decimal amount, string currency)` — currency null-guard via ArgumentNullException. `Money.Zero => new(0m, "VND")`. Handler: `new Money(line.DebitAmount, "VND")` / `new Money(line.CreditAmount, "VND")`. Test-side precedent (GetJournalEntriesQueryTests.cs:17): `first.AddLine(101, new Money(10m, "VND"), new Money(0m, "VND"))`.
+
+### G2-8. CreatePaymentMethodHandler — canonical shape (read fully, 30 lines)
+
+```csharp
+internal sealed class CreatePaymentMethodHandler(
+    IPaymentMethodRepository repository,
+    IUnitOfWork unitOfWork)
+    : IRequestHandler<CreatePaymentMethodCommand, CreatePaymentMethodResult>
+{
+    public async Task<CreatePaymentMethodResult> Handle(CreatePaymentMethodCommand request, CancellationToken cancellationToken)
+    {
+        var paymentMethod = new PaymentMethod(request.CompanyId, ...);
+        await repository.AddAsync(paymentMethod);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
+        return new CreatePaymentMethodResult(paymentMethod.Id);
+    }
+}
+```
+No try/catch (DomainException propagates), manual result construction, primary ctor.
+
+### G2-9. Current command/entity state (post-G1, source-verified)
+
+- **CreateJournalEntryCommand.cs** (21 lines): `record CreateJournalEntryCommand(long CompanyId, DateTimeOffset Date, long PeriodId, string? Description, string? SourceType, long? SourceId, IReadOnlyList<JournalEntryLineInput> Lines) : IRequest<CreateJournalEntryResult>`; `record JournalEntryLineInput(long AccountId, decimal DebitAmount, decimal CreditAmount, string? Description)`; `record CreateJournalEntryResult(long Id, string EntryNumber)`.
+- **JournalEntry.cs** (84 lines): ctor `(string entryNumber, DateTimeOffset date, long periodId, string? description = null)` — entryNumber ArgumentNullException if null. `AddLine(long accountId, Money debit, Money credit, string? description = null, long? departmentId = null, long? costCenterId = null, long? projectId = null)` — line ctor takes `entryId = Id` (transient 0 OK). **No SetSource call in G2 plan** (controller passes null source).
+- **JournalEntryLine.cs**: `Debit`/`Credit` are `Money` (Amount + Currency).
+
+### G2-10. Test file structure + RED mechanics
+
+- **BankTests.csproj** (23 lines): refs Domain + Application only; xunit 2.9.3; global `Using Include="Xunit"`. Zero csproj edits needed.
+- **New file** `tests/SmeAccounting.BankTests/CreateJournalEntryHandlerTests.cs` — usings: `SmeAccounting.Application.Commands`, `SmeAccounting.Application.Handlers`, `SmeAccounting.Application.Validators`, `SmeAccounting.Domain.Entities`, `SmeAccounting.Domain.ValueObjects` (VoucherCategory for fake setup). Class `public sealed class CreateJournalEntryHandlerTests`.
+- **RED**: fakes + tests compile against existing ports/entities fine; handler test file references `CreateJournalEntryHandler` which doesn't exist → **CS0246 compile error** (handler missing). Validator facts would pass if reached — compile error blocks all. Record actual error code + lines (MEMORY:254: don't force predicted code).
+- **Happy-path test sketch** (from PLAN):
+  ```csharp
+  var vtRepo = new FakeVoucherTypeRepository();
+  await vtRepo.AddAsync(new VoucherType(1, "JNRL", "Journal", VoucherCategory.Journal));
+  var seriesRepo = new FakeDocumentNumberingSeriesRepository();
+  await seriesRepo.AddAsync(new DocumentNumberingSeries(1, vtRepo.Stored[0].Id, "JNRL", paddingLength: 6, isDefault: true));
+  var jeRepo = new FakeJournalEntryRepository();
+  var uow = new FakeUnitOfWork();
+  var handler = new CreateJournalEntryHandler(vtRepo, seriesRepo, jeRepo, uow);
+  var result = await handler.Handle(new CreateJournalEntryCommand(1, TestDate, 1, "desc", null, null,
+      [new JournalEntryLineInput(101, 100m, 0m, null), new JournalEntryLineInput(102, 0m, 100m, null)]), CancellationToken.None);
+  Assert.Equal("JNRL000001", jeRepo.Stored[0].EntryNumber);
+  Assert.Equal(2, seriesRepo.Stored[0].NextNumber);
+  Assert.Equal(jeRepo.Stored[0].Id, result.Id);
+  Assert.Equal(1, uow.SaveCalledCount);
+  ```
+- **Null-guard facts**: (a) only series in repo (no voucher type) → `Assert.ThrowsAsync<InvalidOperationException>`; (b) only voucher type (no default series) → InvalidOperationException. Note: series ctor needs voucherTypeId — use any long (e.g. 1) for the missing-voucher-type case; for missing-series case use the real voucherType.Id.
+- **Gates**: build 0/0, arch 22/22, bank ≥ 61 (currently exactly 61; G2 adds ~7 facts → 68).
+
+### G2-11. Executor checklist (from PLAN + verified source)
+
+1. Fakes: `FakeVoucherTypeRepository` (4 members incl. GetAllAsync) + `FakeDocumentNumberingSeriesRepository` (4 members incl. GetAllByCompanyAsync) appended to Fakes.cs — style per G2-3.
+2. New tests file per G2-10: 4 validator facts + 1 happy path + 2 null-guards = 7 facts.
+3. Run `dotnet test tests/SmeAccounting.BankTests/` → record compile-error RED (CS0246 handler missing).
+4. GREEN: `src/SmeAccounting.Application/Handlers/CreateJournalEntryHandler.cs` — internal sealed, primary ctor (4 repos), GetByCodeAsync("JNRL", request.CompanyId) → null-guard → GetDefaultAsync(voucherType.Id, request.CompanyId) → null-guard → `$"{series.Prefix}{series.NextNumber:D{series.PaddingLength}}"` → series.Increment() → `new JournalEntry(entryNumber, request.Date, request.PeriodId, request.Description)` → foreach line AddLine(AccountId, new Money(DebitAmount,"VND"), new Money(CreditAmount,"VND"), Description) → AddAsync → **single** SaveChangesAsync → `new CreateJournalEntryResult(entry.Id, entry.EntryNumber)`.
+5. Gates: build 0/0, arch 22/22, bank green (61 + 7 = 68).
+
 ## Prior Attempt Analysis
 
 - No prior executor attempts in this loop (STATUS.md: planning in progress, 0 attempts).
