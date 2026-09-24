@@ -32,6 +32,9 @@ internal sealed class UomConfiguration : IEntityTypeConfiguration<Uom>
             .HasColumnName("symbol")
             .HasMaxLength(20);
 
+        builder.Property(e => e.UomClassId)
+            .HasColumnName("uom_class_id");
+
         builder.Property(e => e.IsActive)
             .HasColumnName("is_active");
 
@@ -45,6 +48,11 @@ internal sealed class UomConfiguration : IEntityTypeConfiguration<Uom>
         builder.HasOne<Company>()
             .WithMany()
             .HasForeignKey(e => e.CompanyId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasOne<UomClass>()
+            .WithMany()
+            .HasForeignKey(e => e.UomClassId)
             .OnDelete(DeleteBehavior.Restrict);
 
         builder.Property<uint>("xmin")

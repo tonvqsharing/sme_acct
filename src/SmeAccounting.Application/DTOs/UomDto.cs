@@ -6,5 +6,6 @@ public record UomDto(
     string Code,
     string Name,
     string? Symbol,
+    long? UomClassId,
     bool IsActive,
     string? Description);

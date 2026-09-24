@@ -23,5 +23,5 @@ internal sealed class GetUomHandler(IUomRepository repository)
     }
 
     private static UomDto Map(SmeAccounting.Domain.Entities.Uom u)
-        => new UomDto(u.Id, u.CompanyId, u.Code, u.Name, u.Symbol, u.IsActive, u.Description);
+        => new UomDto(u.Id, u.CompanyId, u.Code, u.Name, u.Symbol, u.UomClassId, u.IsActive, u.Description);
 }

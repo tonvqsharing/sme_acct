@@ -12,5 +12,6 @@ public class CreateUomCommandValidator : AbstractValidator<CreateUomCommand>
         RuleFor(x => x.Name).NotEmpty().MaximumLength(200);
         RuleFor(x => x.Symbol).MaximumLength(20).When(x => !string.IsNullOrWhiteSpace(x.Symbol));
         RuleFor(x => x.Description).MaximumLength(500).When(x => !string.IsNullOrWhiteSpace(x.Description));
+        RuleFor(x => x.UomClassId).GreaterThan(0).When(x => x.UomClassId.HasValue);
     }
 }

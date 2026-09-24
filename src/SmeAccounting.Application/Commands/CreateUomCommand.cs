@@ -7,6 +7,7 @@ public record CreateUomCommand(
     string Code,
     string Name,
     string? Symbol = null,
-    string? Description = null) : IRequest<CreateUomResult>;
+    string? Description = null,
+    long? UomClassId = null) : IRequest<CreateUomResult>;
 
 public record CreateUomResult(long Id);

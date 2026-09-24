@@ -9,5 +9,6 @@ public record ItemDto(
     long? UomId,
     bool IsStockItem,
     bool IsServiceItem,
+    long? ItemGroupId,
     bool IsActive,
     string? Description);

@@ -12,7 +12,7 @@ internal sealed class CreateUomHandler(
 {
     public async Task<CreateUomResult> Handle(CreateUomCommand request, CancellationToken cancellationToken)
     {
-        var uom = new Uom(request.CompanyId, request.Code, request.Name, request.Symbol, request.Description);
+        var uom = new Uom(request.CompanyId, request.Code, request.Name, request.Symbol, request.Description, request.UomClassId);
         await repository.AddAsync(uom);
         await unitOfWork.SaveChangesAsync(cancellationToken);
         return new CreateUomResult(uom.Id);

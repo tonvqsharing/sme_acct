@@ -14,5 +14,6 @@ public class CreateItemCommandValidator : AbstractValidator<CreateItemCommand>
         RuleFor(x => x.IsServiceItem).NotNull();
         RuleFor(x => x).Must(x => x.IsStockItem || x.IsServiceItem).WithMessage("Item must be stock or service");
         RuleFor(x => x.UomId).NotNull().When(x => x.IsStockItem);
+        RuleFor(x => x.ItemGroupId).GreaterThan(0).When(x => x.ItemGroupId.HasValue);
     }
 }

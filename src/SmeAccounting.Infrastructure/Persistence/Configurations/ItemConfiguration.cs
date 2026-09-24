@@ -18,12 +18,14 @@ internal sealed class ItemConfiguration : IEntityTypeConfiguration<Item>
         builder.Property(e => e.UomId).HasColumnName("uom_id");
         builder.Property(e => e.IsStockItem).HasColumnName("is_stock_item");
         builder.Property(e => e.IsServiceItem).HasColumnName("is_service_item");
+        builder.Property(e => e.ItemGroupId).HasColumnName("item_group_id");
         builder.Property(e => e.IsActive).HasColumnName("is_active");
         builder.Property(e => e.Description).HasColumnName("description").HasMaxLength(500);
 
         builder.HasOne<Company>().WithMany().HasForeignKey(e => e.CompanyId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne<ItemCategory>().WithMany().HasForeignKey(e => e.ItemCategoryId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne<Uom>().WithMany().HasForeignKey(e => e.UomId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne<ItemGroup>().WithMany().HasForeignKey(e => e.ItemGroupId).OnDelete(DeleteBehavior.Restrict);
 
         builder.HasIndex(e => new { e.CompanyId, e.Code }).IsUnique();
 

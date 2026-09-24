@@ -10,6 +10,7 @@ public record CreateItemCommand(
     bool IsServiceItem,
     long? ItemCategoryId = null,
     long? UomId = null,
-    string? Description = null) : IRequest<CreateItemResult>;
+    string? Description = null,
+    long? ItemGroupId = null) : IRequest<CreateItemResult>;
 
 public record CreateItemResult(long Id);

@@ -22,5 +22,5 @@ internal sealed class GetItemHandler(IItemRepository repository)
     }
 
     private static ItemDto Map(SmeAccounting.Domain.Entities.Item i)
-        => new ItemDto(i.Id, i.CompanyId, i.Code, i.Name, i.ItemCategoryId, i.UomId, i.IsStockItem, i.IsServiceItem, i.IsActive, i.Description);
+        => new ItemDto(i.Id, i.CompanyId, i.Code, i.Name, i.ItemCategoryId, i.UomId, i.IsStockItem, i.IsServiceItem, i.ItemGroupId, i.IsActive, i.Description);
 }

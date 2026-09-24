@@ -12,18 +12,20 @@ public class Item : BaseEntity
     public long? UomId { get; private set; }
     public bool IsStockItem { get; private set; }
     public bool IsServiceItem { get; private set; }
+    public long? ItemGroupId { get; private set; }
     public bool IsActive { get; private set; } = true;
     public string? Description { get; private set; }
 
     private Item() { }
 
-    public Item(long companyId, string code, string name, bool isStockItem, bool isServiceItem, long? itemCategoryId = null, long? uomId = null, string? description = null)
+    public Item(long companyId, string code, string name, bool isStockItem, bool isServiceItem, long? itemCategoryId = null, long? uomId = null, string? description = null, long? itemGroupId = null)
     {
         if (companyId <= 0) throw new DomainException("CompanyId must be greater than zero.");
         if (string.IsNullOrWhiteSpace(code)) throw new DomainException("Code is required.");
         if (string.IsNullOrWhiteSpace(name)) throw new DomainException("Name is required.");
         if (!isStockItem && !isServiceItem) throw new DomainException("Item must be either stock or service.");
         if (isStockItem && !uomId.HasValue) throw new DomainException("UomId required for stock item.");
+        if (itemGroupId.HasValue && itemGroupId <= 0) throw new DomainException("ItemGroupId must be greater than zero when specified.");
 
         CompanyId = companyId;
         Code = code;
@@ -33,6 +35,7 @@ public class Item : BaseEntity
         ItemCategoryId = itemCategoryId;
         UomId = uomId;
         Description = description;
+        ItemGroupId = itemGroupId;
 
         AddDomainEvent(new ItemCreated(Id, companyId, DateTimeOffset.UtcNow));
     }
