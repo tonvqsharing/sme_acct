@@ -581,7 +581,7 @@ The PLAN's 5 open conflicts are correctly framed, but the design must additional
 | Port | `IUomClassRepository`: GetByIdAsync, GetByCodeAsync, GetAllByCompanyAsync, AddAsync (master shape) |
 | Events | `UomClassCreated(UomClassId, CompanyId, OccurredOn)` |
 | EF config | `ToTable("uom_classes")`, snake_case, xmin last |
-| Uom append | **6-file surface (R22):** Uom entity ctor param LAST + `HasValue && <= 0` guard; CreateUomCommand +`long? UomClassId = null` LAST; CreateUomCommandValidator +`GreaterThan(0).When(HasValue)`; UomDto +`long? UomClassId`; GetUomHandler Map +`u.UomClassId`; UomConfiguration `HasOne<UomClass>()...Restrict` + **AddColumn nullable NO defaultValue** (0 live rows — zero backfill risk) |
+| Uom append | **7-file surface (R22, §7b):** Uom entity ctor param LAST + `HasValue && <= 0` guard; CreateUomCommand +`long? UomClassId = null` LAST; CreateUomCommandValidator +`GreaterThan(0).When(HasValue)`; **CreateUomHandler pass-through (callsite line 15 — missing = silent null)**; UomDto +`long? UomClassId`; GetUomHandler Map +`u.UomClassId`; UomConfiguration `HasOne<UomClass>()...Restrict` + **AddColumn nullable NO defaultValue** (0 live rows — zero backfill risk) |
 | UomConversion compat | **Handler-level** in `CreateUomConversionHandler`: load both Uoms via `IUomRepository.GetByIdAsync`; if both have UomClassId AND they differ → `throw new DomainException("Cannot convert between UOMs of different classes.")`. If either is unclassified (null) → allow. Entity unchanged (cannot validate — no data access); validator unchanged (sync-shape only). Same-company consistency of (Uom.UomClassId, UomClass.CompanyId) is Application-layer/document-only (R12, R14) |
 
 #### E8. WarehouseLocation/Bin (Warehouse child) — Bank→BankBranch precedent (R26)
@@ -680,7 +680,7 @@ The PLAN's 5 open conflicts are correctly framed, but the design must additional
 
 **Controller routes:** `ItemGroupController` — `GET /ItemGroup/Index?companyId=`; `POST /ItemGroup/Create` (ValidateAntiForgeryToken); `POST /ItemGroup/Deactivate` (ItemController.cs:7-13 shape).
 
-**Item append (nullable ItemGroupId):** `long? ItemGroupId` on Item — ctor param LAST (`long? itemGroupId = null`), guard `if (itemGroupId.HasValue && itemGroupId <= 0) throw new DomainException(...)` (Supplier.cs:31-32 precedent), property placed before IsActive (Supplier.cs:17 precedent); config `HasOne<ItemGroup>().WithMany().HasForeignKey(e => e.ItemGroupId).OnDelete(DeleteBehavior.Restrict)`; migration = **AddColumn nullable NO defaultValue** (zero backfill risk, MEMORY:264 canon). Existing Item callers compile unchanged (param LAST).
+**Item append (nullable ItemGroupId):** `long? ItemGroupId` on Item — ctor param LAST (`long? itemGroupId = null`), guard `if (itemGroupId.HasValue && itemGroupId <= 0) throw new DomainException(...)` (Supplier.cs:31-32 precedent), property placed before IsActive (Supplier.cs:17 precedent); **CreateItemCommand gains `long? ItemGroupId` LAST + CreateItemHandler passes it through to the entity ctor (callsite Item.cs ctor — line 13; missing pass-through = silent null, transcription-drop pattern MEMORY:21)**; CreateItemCommandValidator `GreaterThan(0).When(x => x.ItemGroupId.HasValue)`; ItemDto + GetItemQuery handler Map include ItemGroupId; config `HasOne<ItemGroup>().WithMany().HasForeignKey(e => e.ItemGroupId).OnDelete(DeleteBehavior.Restrict)`; migration = **AddColumn nullable NO defaultValue** (zero backfill risk, MEMORY:264 canon). Existing Item callers compile unchanged (param LAST).
 
 **BankTests (`ItemGroupAggregateTests`):** positive — ctor valid raises ItemGroupCreated with CompanyId; validator valid passes; handler happy path adds + saves (SaveCalledCount==1). negative — ctor CompanyId 0/-1 throws DomainException; Code whitespace throws; Name whitespace throws; validator CompanyId 0 fails; Code empty/21 fails; Name empty/201 fails; Description 501 fails; deactivate handler missing entity throws InvalidOperationException. deactivation — Deactivate sets IsActive false; deactivate handler happy path (Id=5 before AddAsync) deactivates + saves. company isolation — GetAllByCompanyAsync returns only rows of the requested company (repo-level fact).
 
@@ -811,7 +811,7 @@ The PLAN's 5 open conflicts are correctly framed, but the design must additional
 
 **Controller routes:** `ItemPriceListController` — `GET /ItemPriceList/Index?companyId=`; `POST /ItemPriceList/Create`; `POST /ItemPriceList/Deactivate`.
 
-**BankTests (`ItemPriceListAggregateTests`):** positive — ctor valid raises ItemPriceListCreated with CompanyId; currencyCode normalized to uppercase; validator valid passes; handler happy path. negative — ctor CompanyId/PriceListId/ItemId 0/-1 throws; unitPrice negative throws; currencyCode empty/2-char/4-char/lowercase throws; effectiveTo before effectiveFrom throws; validator each rule fails; deactivate handler missing entity throws InvalidOperationException. deactivation — Deactivate sets IsActive false; deactivate handler happy path (Id=5). company isolation — GetAllByCompanyAsync filters.
+**BankTests (`ItemPriceListAggregateTests`):** positive — ctor valid raises ItemPriceListCreated with CompanyId; currencyCode normalized to uppercase; validator valid passes; handler happy path. negative — ctor CompanyId/PriceListId/ItemId 0/-1 throws; unitPrice negative throws; currencyCode empty/2-char/4-char throws (lowercase 3-char is NORMALIZED to uppercase in ctor — "lowercase throws" is a transcription outlier, see Task-Specific Research — PriceList Slice §3; validator `Matches("^[A-Z]{3}$")` rejects lowercase); effectiveTo before effectiveFrom throws; validator each rule fails; deactivate handler missing entity throws InvalidOperationException. deactivation — Deactivate sets IsActive false; deactivate handler happy path (Id=5). company isolation — GetAllByCompanyAsync filters.
 
 **Scope:** Price master data only — no discount math, no price calculation, no currency conversion (R27).
 
@@ -987,13 +987,14 @@ Both filters include is_active → deactivate→re-add works (R7). **Do NOT ship
 
 **BankTests (`UomClassAggregateTests`):** positive — ctor valid raises UomClassCreated with CompanyId; validator valid passes; handler happy path. negative — ctor CompanyId 0/-1 throws; Code/Name whitespace throws; validator CompanyId 0, Code empty/21, Name empty/201, Description 501 fail; deactivate handler missing entity throws InvalidOperationException. deactivation — Deactivate sets IsActive false; deactivate handler happy path (Id=5). company isolation — GetAllByCompanyAsync filters. **Uom-append Facts** (see §7b): Uom ctor with UomClassId=0 throws; Uom ctor with UomClassId=5 sets property; CreateUomCommandValidator UomClassId 0 fails when present; GetUomHandler Map includes UomClassId; CreateUomConversionHandler class-compat: both classes present and differ → DomainException; either Uom unclassified → allowed.
 
-#### 7b. UomClassId append on Uom — canonical 6-file change spec (R22; missing any = compile break or silent null DTO field)
+#### 7b. UomClassId append on Uom — canonical 7-file change spec (R22; missing any = compile break or silent null DTO field)
 
 Verified current state (read 2026-09-24): `uoms` table has 0 live rows (psql-verified) — **zero backfill risk**; no test constructs Uom (grep over tests = 0 hits); only callsite `CreateUomHandler.cs:15` passes 5 positional args — ctor param LAST keeps it compiling.
 
 1. **`Domain/Entities/Uom.cs`** — ctor currently `(long companyId, string code, string name, string? symbol = null, string? description = null)` (Uom.cs:17). Gains `long? uomClassId = null` **LAST** → `(long companyId, string code, string name, string? symbol = null, string? description = null, long? uomClassId = null)`. Guard: `if (uomClassId.HasValue && uomClassId <= 0) throw new DomainException("UomClassId must be greater than zero when specified.");` (Supplier.cs:31-32 precedent). Property `public long? UomClassId { get; private set; }` placed **before IsActive** (Supplier.cs:17 precedent — SupplierGroupId sits before IsActive). Assignment `UomClassId = uomClassId;` in ctor body. Existing callers (CreateUomHandler.cs:15, 5 positional args) compile unchanged.
 2. **`Application/Commands/CreateUomCommand.cs`** — gains `long? UomClassId = null` LAST (after Description): `public record CreateUomCommand(long CompanyId, string Code, string Name, string? Symbol = null, string? Description = null, long? UomClassId = null) : IRequest<CreateUomResult>;`
 3. **`Application/Validators/CreateUomCommandValidator.cs`** — gains `RuleFor(x => x.UomClassId).GreaterThan(0).When(x => x.UomClassId.HasValue);` (after the Description rule, CreateUomCommandValidator.cs:14).
+3b. **`Application/Handlers/CreateUomHandler.cs`** — pass-through (line 15 currently constructs Uom with 5 positional args): `new Uom(command.CompanyId, command.Code, command.Name, command.Symbol, command.Description, command.UomClassId)`. Missing pass-through = silent null UomClassId (transcription-drop pattern, MEMORY:21 — same gap as G1's dropped null-guard).
 4. **`Application/DTOs/UomDto.cs`** — gains `long? UomClassId` before IsActive: `public record UomDto(long Id, long CompanyId, string Code, string Name, string? Symbol, long? UomClassId, bool IsActive, string? Description);`
 5. **`Application/Handlers/GetUomHandler.cs`** — Map (line 26) passes `u.UomClassId`: `=> new UomDto(u.Id, u.CompanyId, u.Code, u.Name, u.Symbol, u.UomClassId, u.IsActive, u.Description);`
 6. **`Infrastructure/Persistence/Configurations/UomConfiguration.cs`** — add `builder.Property(e => e.UomClassId).HasColumnName("uom_class_id");` (before IsActive block, UomConfiguration.cs:35) + `builder.HasOne<UomClass>().WithMany().HasForeignKey(e => e.UomClassId).OnDelete(DeleteBehavior.Restrict);` (after the Company FK block, UomConfiguration.cs:45-48). Migration = **AddColumn nullable NO defaultValue** (0 live rows — zero backfill risk, R22 verified).
@@ -1082,7 +1083,7 @@ Verified current state (read 2026-09-24): `uoms` table has 0 live rows (psql-ver
 | R19 | (none of the 8 — InventoryValuationPolicy) | **Documented limitation (C5).** No enum mutation. Both facts documented: LIFO present-but-non-operative; SpecificIdentification operative-but-absent. Adding later = additive/migration-free (string storage); removing LIFO = breaking. Requires user approval |
 | R20 | UomClass slice (UomConversion) | Store BOTH directions as explicit rows (A→B and B→A distinct under unique key) — no inverse computation, no rounding drift. Document-only (no stock math in scope) |
 | R21 | ItemBarcode | Check-digit validated ONLY for BarcodeType ∈ {GTIN8, GTIN12, GTIN13, GTIN14} (length-matched); skipped entirely for Other |
-| R22 | UomClass slice (Uom append) | Full 6-file surface transcribed in §7b — missing any = compile break or silent null DTO field. Live uoms table 0 rows — zero backfill risk |
+| R22 | UomClass slice (Uom append) | Full 7-file surface transcribed in §7b (incl. CreateUomHandler pass-through — missing any = compile break or silent null DTO field). Live uoms table 0 rows — zero backfill risk |
 | R23 | ItemPriceList, ItemSupplierPrice | Scalar decimal + string CurrencyCode(3), NOT Money VO (Money.cs:13 throws ArgumentNullException, no ISO validation). Currency format (3 uppercase) validated at Application layer |
 | R24 | ItemPriceList, ItemSupplierPrice | Scalar columns, explicit names + precision: `unit_price` decimal(18,2), `currency_code` varchar(3). No OwnsOne |
 | R25 | ItemReorderLevel | Threshold storage only — no min/max computation, PO suggestion, stock-on-hand math. Stock-item-only handler guard (loads Item; null-guard FIRST → `InvalidOperationException` when item not found; then `!item.IsStockItem` → DomainException) |
@@ -1110,3 +1111,433 @@ Verified current state (read 2026-09-24): `uoms` table has 0 live rows (psql-ver
 | G3 task 9 | WarehouseLocation | Company, Warehouse | — |
 
 **Existing entities referenced but NOT modified:** Item (except the two nullable-FK appends above), ItemCategory, Uom (except UomClassId append), UomConversion (entity/config unchanged; handler gains compat check), Warehouse, Supplier, SupplierItem, TaxType, TaxRate, InventoryValuationPolicy, InventoryAccountingConfiguration, InventoryAdjustmentReason.
+
+---
+
+## Task-Specific Research — UomClass Slice
+
+**Date:** 2026-09-24. **Agent:** researcher (G2 executor prep). **Scope:** verify §7/§7b canonical against real files; produce executor-ready spec. All files re-read this research. READ-ONLY — zero src/ changes.
+
+### 1. Template slice paths — ALL CONFIRMED EXIST (glob-verified 2026-09-24)
+
+**Uom slice (append surface + UomClass master template):**
+
+| Layer | File |
+|-------|------|
+| Entity | `src/SmeAccounting.Domain/Entities/Uom.cs` |
+| Event | `src/SmeAccounting.Domain/Events/UomCreated.cs` |
+| Port | `src/SmeAccounting.Domain/Ports/IUomRepository.cs` |
+| EF config | `src/SmeAccounting.Infrastructure/Persistence/Configurations/UomConfiguration.cs` |
+| Repo | `src/SmeAccounting.Infrastructure/Repositories/EfUomRepository.cs` |
+| Command | `src/SmeAccounting.Application/Commands/CreateUomCommand.cs` (+ `CreateUomResult`) |
+| Handler | `src/SmeAccounting.Application/Handlers/CreateUomHandler.cs` |
+| Validator | `src/SmeAccounting.Application/Validators/CreateUomCommandValidator.cs` |
+| Query | `src/SmeAccounting.Application/Queries/GetUomQuery.cs` (`GetUomQuery` + `GetUomsByCompanyQuery` co-located) |
+| Query handler | `src/SmeAccounting.Application/Handlers/GetUomHandler.cs` |
+| DTO | `src/SmeAccounting.Application/DTOs/UomDto.cs` |
+| Controller | `src/SmeAccounting.Api/Controllers/UomController.cs` |
+| Deactivate | `src/SmeAccounting.Application/Commands/DeactivateUomCommand.cs` + `Handlers/DeactivateUomHandler.cs` |
+
+**Item slice (5-layer master template, RESEARCH.md Environment §2):** `Item.cs`, `ItemCreated.cs`, `IItemRepository.cs`, `ItemConfiguration.cs`, `EfItemRepository.cs`, `CreateItemCommand.cs`, `CreateItemHandler.cs`, `CreateItemCommandValidator.cs`, `GetItemQuery.cs`, `GetItemHandler.cs`, `ItemDto.cs`, `ItemController.cs` — all 12 exist.
+
+**Test templates:** `tests/SmeAccounting.BankTests/SupplierItemAggregateTests.cs` (child/link shape) + `tests/SmeAccounting.BankTests/CustomerGroupAggregateTests.cs` (**master-entity shape — closest to UomClass**: ctor/validator/handler/deactivate/company-isolation Facts, 144 lines) + `tests/SmeAccounting.BankTests/Fakes.cs`.
+
+### 2. Fakes.cs — current state + what must be added
+
+Location: `tests/SmeAccounting.BankTests/Fakes.cs` (235 lines). **Current fake classes (12):** FakeBankRepository, FakePaymentMethodRepository, FakePostingReferenceRepository, FakeJournalEntryRepository, FakeOpeningBalancePeriodRepository, FakeVoucherTypeRepository, FakeDocumentNumberingSeriesRepository, FakeCustomerGroupRepository, FakeSupplierGroupRepository, FakeSupplierItemRepository, FakeUnitOfWork, FakeClock.
+
+**ZERO Uom fakes exist** (grep `Uom|UomConversion` over BankTests = no files found — also means **no existing Uom/UomConversion tests anywhere**). Executor MUST add 3 new fakes to Fakes.cs:
+
+| Fake | Port (verified members) | Members |
+|------|------------------------|---------|
+| `FakeUomClassRepository : IUomClassRepository` | §7 spec (master shape) | GetByIdAsync, GetByCodeAsync, GetAllByCompanyAsync, AddAsync + `Stored` |
+| `FakeUomRepository : IUomRepository` | IUomRepository.cs:5-11 | GetByIdAsync, GetByCodeAsync, GetAllByCompanyAsync, AddAsync + `Stored` |
+| `FakeUomConversionRepository : IUomConversionRepository` | IUomConversionRepository.cs:5-10 | GetByIdAsync, **GetByCompanyAsync** (NOT GetAllByCompanyAsync — CS0535 trap), AddAsync + `Stored` |
+
+Missing member = CS0535 (MEMORY:269). Plain List-backed Add (NO `_nextId` counter) is correct — Uom/UomClass ctors have no own-Id>0 guard (MEMORY:269); Deactivate-happy facts set `entity.Id = 5` BEFORE AddAsync (BaseEntity.Id public setter).
+
+### 3. §7b 6-file append — verified against real files, ZERO discrepancies
+
+| # | File | §7b claim | Verified actual | Verdict |
+|---|------|-----------|-----------------|---------|
+| 1 | Uom.cs | ctor `(companyId, code, name, symbol=null, description=null)` at :17; guard `HasValue && <= 0` (Supplier.cs:31-32); property before IsActive (Supplier.cs:17) | ctor exactly at :17 ✓; property order Symbol:11, **IsActive:12**, Description:13 → UomClassId property inserts between :11 and :12 ✓; Supplier.cs:31-32 guard verbatim `if (supplierGroupId.HasValue && supplierGroupId <= 0) throw new DomainException("SupplierGroupId must be greater than zero when specified.");` ✓ | MATCH |
+| 2 | CreateUomCommand.cs | gains `long? UomClassId = null` LAST after Description | record :5-10 `(CompanyId, Code, Name, Symbol=null, Description=null)` ✓ | MATCH |
+| 3 | CreateUomCommandValidator.cs | add `RuleFor(x => x.UomClassId).GreaterThan(0).When(x => x.UomClassId.HasValue);` after Description rule :14 | Description rule at :14 ✓; existing nullable rules use `.When(x => !string.IsNullOrWhiteSpace(x.Symbol))` style — for nullable long use `When(x => x.UomClassId.HasValue)` per §7b | MATCH |
+| 4 | UomDto.cs | gains `long? UomClassId` before IsActive | record :3-10 `(Id, CompanyId, Code, Name, Symbol, IsActive, Description)` ✓ | MATCH |
+| 5 | GetUomHandler.cs | Map :26 passes `u.UomClassId` before `u.IsActive` | Map at :25-26 `new UomDto(u.Id, u.CompanyId, u.Code, u.Name, u.Symbol, u.IsActive, u.Description)` ✓ | MATCH |
+| 6 | UomConfiguration.cs | `Property(e => e.UomClassId).HasColumnName("uom_class_id")` before IsActive block :35; `HasOne<UomClass>().WithMany().HasForeignKey(e => e.UomClassId).OnDelete(Restrict)` after Company FK block :45-48 | IsActive block :35-36 ✓; Company FK block :45-48 ✓; Symbol block ends :33 → UomClassId Property inserts after :33 | MATCH |
+
+**Callsite check:** CreateUomHandler.cs:15 `new Uom(request.CompanyId, request.Code, request.Name, request.Symbol, request.Description)` — 5 positional args, compiles unchanged with 6th defaulted ✓. No other Uom ctor callsites (grep tests = 0; only CreateUomHandler constructs Uom).
+
+**Flags (not discrepancies, executor notes):**
+- **UomController NOT in §7b surface** — controller binds form params individually (`Create(long companyId, string code, string name, string? symbol, string? description, ...)` :30) and constructs the command with 5 args (:34) — compiles unchanged. If UI must SET UomClassId on Uom creation, controller needs `long? uomClassId` param + pass-through — **out of §7b scope, optional**.
+- **Deactivate handler pattern split:** DeactivateUomHandler.cs:15 returns `new DeactivateUomResult(false)` for missing entity (OLD pattern); DeactivateCustomerGroupHandler.cs:17-18 THROWS `InvalidOperationException` (NEW pattern). §7 UomClass test list says "deactivate handler missing entity throws InvalidOperationException" → **follow CustomerGroup throw pattern**, NOT Uom's false-return. DeactivateUomClassCommand shape per §7 = `(long Id)` (Uom-style param name, CustomerGroup-style throw).
+- **Deactivate result shape:** DeactivateCustomerGroupCommand returns empty `DeactivateCustomerGroupResult` record (no bool) — use same for UomClass (matches throw-on-missing; bool Success is meaningless when missing throws).
+
+### 4. UomConversion class-compat check — handler-only confirmed
+
+- **Entity cannot validate** — confirmed: UomConversion.cs has only scalar longs (CompanyId/FromUomId/ToUomId/Factor/IsActive), no nav props, no repo access. Class-compat check lands in **CreateUomConversionHandler only** (Application layer). Validator unchanged (sync-shape only).
+- **Handler shape:** CreateUomConversionHandler.cs:8-10 `(IUomConversionRepository repository, IUnitOfWork unitOfWork)` → gains `IUomRepository uomRepository`. Check inserts BEFORE `var conv = new UomConversion(...)` at :15. **IUomRepository already DI-registered** (DependencyInjection.cs:59) — NO DI change for the handler.
+- **Existing UomConversion tests: NONE** (grep over BankTests = zero Uom matches) — nothing to break. New class-compat Facts are the FIRST conversion-handler tests.
+- **Null-Uom edge case NOT specified in §7b:** canonical rule = "reject only when both classes present and unequal". If `GetByIdAsync` returns null for either Uom, `uom.UomClassId` would NRE. **Recommendation: null-safe allow** — `if (fromUom?.UomClassId is not null && toUom?.UomClassId is not null && fromUom.UomClassId != toUom.UomClassId) throw new DomainException("Cannot convert between UOMs of different classes.");` — treats not-found as unclassified → allowed (behavior-preserving: today a dangling FK fails at SaveChanges via Restrict; same outcome, no NRE). Alternative (throw InvalidOperationException on null) deviates from canonical rule. **Executor: pick null-safe allow; verifier: check no NRE path.**
+
+### 5. DbContext + DI insertion points (verified line numbers)
+
+**SmeAccountingDbContext.cs:**
+- Uom DbSet at **:36** `public DbSet<Uom> Uoms => Set<Uom>();` — UomClass DbSet inserts adjacent (:36-37 area) OR Ignore-only.
+- UomCreated Ignore at **:92** — `modelBuilder.Ignore<UomClassCreated>();` inserts adjacent (:92-93 area).
+- **Style:** BOTH coexist. Uom/Item/Warehouse = DbSet style (`_context.Uoms` in repo); partners (CustomerGroup etc.) = Ignore-only + `_context.Set<T>()` in repo (EfCustomerGroupRepository.cs:16,22,28,37). **Recommendation: DbSet style** (UomClass is a master entity like Uom/Item; consistent with parent Uom). Either passes arch/build; migration output identical. If DbSet style: repo uses `_context.UomClasses`; if Ignore-only: `_context.Set<UomClass>()`.
+- `using SmeAccounting.Domain.Events;` already present (:3) — no using change for Ignore<UomClassCreated>.
+
+**DependencyInjection.cs:**
+- `IUomRepository` AddScoped at **:59** — `services.AddScoped<IUomClassRepository, EfUomClassRepository>();` inserts adjacent (:59-60 area). Re-read file before edit (parallel-task race, MEMORY:265).
+
+### 6. Edge cases for BankTests (from §7 + §7b lists — all confirmed implementable)
+
+| Fact | Construction | Assert |
+|------|-------------|--------|
+| Uom ctor UomClassId=0 throws | `new Uom(1, "KG", "Kilogram", uomClassId: 0)` | `Assert.Throws<DomainException>` |
+| Uom ctor UomClassId=5 sets property | `new Uom(1, "KG", "Kilogram", uomClassId: 5)` | `Assert.Equal(5, uom.UomClassId)` |
+| Validator UomClassId 0 fails when present | `new CreateUomCommand(1, "KG", "Kilogram", UomClassId: 0)` | `Assert.False(result.IsValid)` |
+| Validator UomClassId null passes | `new CreateUomCommand(1, "KG", "Kilogram")` | `Assert.True(result.IsValid)` |
+| GetUomHandler Map includes UomClassId | FakeUomRepository with Uom (UomClassId=5, `uom.Id = 5`), `handler.Handle(new GetUomQuery(5))` | `Assert.Equal(5, dto!.UomClassId)` |
+| Class-compat both-classes-differ → DomainException | FakeUomRepository: Uom A (Id=5, class 1), Uom B (Id=6, class 2); `CreateUomConversionHandler(repo, uomRepo, uow).Handle(new CreateUomConversionCommand(1, 5, 6, 2m))` | `Assert.ThrowsAsync<DomainException>`; SaveCalledCount == 0 |
+| Class-compat both-same-class → allowed | Uom A (Id=5, class 1), Uom B (Id=6, class 1) | no throw; SaveCalledCount == 1 |
+| Class-compat either-unclassified → allowed | Uom A (Id=5, class null), Uom B (Id=6, class 1) — and both-null | no throw; SaveCalledCount == 1 |
+| UomClass master Facts (§7) | CustomerGroupAggregateTests shape | ctor valid/0/-1/empty-code/empty-name; Deactivate; validator valid/0/empty/overlength; Create handler happy path; Deactivate missing throws InvalidOperationException; Deactivate happy path (Id=5); GetAllByCompanyAsync filters |
+
+Note: conversion Facts need distinct Uom Ids (5/6) — UomConversion ctor guards `fromUomId == toUomId` throws (:21). Uom Ids set via public setter (`uom.Id = 5`) before AddAsync to FakeUomRepository.
+
+### 7. New-file list for the slice (executor scope)
+
+**New (14 files):** Domain — `UomClass.cs`, `UomClassCreated.cs` (UomCreated.cs:3-17 shape: `(long UomClassId, long CompanyId, DateTimeOffset OccurredOn)`), `IUomClassRepository.cs` (4 members, master shape); Infrastructure — `UomClassConfiguration.cs` (ToTable("uom_classes"), unique (CompanyId, Code), Company FK Restrict, xmin, Code 20/Name 200/Description 500), `EfUomClassRepository.cs`; Application — `CreateUomClassCommand.cs` (+`CreateUomClassResult(long Id)`), `DeactivateUomClassCommand.cs` (+empty result), `CreateUomClassCommandValidator.cs`, `GetUomClassQuery.cs` (+`GetUomClassesByCompanyQuery`), `CreateUomClassHandler.cs`, `DeactivateUomClassHandler.cs` (throw-on-missing), `GetUomClassHandler.cs`, `UomClassDto.cs`; Api — `UomClassController.cs` (UomController.cs:9-53 shape); Tests — `UomClassAggregateTests.cs`.
+
+**Modified (7 files):** Uom.cs, CreateUomCommand.cs, CreateUomCommandValidator.cs, UomDto.cs, GetUomHandler.cs, UomConfiguration.cs (§7b 6-file surface) + CreateUomConversionHandler.cs (class-compat check). **Modified (2 wiring):** SmeAccountingDbContext.cs, DependencyInjection.cs.
+
+**NO migration in G2** (PLAN: G2/G3 code+tests only; uom_classes table + uom_class_id AddColumn land in G4 migration #19). Build must stay 0/0 with UomConfiguration referencing UomClass — entity exists, compiles.
+
+**Commit hygiene:** stage ONLY the 23 files above; business-partners WIP (~69 files, confirmed still uncommitted via git status) must stay unstaged. Never `git add -A`.
+
+---
+
+## Task-Specific Research — ItemGroup Slice
+
+**Date:** 2026-09-24. **Author:** researcher (G2 batch). **Task:** PLAN task 3 — ItemGroup vertical slice + nullable ItemGroupId append on Item. **Source:** canonical §0/§1 (RESEARCH.md:622-687) verified against actual source files (all re-read this research). **Status:** executor-ready spec.
+
+### 1. Template slice paths — confirmed present
+
+| Template | Files (all exist) | Role for ItemGroup |
+|----------|-------------------|--------------------|
+| **Uom slice (flat-master template — COPY THIS)** | `Domain/Entities/Uom.cs`, `Events/UomCreated.cs`, `Ports/IUomRepository.cs`, `Infrastructure/Persistence/Configurations/UomConfiguration.cs`, `Infrastructure/Repositories/EfUomRepository.cs`, `Application/Commands/CreateUomCommand.cs`, `Handlers/CreateUomHandler.cs`, `Handlers/GetUomHandler.cs`, `Handlers/DeactivateUomHandler.cs`, `Queries/GetUomQuery.cs`, `Validators/CreateUomCommandValidator.cs`, `DTOs/UomDto.cs`, `Api/Controllers/UomController.cs` | Flat master: CompanyId+Code+Name+IsActive+Description, unique (CompanyId,Code), Company FK Restrict, xmin. ItemGroup = Uom minus Symbol |
+| **Item slice (5-layer pattern)** | `Domain/Entities/Item.cs`, `Events/ItemCreated.cs`, `Ports/IItemRepository.cs`, `Configurations/ItemConfiguration.cs`, `Repositories/EfItemRepository.cs`, `Commands/CreateItemCommand.cs`, `Commands/DeactivateItemCommand.cs`, `Handlers/CreateItemHandler.cs`, `Handlers/GetItemHandler.cs`, `Handlers/DeactivateItemHandler.cs`, `Queries/GetItemQuery.cs`, `Validators/CreateItemCommandValidator.cs`, `DTOs/ItemDto.cs`, `Api/Controllers/ItemController.cs` | CQRS shape, command/result records, controller routes, repo behavior |
+| **ItemCategory slice (self-ref — DO NOT copy ParentId)** | `Domain/Entities/ItemCategory.cs`, `Configurations/ItemCategoryConfiguration.cs`, `Ports/IItemCategoryRepository.cs`, `Handlers/GetItemCategoryHandler.cs`, `Api/Controllers/ItemCategoryController.cs` | Port shape (GetByCodeAsync present — master shape), query-handler shape. **ParentId + self-HasOne at ItemCategoryConfiguration.cs:24 are the C1 exclusion** |
+| **SupplierGroup slice (test template — COPY THIS)** | `tests/SmeAccounting.BankTests/SupplierGroupAggregateTests.cs`, `CustomerGroupAggregateTests.cs`, `Fakes.cs` | 14-Fact flat-master test file: ctor/validator/handler/deactivate, Id=5-before-AddAsync, SaveCalledCount==1, throw-on-missing |
+
+**⚠️ STALE REFERENCE:** AGENTS.md says "Template to copy: ... `tests/SmeAccounting.BankTests/ItemAggregateTests.cs`" — **that file does NOT exist** (grep over tests/ = 0 hits for ItemAggregateTests/UomAggregateTests). Use `SupplierGroupAggregateTests.cs` as the test template.
+
+### 2. ItemGroupId append on Item — verified per file (7-file surface)
+
+**Item ctor param count NOW: 8** — `Item.cs:20` `(long companyId, string code, string name, bool isStockItem, bool isServiceItem, long? itemCategoryId = null, long? uomId = null, string? description = null)`. Append → 9 params, `long? itemGroupId = null` LAST.
+
+| # | File | Verified current state | Change (canon §1 + this verification) |
+|---|------|------------------------|----------------------------------------|
+| 1 | `Domain/Entities/Item.cs` | Property: IsServiceItem :14, IsActive :15, Description :16. Ctor :20-38, guards single-line style :22-26, assignments :28-35, event :37 | Property `public long? ItemGroupId { get; private set; }` inserted **between :14 (IsServiceItem) and :15 (IsActive)** — "before IsActive" per Supplier.cs:17 precedent (SupplierGroupId sits directly before IsActive). Ctor param LAST `long? itemGroupId = null`. Guard after :26: `if (itemGroupId.HasValue && itemGroupId <= 0) throw new DomainException("ItemGroupId must be greater than zero when specified.");` (Supplier.cs:31-32 message style; Item.cs uses single-line guard style — either compiles). Assignment `ItemGroupId = itemGroupId;` after :35 (`Description = description;`) |
+| 2 | `Application/Commands/CreateItemCommand.cs` | :5-13, 8 params, Description LAST :13 | Append `long? ItemGroupId = null` after Description |
+| 3 | `Application/Validators/CreateItemCommandValidator.cs` | :10-16, no ItemGroupId rule | Add `RuleFor(x => x.ItemGroupId).GreaterThan(0).When(x => x.ItemGroupId.HasValue);` — §7b UomClassId rule shape (RESEARCH.md:990-1006), matches ItemBarcode UomId rule precedent |
+| 4 | `Application/Handlers/CreateItemHandler.cs` | :13 `new Item(request.CompanyId, ..., request.Description)` — 8 positional args | **MUST append `request.ItemGroupId` as 9th arg — canon §1 does NOT list this file; without it the value silently drops (compiles unchanged, null always). DISCREPANCY #1** |
+| 5 | `Application/DTOs/ItemDto.cs` | :3-13: Id, CompanyId, Code, Name, ItemCategoryId, UomId, IsStockItem, IsServiceItem :11, IsActive :12, Description :13 | Insert `long? ItemGroupId` **between :11 (IsServiceItem) and :12 (IsActive)** — before IsActive, matching entity order |
+| 6 | `Application/Handlers/GetItemHandler.cs` | :25 Map: `new ItemDto(i.Id, i.CompanyId, i.Code, i.Name, i.ItemCategoryId, i.UomId, i.IsStockItem, i.IsServiceItem, i.IsActive, i.Description)` | Insert `i.ItemGroupId` between `i.IsServiceItem` and `i.IsActive` |
+| 7 | `Infrastructure/Persistence/Configurations/ItemConfiguration.cs` | Column props :14-22; HasOne Company :24, ItemCategory :25, Uom :26; unique :28; xmin :30 | Column `builder.Property(e => e.ItemGroupId).HasColumnName("item_group_id");` between :20 (IsServiceItem) and :21 (IsActive); `builder.HasOne<ItemGroup>().WithMany().HasForeignKey(e => e.ItemGroupId).OnDelete(DeleteBehavior.Restrict);` after :26 (Uom HasOne) |
+
+**DISCREPANCY #1 (canon gap):** §1 Item append lists only entity + config + migration — the full surface is **7 files** (above). Same gap exists in §7b (6-file UomClassId list misses `CreateUomHandler.cs:15` pass-through — silent null risk). Executor: update CreateItemHandler.cs:13. Verifier: check ItemGroupId reaches the entity (handler fact).
+
+**DISCREPANCY #2 (controller, beyond canon):** `ItemController.cs:8` Create takes `(companyId, code, name, isStockItem, isServiceItem, itemCategoryId, uomId, description, ct)` and builds the command with 8 positional args — compiles unchanged after append, but ItemGroupId is then unreachable from the Item create form. Canon §1 is silent on the controller. **Recommendation:** add `long? itemGroupId` param to ItemController.Create + pass to command (matches existing itemCategoryId/uomId flow, 2-token change). Flag to auditor — beyond-canon addition, or leave as documented limitation (append usable via direct command only). §7b has the same question for UomController.
+
+**DISCREPANCY #3 (deactivate behavior — do NOT copy Item):** `DeactivateItemHandler.cs:13` returns `DeactivateItemResult(false)` on missing entity. Canon §1 says ItemGroup deactivate handler **throws InvalidOperationException** on missing (SupplierGroup precedent, `DeactivateSupplierGroupHandler.cs:17-18`). Command shape stays Item-style: `DeactivateItemGroupCommand(long Id)` + `DeactivateItemGroupResult(bool Success)` (DeactivateItemCommand.cs shape — NOT SupplierGroup's `long SupplierGroupId` + bare result). Executor: throw on missing; test asserts `Assert.ThrowsAsync<InvalidOperationException>`.
+
+### 3. C1 reconciliation — ItemGroup vs ItemCategory (no overlap, no hierarchy validation)
+
+Verified `ItemCategory.cs`: ParentId :11 (nullable self-ref), ctor `(companyId, code, name, parentId = null, description = null)` :17, self-HasOne at `ItemCategoryConfiguration.cs:24`. **ItemGroup design has NO ParentId** (fields: CompanyId, Code, Name, IsActive, Description — §1 :655-663). Distinct roles: ItemCategory = classification hierarchy (self-ref); ItemGroup = flat grouping master. Item carries both nullable FKs independently (ItemCategoryId :11, new ItemGroupId) — no conflict, no shared index. **No hierarchy/cycle validation needed for ItemGroup** — no ParentId, no self-ref in ctor or validator. C1 confirmed against source.
+
+### 4. DbContext + DI insertion points (exact lines, re-read this research)
+
+**`Infrastructure/Persistence/SmeAccountingDbContext.cs`:**
+- DbSet: `public DbSet<Item> Items => Set<Item>();` at **:40**, `ServiceItem` :41. Insert `public DbSet<ItemGroup> ItemGroups => Set<ItemGroup>();` **after :40** (adjacent to Items — DbSet style, matches Item/Uom; partners' Ignore-only style not used here).
+- Ignore: `modelBuilder.Ignore<ItemCreated>();` at **:96**, `ServiceItemCreated` :97. Insert `modelBuilder.Ignore<ItemGroupCreated>();` **after :96**.
+
+**`Infrastructure/DependencyInjection.cs`:**
+- `services.AddScoped<IItemRepository, EfItemRepository>();` at **:63**, `IServiceItemRepository` :64. Insert `services.AddScoped<IItemGroupRepository, EfItemGroupRepository>();` **after :63**.
+
+Re-read both files before editing (parallel-task race, MEMORY:265). No migration for this task (G4 consolidated `AddInventoryModule03` carries the `item_group_id` AddColumn + item_groups CreateTable — PLAN task 3 says NO migration; build stays green because EF model drift is not a build-time check).
+
+### 5. New-file list (13 files + 2 Fakes additions + 7 edits + 2 wiring)
+
+**Domain:** `Entities/ItemGroup.cs` (ctor `(long companyId, string code, string name, string? description = null)` — Uom shape minus Symbol; guards companyId>0, Code/Name non-whitespace, DomainException; private parameterless ctor; Deactivate()); `Events/ItemGroupCreated.cs` (ItemCreated.cs shape: class : DomainEvent, `ItemGroupCreated(long itemGroupId, long companyId, DateTimeOffset occurredOn)`); `Ports/IItemGroupRepository.cs` (4 members: GetByIdAsync, GetByCodeAsync(code, companyId), GetAllByCompanyAsync, AddAsync — IItemCategoryRepository shape).
+**Infrastructure:** `Configurations/ItemGroupConfiguration.cs` (UomConfiguration shape: table `item_groups`, snake_case columns, unique `(CompanyId, Code)` :42-43, Company HasOne Restrict :45-48, xmin :50-52); `Repositories/EfItemGroupRepository.cs` (EfItemRepository shape: tracked GetById/GetByCode, `AsNoTracking().Where(CompanyId).OrderBy(Code)` GetAllByCompany, AddAsync delegates).
+**Application:** `Commands/CreateItemGroupCommand.cs` (+`CreateItemGroupResult(long Id)` co-located); `Commands/DeactivateItemGroupCommand.cs` (+`DeactivateItemGroupResult(bool Success)`); `Handlers/CreateItemGroupHandler.cs` (CreateItemHandler shape); `Handlers/DeactivateItemGroupHandler.cs` (**SupplierGroup throw-on-missing shape**, returns `new DeactivateItemGroupResult(true)`); `Handlers/GetItemGroupHandler.cs` (GetItemCategoryHandler shape — one class implements both queries, private static Map); `Queries/GetItemGroupQuery.cs` (`GetItemGroupQuery(long Id) : IRequest<ItemGroupDto?>` + `GetItemGroupsByCompanyQuery(long CompanyId) : IRequest<IReadOnlyList<ItemGroupDto>>` co-located); `Validators/CreateItemGroupCommandValidator.cs` (CompanyId GreaterThan(0); Code NotEmpty().MaximumLength(20); Name NotEmpty().MaximumLength(200); Description MaximumLength(500).When(!IsNullOrWhiteSpace)); `DTOs/ItemGroupDto.cs` (`(long Id, long CompanyId, string Code, string Name, bool IsActive, string? Description)` — UomDto shape).
+**Api:** `Controllers/ItemGroupController.cs` (ItemController.cs:7-13 shape: Index/Create/Deactivate, ValidationException → ModelState).
+**Tests:** `tests/SmeAccounting.BankTests/ItemGroupAggregateTests.cs` (new); `Fakes.cs` += `FakeItemGroupRepository` (4 members, FakeSupplierGroupRepository shape) + `FakeItemRepository` (4 members, IItemRepository shape — needed for the GetItemQuery Map fact).
+
+### 6. BankTests edge cases (canon §1 list → SupplierGroupAggregateTests template, 14 + 4 append Facts)
+
+ItemGroup facts (SupplierGroupAggregateTests.cs 1:1 — 14 Facts):
+1. Ctor valid raises ItemGroupCreated with CompanyId (assert `Assert.Single(group.DomainEvents.OfType<ItemGroupCreated>())`, evt.CompanyId == 1)
+2. Ctor CompanyId 0 throws DomainException
+3. Ctor CompanyId -1 throws DomainException
+4. Ctor Code whitespace throws (string.Empty)
+5. Ctor Name whitespace throws ("  ")
+6. Deactivate sets IsActive false
+7. Validator valid passes
+8. Validator CompanyId 0 fails
+9. Validator Code empty fails
+10. Validator Name empty fails
+11. Validator over-length fails (Code 21 / Name 201 / Description 501 — one Fact, three asserts, SupplierGroup :94-102 shape)
+12. CreateItemGroupHandler happy path adds + saves (SaveCalledCount==1, `Assert.Equal(repository.Stored[0].Id, result.Id)`)
+13. DeactivateItemGroupHandler missing entity throws InvalidOperationException (Id 999)
+14. DeactivateItemGroupHandler happy path deactivates + saves (**`group.Id = 5` BEFORE AddAsync** — BaseEntity.Id public setter; SaveCalledCount==1)
+15. Company isolation: GetAllByCompanyAsync returns only requested-company rows (repo-level fact — seed two groups CompanyId 1 and 2, assert filter)
+
+Item-append Facts (same file, 4 Facts — **trap: `isStockItem=true` requires `uomId` (Item.cs:26 guard); use `new Item(1, "ITM1", "Item One", false, true, itemGroupId: 5)` or pass `uomId: 1`**):
+16. Item ctor ItemGroupId=0 throws DomainException (`itemGroupId: 0`)
+17. Item ctor ItemGroupId=5 sets ItemGroupId (assert `item.ItemGroupId == 5`)
+18. CreateItemCommandValidator ItemGroupId 0 fails when present (`ItemGroupId: 0`); null passes (covered by existing valid fact)
+19. GetItemQuery Map includes ItemGroupId — needs **FakeItemRepository** in Fakes.cs: seed `new Item(1, "ITM1", "Item One", false, true, itemGroupId: 5)` with `item.Id = 5`, AddAsync, `new GetItemHandler(repo).Handle(new GetItemQuery(5), ...)` → `result!.ItemGroupId == 5`
+
+Explicit `using SmeAccounting.Application.Handlers;` required (internal handlers, CS0246). Fakes must implement the exact port members or CS0535.
+
+### 7. Verification criteria (verifier)
+
+- Build 0 warnings / 0 errors (`dotnet build SmeAccounting.sln`); arch 22/22; BankTests ≥ 115 + 18 new Facts (115 baseline, MEMORY:271).
+- ItemGroupId reaches entity end-to-end: CreateItemHandler.cs:13 passes `request.ItemGroupId` (Fact 17/19 prove it).
+- Item ctor still 9 params, ItemGroupId LAST — existing Item callers compile unchanged (CreateItemHandler was the only callsite; controller compiles unchanged).
+- DbContext: DbSet after :40 + Ignore after :96; DI: AddScoped after :63 — adjacent placement, no other lines touched.
+- ItemConfiguration: column + `HasOne<ItemGroup>()...OnDelete(Restrict)` — never Cascade/SetNull.
+- Deactivate handler THROWS on missing (Fact 13) — not Item's return-false.
+- No migration scaffolded (G4 owns it); no `git add -A`; only ItemGroup-slice + Item-append files staged (business-partners WIP untouched).
+- ItemGroup entity has NO ParentId (C1); no hierarchy validation anywhere.
+
+---
+
+## Task-Specific Research — PriceList Slice
+
+**Date:** 2026-09-24. **Author:** researcher (G2 batch). **Task:** PLAN task 5 — PriceList + ItemPriceList vertical slice. **Source of truth:** "## Design Decisions (G1)" §3 (RESEARCH.md:737-818) + §0 canon (:622-645). All cited files re-read this research. **READ-ONLY** — zero src/ changes.
+
+### 1. Two entities, ONE slice — CONFIRMED
+
+PriceList (master) + ItemPriceList (child) = ONE executor task, adjacent files, one commit. PLAN.md:19 task 5. Design §3a + §3b both under "Built by: G2 slice, PLAN task 5".
+
+**Template paths (verified on disk):**
+
+| Role | Template | Files |
+|------|----------|-------|
+| PriceList (flat master) | Uom slice | `Domain/Entities/Uom.cs`, `Infrastructure/Persistence/Configurations/UomConfiguration.cs`, `Infrastructure/Repositories/EfUomRepository.cs`, `Application/Commands/CreateUomCommand.cs`, `Application/Validators/CreateUomCommandValidator.cs`, `Application/DTOs/UomDto.cs`, `Application/Queries/GetUomQuery.cs`, `Application/Handlers/GetUomHandler.cs`, `Api/Controllers/UomController.cs` |
+| PriceList port (4-member master) | ICustomerGroupRepository shape | `Domain/Ports/ICustomerGroupRepository.cs`; fake = `Fakes.cs:158-178` (FakeCustomerGroupRepository) |
+| ItemPriceList (child, effective-dated) | SupplierItem (port/child shape) + TaxRate (effective-dating/unique) + SupplierItemConfiguration (3-FK config) | `Domain/Entities/SupplierItem.cs` + `Domain/Entities/TaxRate.cs`; `Infrastructure/Persistence/Configurations/SupplierItemConfiguration.cs` + `TaxRateConfiguration.cs`; `Domain/Ports/ISupplierItemRepository.cs` (3 members); `Application/Commands/CreateSupplierItemCommand.cs` + `DeactivateSupplierItemCommand.cs`; `Application/Handlers/CreateSupplierItemHandler.cs` + `DeactivateSupplierItemHandler.cs`; `Application/DTOs/SupplierItemDto.cs`; `Application/Queries/GetSupplierItemQuery.cs`; `Api/Controllers/SupplierItemController.cs`; `tests/SmeAccounting.BankTests/SupplierItemAggregateTests.cs` (child test template, 15 Facts) |
+| ItemPriceList unique (versioning key) | TaxRateConfiguration.cs:46-47 | `HasIndex(e => new { e.CompanyId, e.TaxTypeId, e.RateValue, e.EffectiveFrom }).IsUnique()` — full unique incl EffectiveFrom |
+| ItemPriceList effective dating | TaxRate.cs:12-13 | `DateOnly EffectiveFrom` + `DateOnly? EffectiveTo` (nullable = indefinite) |
+| BankBranch (CompanyId, BankId, Code) | NOT the ItemPriceList template | BankBranch is the WarehouseLocation template (G3 task 8), not this slice |
+
+**Best child template verdict:** ItemPriceList = **SupplierItem port shape (3 members, no GetByCodeAsync) + TaxRate effective-dating/unique shape + SupplierItemConfiguration 3-FK Restrict config shape**. BankBranch is parent/child master (Code-bearing) — wrong shape for a price row.
+
+### 2. Currency handling — string codes CONFIRMED (design §3b correct)
+
+- **ExchangeRate.cs:9-11** — `string FromCurrencyCode` / `string ToCurrencyCode` (NOT FK to Currency entity). **ExchangeRate.cs:40-41** — `ToUpperInvariant()` normalization in domain ctor. This is the exact precedent the design cites.
+- **Money.cs:13** — `?? throw new ArgumentNullException` + no ISO validation → R23/R24 confirmed: scalar `decimal` + `string CurrencyCode(3)`, NOT the Money VO.
+- **Currency.cs** — entity exists (standalone master, `ArgumentException` legacy guard at :22-23) but NO entity in the codebase FKs to it for codes. `Company.FunctionalCurrencyCode` is string (global MEMORY:67). `BankAccount.CurrencyCode` is `string?` (deep-dive :400). **Design §3b string CurrencyCode(3) = codebase-consistent.**
+- **No FK to currencies table** anywhere for price/rate codes. Do NOT invent one.
+
+### 3. ⚠️ CurrencyCode guard contradiction in canonical §3b — RESOLVED (Option A)
+
+Canonical §3b BankTests (:814) lists "currencyCode ... lowercase throws" among **ctor** negatives, but the same block's ctor guard (:792) says "currencyCode 3 chars non-whitespace (normalize `ToUpperInvariant()`, ExchangeRate.cs:40 precedent)" and the positive list says "currencyCode normalized to uppercase". Lowercase 3-char input cannot both normalize AND throw.
+
+**Resolution — Option A (follow deep-dive + precedent + sibling block):**
+- Deep-dive source (:518): "currencyCode 3 chars non-whitespace (normalize ToUpperInvariant())" — lowercase accepted, normalized.
+- G3 sibling block §5 ItemSupplierPrice (:907) already corrected the same list to "currencyCode **invalid** throws" — NOT "lowercase". The §3b "lowercase" is the transcription outlier (MEMORY:21 transcription-drop pattern).
+- R23 (:1086): "Currency format (3 uppercase) validated at **Application layer**" — lowercase rejection belongs to the validator, not the ctor.
+- ExchangeRate.cs:40-41: normalize, never reject lowercase.
+
+**Executor must implement:** ctor guard = `string.IsNullOrWhiteSpace(currencyCode)` → DomainException + `currencyCode.Length != 3` → DomainException; then `CurrencyCode = currencyCode.ToUpperInvariant()`. Ctor-negative tests = empty / 2-char / 4-char. Validator-negative test = lowercase (`Matches("^[A-Z]{3}$")` rejects). Positive test "currencyCode normalized to uppercase" = pass `"usd"` → assert `"USD"`. Document the deviation from the literal "lowercase throws" line in the commit/STATUS (auditor-caught transcription inconsistency — same failure mode as G1's dropped null-guard, MEMORY:21).
+
+### 4. Validator patterns
+
+- **Cross-field Must precedent:** `CreateUomConversionCommandValidator.cs:14` — `RuleFor(x => x).Must(x => x.FromUomId != x.ToUomId).WithMessage(...)`; also `CreateInventoryAccountingConfigurationCommandValidator.cs:10`. Design's `RuleFor(x => x).Must(x => !x.EffectiveTo.HasValue || x.EffectiveTo >= x.EffectiveFrom).WithMessage("EffectiveTo must be null or on/after EffectiveFrom.")` follows this exact shape.
+- **Currency string rule:** `NotEmpty().Length(3).Matches("^[A-Z]{3}$")` — NO existing validator precedent in codebase (ExchangeRate has no CQRS slice — entity + repo only). Rule is new but locked by design §3b :808 + global MEMORY:15.
+- **Domain guard effectiveTo:** TaxRate ctor (:19-46) does NOT validate effectiveTo — the ItemPriceList ctor guard "effectiveTo null-or-on/after-effectiveFrom (DomainException)" is design-mandated NEW (both domain + validator, per :792/:808).
+- **UnitPrice >= 0:** TaxRate.cs:32-33 `rateValue < 0` guard precedent.
+- **Validator style:** English messages, `GreaterThan(0).WithMessage("...")` (CreateSupplierItemCommandValidator.cs:10-17 shape).
+
+### 5. DbContext + DI insertion points (exact, verified)
+
+**SmeAccountingDbContext.cs** (140 lines):
+- DbSets :10-54 — insert after **line 40** (`public DbSet<Item> Items => Set<Item>();`): `public DbSet<PriceList> PriceLists => Set<PriceList>();` + `public DbSet<ItemPriceList> ItemPriceLists => Set<ItemPriceList>();` (item-adjacent; DbSet style is `=> Set<T>()` everywhere).
+- Ignore :61-113 — insert after **line 96** (`modelBuilder.Ignore<ItemCreated>();`): `modelBuilder.Ignore<PriceListCreated>();` + `modelBuilder.Ignore<ItemPriceListCreated>();`. **Both DbSet AND Ignore mandatory** (MEMORY:110).
+
+**DependencyInjection.cs** — insert after **line 63** (`services.AddScoped<IItemRepository, EfItemRepository>();`): `services.AddScoped<IPriceListRepository, EfPriceListRepository>();` + `services.AddScoped<IItemPriceListRepository, EfItemPriceListRepository>();`. Re-read shared files before edit (parallel-task race, MEMORY:265).
+
+### 6. Fakes.cs — what's needed
+
+- **FakePriceListRepository** — 4 members (master shape): `GetByIdAsync(long)`, `GetByCodeAsync(string, long)`, `GetAllByCompanyAsync(long)`, `AddAsync(PriceList)` + `Stored` — copy FakeCustomerGroupRepository (Fakes.cs:158-178) verbatim shape.
+- **FakeItemPriceListRepository** — 3 members (child shape): `GetByIdAsync(long)`, `GetAllByCompanyAsync(long)`, `AddAsync(ItemPriceList)` + `Stored` — copy FakeSupplierItemRepository (Fakes.cs:202-219) verbatim shape. **NO GetByCodeAsync** (ISupplierItemRepository.cs:5-10 exact — missing member = CS0535, MEMORY:269).
+- Existing item/supplier fakes: FakeSupplierItemRepository (child template) + FakeCustomerGroupRepository/FakeSupplierGroupRepository (master template) already in Fakes.cs. **No FakeItemRepository/FakeUomRepository exist and none are needed** — handlers inject only the slice's own repo + IUnitOfWork (CreateSupplierItemHandler.cs:8-10 shape).
+- FakeUnitOfWork (Fakes.cs:221-230) reused — `SaveCalledCount` assertion pattern.
+- InternalsVisibleTo("SmeAccounting.BankTests") confirmed at Application.csproj:14 — internal handlers testable, zero csproj edits.
+
+### 7. BankTests edge cases (from §3 lists, verified against templates)
+
+**PriceListAggregateTests** (master — CustomerGroupAggregateTests shape): positive — ctor valid raises PriceListCreated with CompanyId; validator valid passes; handler happy path adds + saves (SaveCalledCount==1). negative — ctor CompanyId 0/-1 throws DomainException; Code/Name whitespace throws; validator CompanyId 0, Code empty/21, Name empty/201, Description 501 fail; deactivate handler missing entity throws **InvalidOperationException** (DeactivateSupplierItemHandler.cs:17-18 pattern — design chose throw, NOT DeactivateItemHandler's return-false). deactivation — Deactivate sets IsActive false; deactivate handler happy path (**Id=5 before AddAsync**, MEMORY:269). company isolation — GetAllByCompanyAsync filters.
+
+**ItemPriceListAggregateTests** (child — SupplierItemAggregateTests shape): positive — ctor valid raises ItemPriceListCreated with CompanyId; **currencyCode "usd" normalized to "USD"**; validator valid passes; handler happy path. negative — ctor CompanyId/PriceListId/ItemId 0/-1 throws; unitPrice negative throws; currencyCode empty/2-char/4-char throws (NOT lowercase — see §3); effectiveTo before effectiveFrom throws; validator each rule fails (incl. lowercase currency, EffectiveTo < EffectiveFrom); deactivate handler missing entity throws InvalidOperationException. deactivation — Deactivate sets IsActive false; deactivate handler happy path (Id=5). company isolation — GetAllByCompanyAsync filters.
+
+**Command shapes (design-locked):** `DeactivatePriceListCommand(long Id)` + `DeactivatePriceListResult(bool Success)` (DeactivateItemCommand.cs:5-7 shape); `DeactivateItemPriceListCommand(long Id)` (design says Id — note DeactivateSupplierItemCommand uses `SupplierItemId` param name; design chose Id, follow design). `GetItemPriceListQuery(long Id)` (GetItemQuery.cs:6 shape).
+
+### 8. Pricing-integrity rules (goal §8 → design encoding)
+
+- **Effective dates explicit:** EffectiveFrom required (DateOnly, non-nullable) + EffectiveTo? nullable = indefinite (TaxRate.cs:12-13). Effective-date query contract (future): `EffectiveFrom <= date AND (EffectiveTo IS NULL OR EffectiveTo >= date) AND IsActive` (:802).
+- **No silent overwrite = versioning not editing:** port has NO update path — `GetByIdAsync`/`GetAllByCompanyAsync`/`AddAsync` only (ISupplierItemRepository shape). Only write = AddAsync of a NEW version row. No UpdateAsync, no edit command. Anchored at RESEARCH.md:174/:198 (historical-integrity axis: "no silent overwrite of prices/tax/valuation — new versions/effective-dates instead").
+- **Duplicate active price prevention = DB uniqueness:** full unique `(CompanyId, PriceListId, ItemId, CurrencyCode, EffectiveFrom)` (:798) — versioning key, TaxRate precedent. R10: no reliance on app-level pre-checks (GetByCodeAsync is UX pre-check only, TOCTOU-ineffective). Deactivate→re-add same date collides — accepted (R5-style, no Reactivate).
+- **Scope guard:** price master data only — no discount math, no price calculation, no currency conversion (R27, :816).
+
+### 9. Slice file inventory (executor checklist)
+
+**CREATE (~26):** Domain — `PriceList.cs`, `ItemPriceList.cs` (Entities), `PriceListCreated.cs`, `ItemPriceListCreated.cs` (Events), `IPriceListRepository.cs`, `IItemPriceListRepository.cs` (Ports). Infrastructure — `PriceListConfiguration.cs`, `ItemPriceListConfiguration.cs` (Configurations), `EfPriceListRepository.cs`, `EfItemPriceListRepository.cs` (Repositories). Application — `CreatePriceListCommand.cs`, `CreateItemPriceListCommand.cs`, `DeactivatePriceListCommand.cs`, `DeactivateItemPriceListCommand.cs` (Commands), `CreatePriceListCommandValidator.cs`, `CreateItemPriceListCommandValidator.cs` (Validators), `CreatePriceListHandler.cs`, `CreateItemPriceListHandler.cs`, `DeactivatePriceListHandler.cs`, `DeactivateItemPriceListHandler.cs`, `GetPriceListHandler.cs`, `GetItemPriceListHandler.cs` (Handlers), `PriceListDto.cs`, `ItemPriceListDto.cs` (DTOs), `GetPriceListQuery.cs`, `GetItemPriceListQuery.cs` (Queries). Api — `PriceListController.cs`, `ItemPriceListController.cs`. Tests — `PriceListAggregateTests.cs`, `ItemPriceListAggregateTests.cs`.
+
+**EDIT (3):** `SmeAccountingDbContext.cs` (2 DbSet + 2 Ignore), `DependencyInjection.cs` (2 AddScoped), `tests/SmeAccounting.BankTests/Fakes.cs` (2 fakes).
+
+**NO migration** (PLAN: G2/G3 code+tests only; price_lists + item_price_lists tables land in G4 migration #19). **NO new enums** (no BarcodeType here — that's ItemBarcode). **NO csproj/sln edits** (InternalsVisibleTo confirmed).
+
+**Commit hygiene:** stage ONLY the ~29 files above; business-partners WIP (~69 files, still uncommitted) must stay unstaged. Never `git add -A`.
+
+---
+
+## Task-Specific Research — ItemBarcode Slice
+
+**Date:** 2026-09-24. **Author:** researcher (G2 batch). **Task:** PLAN task 4 — ItemBarcode/GTIN vertical slice. **Source of truth:** RESEARCH.md "## Design Decisions (G1)" §2 (lines 689–735) + §0 canon (lines 622–645) — follow verbatim. **Status:** executor-ready spec. **READ-ONLY research — zero src/ changes.**
+
+### 1. Template slice paths (confirmed on disk)
+
+**Primary template — Item slice (master with nullable FKs, DbSet style):**
+- `src/SmeAccounting.Domain/Entities/Item.cs` (41 lines) — ctor guards, Deactivate()
+- `src/SmeAccounting.Domain/Events/ItemCreated.cs` — minimal event shape
+- `src/SmeAccounting.Domain/Ports/IItemRepository.cs` — 4-member master port
+- `src/SmeAccounting.Infrastructure/Persistence/Configurations/ItemConfiguration.cs` — snake_case, nullable FK HasOne<Uom> Restrict (:26), xmin (:30)
+- `src/SmeAccounting.Infrastructure/Repositories/EfItemRepository.cs` — tracked GetById, AsNoTracking GetAllByCompany, AddAsync
+- `src/SmeAccounting.Application/Commands/CreateItemCommand.cs` — CompanyId FIRST, result co-located
+- `src/SmeAccounting.Application/Handlers/CreateItemHandler.cs` — construct → AddAsync → SaveChangesAsync → result
+- `src/SmeAccounting.Application/Validators/CreateItemCommandValidator.cs` — FluentValidation
+- `src/SmeAccounting.Application/Queries/GetItemQuery.cs` — GetXQuery + GetXsByCompanyQuery co-located
+- `src/SmeAccounting.Application/Handlers/GetItemHandler.cs` — ONE class implements both queries + private static Map (:24)
+- `src/SmeAccounting.Application/DTOs/ItemDto.cs`
+- `src/SmeAccounting.Application/Commands/DeactivateItemCommand.cs` — `DeactivateXxxCommand(long Id)` + `Result(bool Success)`
+- `src/SmeAccounting.Application/Handlers/DeactivateItemHandler.cs` — ⚠️ returns `Result(false)` on missing (Item style) — **NOT the ItemBarcode style** (see below)
+- `src/SmeAccounting.Api/Controllers/ItemController.cs` — thin, raw-params Create (:8)
+
+**Best child/link template — SupplierItem slice (partial-unique HasFilter, 3-member port, Ignore-only DbContext):**
+- `src/SmeAccounting.Domain/Entities/SupplierItem.cs` — child ctor guards (companyId/supplierId/itemId > 0), Deactivate()
+- `src/SmeAccounting.Domain/Events/SupplierItemCreated.cs`
+- `src/SmeAccounting.Domain/Ports/ISupplierItemRepository.cs` — **3 members: GetByIdAsync, GetAllByCompanyAsync, AddAsync — NO GetByCodeAsync** (canonical §2 port shape for ItemBarcode)
+- `src/SmeAccounting.Infrastructure/Persistence/Configurations/SupplierItemConfiguration.cs` — **partial unique `HasIndex(...).IsUnique().HasFilter("\"is_active\"")` (:30–32)** — first HasFilter in codebase; ItemBarcode adds a SECOND HasFilter `"is_primary" AND "is_active"` (:714 canonical)
+- `src/SmeAccounting.Infrastructure/Repositories/EfSupplierItemRepository.cs` — `_context.Set<SupplierItem>()` style, OrderBy(SupplierId).ThenBy(ItemId)
+- `src/SmeAccounting.Application/Commands/CreateSupplierItemCommand.cs` — CompanyId FIRST
+- `src/SmeAccounting.Application/Handlers/CreateSupplierItemHandler.cs`
+- `src/SmeAccounting.Application/Validators/CreateSupplierItemCommandValidator.cs` — GreaterThan(0) with English messages
+- `src/SmeAccounting.Application/Handlers/DeactivateSupplierItemHandler.cs` — **throws `InvalidOperationException` on missing (:17–18)** — THIS is the ItemBarcode deactivate-handler template (canonical §2: "deactivate handler missing entity throws InvalidOperationException")
+- `src/SmeAccounting.Application/Queries/GetSupplierItemQuery.cs` + `GetSupplierItemsByCompanyQuery.cs` + `GetSupplierItemHandler.cs` + `GetSupplierItemsByCompanyHandler.cs` — NOTE: SupplierItem uses `long SupplierItemId` param names; **canonical §2 says `GetItemBarcodeQuery(long Id)`** — follow canonical
+- `src/SmeAccounting.Api/Controllers/SupplierItemController.cs` — ViewModel-based Create
+- `src/SmeAccounting.Api/ViewModels/CreateSupplierItemViewModel.cs`
+- `tests/SmeAccounting.BankTests/SupplierItemAggregateTests.cs` (146 lines) — **the test template** (see §5)
+
+**Enum-in-controller precedent — PaymentMethod slice (arch-legal ValueObjects usage):**
+- `src/SmeAccounting.Domain/ValueObjects/PaymentMethodCategory.cs` — enum in ValueObjects/
+- `src/SmeAccounting.Infrastructure/Persistence/Configurations/PaymentMethodConfiguration.cs` — `HasConversion<string>()` (:31–33)
+- `src/SmeAccounting.Application/Commands/CreatePaymentMethodCommand.cs` — command carries enum type (ValueObjects using)
+- `src/SmeAccounting.Application/Handlers/GetPaymentMethodHandler.cs` — DTO maps `entity.Category.ToString()` (:22)
+- `src/SmeAccounting.Api/Controllers/PaymentMethodController.cs` — `using SmeAccounting.Domain.ValueObjects;` (:7) + `Enum.Parse<PaymentMethodCategory>(model.Category)` (:38) — **arch-legal** (LayerCouplingTests bans only Domain.Entities :12 and Domain.Ports :27)
+- `src/SmeAccounting.Api/ViewModels/CreatePaymentMethodViewModel.cs` — enum as `string Category` (:19)
+- `tests/SmeAccounting.BankTests/PaymentMethodAggregateTests.cs:108` — `(PaymentMethodCategory)999` IsInEnum-fail test pattern
+
+**Other child precedents checked:** BankBranch (full unique `(CompanyId, BankId, Code)` — NOT partial; master-child, not IsActive-link) and ItemCategory (self-ref ParentId, full unique `(CompanyId, Code)`) — neither matches ItemBarcode's IsActive-only link semantics; SupplierItem is the correct template. ItemCategoryConfiguration.cs:24 shows self-ref HasOne<ItemCategory> Restrict (not needed for ItemBarcode).
+
+### 2. Codebase facts nailed down
+
+**Enum placement:** `src/SmeAccounting.Domain/ValueObjects/` EXISTS — 18 files (AccountCode, AccountType, Currency, ExchangeRateType, FilingFrequency, FiscalYearStatus, Money, NormalBalance, PaymentMethodCategory, PaymentTermType, PeriodStatus, PeriodType, TaxAccountingMappingType, TaxAuthorityLevel, TaxCategory, TaxPeriodStatus, TaxTreatmentType, VoucherCategory). **No BarcodeType.cs yet** — create `Domain/ValueObjects/BarcodeType.cs` with `GTIN8, GTIN12, GTIN13, GTIN14, Other` (canonical :711). No `Domain/Enums/` dir (T1 lesson, MEMORY:112).
+
+**Enum EF conversion:** `HasConversion<string>()` confirmed — PaymentMethodConfiguration.cs:31–33 (`Category` → `category`). ItemBarcode config: `builder.Property(e => e.BarcodeType).HasColumnName("barcode_type").HasConversion<string>();`.
+
+**Validator custom-check precedent:** NO `private static` helper exists in any validator (grep = 0 hits). Closest patterns: (a) `RuleFor(x => x).Must(x => ...)` inline lambda — CreateUomConversionCommandValidator.cs:14 (`FromUomId != ToUomId`), CreateItemCommandValidator.cs:15, CreateInventoryAccountingConfigurationCommandValidator.cs:10; (b) `.IsInEnum()` — PaymentMethod:22, TaxType:19, VoucherType:19, etc.; (c) `.Matches(@"^[A-Z]{3}$")` — CreateBankAccountCommandValidator.cs:32. **The GS1 `HasValidCheckDigit` private static helper will be the FIRST such helper in the codebase** — pattern: `RuleFor(x => x).Must(x => HasValidCheckDigit(x.Barcode, x.BarcodeType)).When(x => x.BarcodeType != BarcodeType.Other)` (canonical :713). The `.When` on a whole-command `RuleFor(x => x)` is proven (UomConversion :14).
+
+**Cross-entity/lookup validation:** validators are pure (no repo injection anywhere — grep confirms zero validators take repositories). Cross-entity checks live in HANDLERS (CreateUomConversionHandler.cs:15 constructs directly; class-compat check is a G2 UomClass task concern). ItemBarcode needs NO lookup — FK Restrict + ItemId>0 validator guard suffice (canonical §2 has no handler null-guard for ItemBarcode, unlike ItemReorderLevel R25).
+
+**GS1 Mod-10 algorithm — VERIFIED by execution (python3, this research):**
+- Algorithm: data = barcode minus last digit; iterate data digits right-to-left from rightmost, weights 3,1,3,1,… with 3 on rightmost data digit; `sum = Σ(digit × weight)`; `checkDigit = (10 − (sum % 10)) % 10`; valid iff checkDigit == last digit. Length-match enforced inside (barcode length must equal type's data digits + 1: GTIN8→8, GTIN12→12, GTIN13→13, GTIN14→14).
+- `6291041500213` → data `629104150021`, sum=57, cd=3 == last 3 ✓ (matches canonical :712)
+- `5012345670003` → data `501234567000`, sum=57, cd=3 == last 3 ✓ (matches canonical :712)
+- Negative vector: `6291041500214` → computed cd=3, last=4 → INVALID (use in "invalid check digit fails" test)
+- Well-known GS1 vectors also verified: GTIN-8 `12345670` (cd=0), GTIN-12 `012345678905` (cd=5), GTIN-14 `00012345678905` (cd=5) — available if executor wants per-type vectors
+- **Recommended implementation detail (not in canonical, safe addition):** reject non-digit barcodes inside HasValidCheckDigit (`!barcode.All(char.IsDigit)` → false) — avoids garbage char arithmetic on letters; only makes validation stricter for malformed GTINs, consistent with GTIN semantics. Length-match is the canonical mandate; digit-check is a compatible strengthening. Also: HasValidCheckDigit must return false (never throw) for unknown enum values — the `(Enum)999` case hits both IsInEnum AND the Must rule (999 != Other), so the helper must handle unknown types gracefully (default → length 0 → false).
+
+### 3. DbContext + DI insertion points (exact, verified by read)
+
+**`src/SmeAccounting.Infrastructure/Persistence/SmeAccountingDbContext.cs`** (140 lines, 45 DbSets, 52 Ignore lines):
+- **DbSet:** insert `public DbSet<ItemBarcode> ItemBarcodes => Set<ItemBarcode>();` AFTER line 40 (`public DbSet<Item> Items => Set<Item>();`), BEFORE line 41 (ServiceItems). Style decision: DbSet (inventory-module norm — Item/ItemCategory/Warehouse/UomConversion/ServiceItem all have DbSets; only business-partners entities are Ignore-only). Repo then uses `_context.ItemBarcodes` (EfItemRepository style). Alternative (Ignore-only + `Set<ItemBarcode>()`, SupplierItem style) also works — but DbSet keeps inventory-module consistency and gives typed repo access.
+- **Ignore:** insert `modelBuilder.Ignore<ItemBarcodeCreated>();` AFTER line 96 (`modelBuilder.Ignore<ItemCreated>();`), BEFORE line 97 (ServiceItemCreated). Both DbSet AND Ignore are mandatory (MEMORY:110).
+- Config auto-discovery: `ApplyConfigurationsFromAssembly` at :115 — no config registration needed.
+
+**`src/SmeAccounting.Infrastructure/DependencyInjection.cs`** (81 lines):
+- Insert `services.AddScoped<IItemBarcodeRepository, EfItemBarcodeRepository>();` AFTER line 63 (`services.AddScoped<IItemRepository, EfItemRepository>();`), BEFORE line 64 (IServiceItemRepository). Adjacent-to-Item placement (MEMORY:265 race rule — re-read shared files before edit).
+
+### 4. Fakes.cs — what's needed
+
+**`tests/SmeAccounting.BankTests/Fakes.cs`** (235 lines) — current fakes: FakeBankRepository, FakePaymentMethodRepository, FakePostingReferenceRepository, FakeJournalEntryRepository (has `_nextId` counter), FakeOpeningBalancePeriodRepository, FakeVoucherTypeRepository (counter), FakeDocumentNumberingSeriesRepository, FakeCustomerGroupRepository, FakeSupplierGroupRepository, FakeSupplierItemRepository, FakeUnitOfWork, FakeClock.
+- **NO IItemRepository fake exists** (no ItemAggregateTests.cs in BankTests — AGENTS.md's "ItemAggregateTests.cs" reference is STALE; confirmed by ls: 12 test files, none for Item). ItemBarcode tests need NO IItemRepository fake — CreateItemBarcodeHandler takes only IItemBarcodeRepository + IUnitOfWork (SupplierItem handler shape, no Item lookup).
+- **ADD `FakeItemBarcodeRepository : IItemBarcodeRepository`** — 3 members (GetByIdAsync, GetAllByCompanyAsync, AddAsync) + `Stored` property, SupplierItem fake shape (Fakes.cs:202–219). Plain Add (NO `_nextId` counter) — ItemBarcode ctor has no own-Id>0 guard, transient Id=0 OK (MEMORY:269). Deactivate-happy fact sets `entity.Id = 5` BEFORE AddAsync.
+- FakeUnitOfWork (SaveCalledCount) + FakeClock already exist — reuse.
+
+### 5. Edge cases for BankTests (`ItemBarcodeAggregateTests.cs`, SupplierItemAggregateTests.cs template)
+
+Test file usings: `SmeAccounting.Application.Commands`, `SmeAccounting.Application.Handlers` (internal — CS0246 without), `SmeAccounting.Application.Validators`, `SmeAccounting.Domain.Entities`, `SmeAccounting.Domain.Events`, `SmeAccounting.Domain.Exceptions`, `SmeAccounting.Domain.ValueObjects` (BarcodeType).
+
+Facts (canonical §2 :731 + task-prompt additions):
+
+| # | Fact | Vector / setup |
+|---|------|----------------|
+| 1 | Ctor valid raises ItemBarcodeCreated with CompanyId | `new ItemBarcode(1, 2, "6291041500213", BarcodeType.GTIN13)` — assert CompanyId=1, ItemId=2, Barcode, IsActive=true, IsPrimary=false, single event, evt.CompanyId=1 |
+| 2 | Validator valid GTIN-13 passes | `6291041500213`, GTIN13 |
+| 3 | Validator valid GTIN-13 passes (2nd vector) | `5012345670003`, GTIN13 |
+| 4 | Validator Other skips check digit | `new CreateItemBarcodeCommand(1, 2, "INTERNAL-CODE-1", BarcodeType.Other)` passes |
+| 5 | Handler happy path adds + saves | FakeItemBarcodeRepository + FakeUnitOfWork; Assert.Single(Stored), result.Id == stored[0].Id, SaveCalledCount==1 |
+| 6 | Ctor CompanyId 0/-1 throws DomainException | |
+| 7 | Ctor ItemId 0/-1 throws DomainException | |
+| 8 | Ctor barcode whitespace throws | `" "` |
+| 9 | Ctor barcode length 21 throws | `new string('0', 21)` |
+| 10 | Ctor UomId 0/-1 throws DomainException | `uomId: 0` / `uomId: -1` |
+| 11 | Validator invalid check digit fails | `6291041500214` (computed cd=3, last=4), GTIN13 |
+| 12 | Validator wrong-length GTIN fails | e.g. `629104150021` (12 chars) with GTIN13 — length-match inside helper |
+| 13 | Validator BarcodeType (Enum)999 fails IsInEnum | `(BarcodeType)999` — PaymentMethodAggregateTests.cs:108 pattern |
+| 14 | Deactivate handler missing entity throws InvalidOperationException | `DeactivateItemBarcodeCommand(999)` — SupplierItem handler template (:17–18) |
+| 15 | Deactivate sets IsActive false | |
+| 16 | Deactivate handler happy path deactivates + saves | `entity.Id = 5` BEFORE AddAsync; assert IsActive false + SaveCalledCount==1 |
+| 17 | Company isolation — GetAllByCompanyAsync filters by company | repo-level fact: add rows for company 1 + 2, assert only company-1 rows returned |
+| 18 | **Deactivate leaves IsPrimary=true** (task-prompt "R2 re-add" proxy) | ctor `isPrimary: true` → Deactivate() → assert IsActive=false AND IsPrimary=true — documents WHY the primary-unique filter must be `"is_primary" AND "is_active"` (auditor correction, MEMORY:296) |
+
+**"Deactivate primary → re-add new primary works" is a DB-level property, NOT a BankTests fact:** List-backed fakes enforce no unique indexes; the re-add behavior is delivered by the two HasFilter partial-unique indexes in ItemBarcodeConfiguration (canonical :714) and verified at G4 migration review (filter expressions rendered in CreateIndex) + SupplierItem precedent (MEMORY:263/275). Fact #18 is the testable proxy that locks the two-flag filter rationale.
+
+Optional extras (not in canonical list, safe): validator UomId 0 fails (`GreaterThan(0).When(HasValue)`); ctor isPrimary=true sets IsPrimary; ctor UomId set persists.
+
+### 6. Executor checklist (files to create — 17 new + 2 wiring)
+
+Domain (4): `Entities/ItemBarcode.cs`, `Events/ItemBarcodeCreated.cs`, `Ports/IItemBarcodeRepository.cs`, `ValueObjects/BarcodeType.cs`
+Infrastructure (2): `Persistence/Configurations/ItemBarcodeConfiguration.cs`, `Repositories/EfItemBarcodeRepository.cs`
+Application (8): `Commands/CreateItemBarcodeCommand.cs` (+CreateItemBarcodeResult), `Commands/DeactivateItemBarcodeCommand.cs` (+DeactivateItemBarcodeResult), `Handlers/CreateItemBarcodeHandler.cs`, `Handlers/DeactivateItemBarcodeHandler.cs`, `Handlers/GetItemBarcodeHandler.cs` (one class, both queries, private static Map — GetItemHandler shape), `Validators/CreateItemBarcodeCommandValidator.cs` (GS1 helper), `Queries/GetItemBarcodeQuery.cs` (+GetItemBarcodesByCompanyQuery co-located), `DTOs/ItemBarcodeDto.cs`
+Api (1): `Controllers/ItemBarcodeController.cs` (+ optional `ViewModels/CreateItemBarcodeViewModel.cs`)
+Wiring (2): `SmeAccountingDbContext.cs` (DbSet after :40 + Ignore after :96), `DependencyInjection.cs` (AddScoped after :63)
+Tests (1): `tests/SmeAccounting.BankTests/ItemBarcodeAggregateTests.cs` (+ FakeItemBarcodeRepository in Fakes.cs)
+
+**Controller shape decision:** canonical §0 gives ItemController.cs:7–13 shape (raw-params Create); the enum forces either raw `string barcodeType` + `Enum.Parse<BarcodeType>` (ItemController-faithful) or ViewModel + Enum.Parse (PaymentMethod/SupplierItem precedent). Either is arch-legal (ValueObjects using OK — LayerCouplingTests bans only Domain.Entities/Domain.Ports). Recommend the PaymentMethodController pattern (ViewModel `string BarcodeType` + `Enum.Parse<BarcodeType>(model.BarcodeType)` + `using SmeAccounting.Domain.ValueObjects;`) — it is the only existing enum-in-controller precedent and handles the 7-field command cleanly. If raw-params chosen, `Enum.Parse<BarcodeType>(barcodeType)` still required (MVC model binder cannot bind enum from string without a TypeConverter — PaymentMethod G2 lesson, MEMORY:243).
+
+**Entity ctor (canonical :707):** `(long companyId, long itemId, string barcode, BarcodeType barcodeType, long? uomId = null, bool isPrimary = false)` — guards: companyId>0, itemId>0, barcode non-whitespace, barcode.Length ≤ 20, `uomId.HasValue && uomId <= 0` (Supplier.cs:31–32 guard shape). NO Enum.IsDefined guard (validator-only enum guard, PaymentMethod precedent). Deactivate() sets IsActive=false only — does NOT touch IsPrimary (fact #18).
+
+**EF config (canonical :713–715):** table `item_barcodes`; columns id/company_id/item_id/barcode(20)/barcode_type(string)/uom_id/is_primary/is_active/xmin; TWO partial uniques — `HasIndex(e => new { e.CompanyId, e.Barcode }).IsUnique().HasFilter("\"is_active\"")` + `HasIndex(e => new { e.CompanyId, e.ItemId }).IsUnique().HasFilter("\"is_primary\" AND \"is_active\"")` (auditor-corrected, MEMORY:296); 3 FKs Restrict (Company, Item, Uom — Uom FK nullable, ItemConfiguration.cs:26 pattern); xmin last.
+
+**NO migration in G2** (PLAN: G2/G3 code+tests only; item_barcodes table lands in G4 migration #19 — 9 CreateTable + 4 HasFilter partial uniques, RESEARCH.md:645). Build must stay 0/0 with ItemBarcodeConfiguration referencing ItemBarcode — entity exists, compiles.
+
+**Commit hygiene:** stage ONLY the ~20 files above; business-partners WIP (~69 files, uncommitted) must stay unstaged. Never `git add -A`.
