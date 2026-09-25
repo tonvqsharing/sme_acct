@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using SmeAccounting.Infrastructure.Persistence;
@@ -11,9 +12,11 @@ using SmeAccounting.Infrastructure.Persistence;
 namespace SmeAccounting.Infrastructure.Migrations
 {
     [DbContext(typeof(SmeAccountingDbContext))]
-    partial class SmeAccountingDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260925055206_AddInventoryModule03")]
+    partial class AddInventoryModule03
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
