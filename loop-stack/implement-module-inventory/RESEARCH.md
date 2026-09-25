@@ -1541,3 +1541,111 @@ Tests (1): `tests/SmeAccounting.BankTests/ItemBarcodeAggregateTests.cs` (+ FakeI
 **NO migration in G2** (PLAN: G2/G3 code+tests only; item_barcodes table lands in G4 migration #19 — 9 CreateTable + 4 HasFilter partial uniques, RESEARCH.md:645). Build must stay 0/0 with ItemBarcodeConfiguration referencing ItemBarcode — entity exists, compiles.
 
 **Commit hygiene:** stage ONLY the ~20 files above; business-partners WIP (~69 files, uncommitted) must stay unstaged. Never `git add -A`.
+
+## Task-Specific Research — ItemReorderLevel Slice
+
+**Date:** 2026-09-24. **Agent:** researcher. **Scope:** executor-ready spec for ItemReorderLevel vertical slice.
+
+### 1. G1 Design §4 summary — ItemReorderLevel
+Source: RESEARCH.md “Design Decisions (G1)” §4; table `item_reorder_levels`.
+
+Fields: CompanyId long; ItemId long; WarehouseId long?; MinimumQuantity decimal(18,3); MaximumQuantity decimal?(18,3); IsActive bool.
+
+Ctor `(long companyId, long itemId, decimal minimumQuantity, long? warehouseId = null, decimal? maximumQuantity = null)` with DomainException guards (companyId>0, itemId>0, warehouseId HasValue && <=0, minimumQuantity>=0, maximumQuantity null-or >= minimumQuantity). Private parameterless ctor EF.
+
+Unique constraints — TWO partial indexes (NULL-distinct trap):
+- `HasIndex(e => new { e.CompanyId, e.ItemId }).IsUnique().HasFilter("\"warehouse_id\" IS NULL AND \"is_active\"")`
+- `HasIndex(e => new { e.CompanyId, e.ItemId, e.WarehouseId }).IsUnique().HasFilter("\"warehouse_id\" IS NOT NULL AND \"is_active\"")`
+FKs Company/Item/Warehouse all OnDelete(Restrict).
+
+Soft-delete IsActive; Deactivate() sets false.
+
+Handler guard R25 — stock-item-only:
+CreateItemReorderLevelHandler loads Item; **null-guard FIRST** `if (item is null) throw new InvalidOperationException($"Item {itemId} not found.")`; then `if (!item.IsStockItem) throw new DomainException("Reorder level requires a stock item.")`.
+
+Event: `ItemReorderLevelCreated(long ItemReorderLevelId, long CompanyId, DateTimeOffset OccurredOn)`, minimal.
+
+Port `IItemReorderLevelRepository` child shape: GetByIdAsync, GetAllByCompanyAsync, AddAsync.
+
+Command/Validator:
+`CreateItemReorderLevelCommand(long CompanyId, long ItemId, decimal MinimumQuantity, long? WarehouseId = null, decimal? MaximumQuantity = null) : IRequest<CreateItemReorderLevelResult>`
+`DeactivateItemReorderLevelCommand(long Id) : IRequest<DeactivateItemReorderLevelResult>`
+Validator: CompanyId/ItemId >0; WarehouseId >0.When(HasValue); MinimumQuantity >=0; Must `!MaximumQuantity.HasValue || MaximumQuantity >= MinimumQuantity`.
+
+DTO: `ItemReorderLevelDto(long Id, long CompanyId, long ItemId, long? WarehouseId, decimal MinimumQuantity, decimal? MaximumQuantity, bool IsActive)`. Queries GetItemReorderLevelQuery/GetItemReorderLevelsByCompanyQuery co-located.
+
+Controller thin MediatR.
+
+### 2. Existing ports to fake
+IItemRepository 4 members: GetByIdAsync, GetByCodeAsync(Code,CompanyId), GetAllByCompanyAsync, AddAsync.
+IWarehouseRepository 4 members: GetByIdAsync, GetByCodeAsync, GetAllByCompanyAsync, AddAsync.
+Item.IsStockItem confirmed in src/SmeAccounting.Domain/Entities/Item.cs:13.
+
+### 3. New port shape
+`IItemReorderLevelRepository` (child) — GetByIdAsync, GetAllByCompanyAsync, AddAsync.
+
+### 4. Wiring slots — post-G2
+SmeAccountingDbContext.cs: DbSet<ItemPriceList> line 45; insert `public DbSet<ItemReorderLevel> ItemReorderLevels => Set<ItemReorderLevel>();` after 45.
+Ignore: `modelBuilder.Ignore<ItemPriceListCreated>();` line 106; insert `modelBuilder.Ignore<ItemReorderLevelCreated>();` after.
+DependencyInjection.cs: last AddScoped before singletons ~81; insert `services.AddScoped<IItemReorderLevelRepository, EfItemReorderLevelRepository>();` after.
+Fakes.cs tail ~402; add FakeItemReorderLevelRepository after existing fakes.
+
+### 5. File list CREATE
+Domain: ItemReorderLevel.cs, ItemReorderLevelCreated.cs, IItemReorderLevelRepository.cs
+Infra: ItemReorderLevelConfiguration.cs, EfItemReorderLevelRepository.cs
+Application: CreateItemReorderLevelCommand.cs (+Result), DeactivateItemReorderLevelCommand.cs (+Result), CreateItemReorderLevelCommandValidator.cs, GetItemReorderLevelQuery.cs (+GetItemReorderLevelsByCompanyQuery), CreateItemReorderLevelHandler.cs, DeactivateItemReorderLevelHandler.cs, GetItemReorderLevelHandler.cs, ItemReorderLevelDto.cs
+Api: ItemReorderLevelController.cs
+Tests: ItemReorderLevelAggregateTests.cs
+
+EDIT: none (no append surface). Wiring edits only.
+
+### 6. Tests spec ~20 facts
+Ctor valid raises event; handler happy path saves; handler stock-item passes; deactivate sets false; deactivate handler Id=5 happy; company isolation; ctor guards CompanyId/ItemId/WarehouseId/Min/Max; validator guards; handler item-not-found → InvalidOperationException (null-guard first); handler non-stock → DomainException; deactivate missing → InvalidOperationException.
+
+Quality: domain events minimal, DbContext Ignore, DI AddScoped adjacent, decimal(18,3), partial uniques, xmin, snake_case, build 0/0 arch 22/22.
+
+## Task-Specific Research — ItemSupplierPrice Slice
+
+**Date:** 2026-09-24. **Agent:** researcher. **Scope:** executor-ready spec for ItemSupplierPrice vertical slice (PLAN G3 task 7). Source: G1 §5 (RESEARCH.md:868-911) + §0 canon + §11 dependency map. READ-ONLY.
+
+### 1. G1 §5 design — canonical spec
+Table `item_supplier_prices`. Company-scoped price child of Supplier + Item. C3: NEW price-bearing entity, **SupplierItem UNTOUCHED** (§11 task 7 "Appends / touches: —").
+
+Fields: CompanyId long; SupplierId long; ItemId long; UnitPrice decimal(18,2); CurrencyCode string(3); EffectiveFrom DateOnly; EffectiveTo DateOnly?; IsActive bool default true.
+
+Ctor `(long companyId, long supplierId, long itemId, decimal unitPrice, string currencyCode, DateOnly effectiveFrom, DateOnly? effectiveTo = null)` — DomainException guards in order: IDs >0, unitPrice<0, IsNullOrWhiteSpace(currencyCode), Length!=3, effectiveTo<effectiveFrom → then `CurrencyCode = currencyCode.ToUpperInvariant()`. Deactivate() sets IsActive=false (no event).
+
+Unique: `HasIndex(e => new { e.CompanyId, e.SupplierId, e.ItemId, e.CurrencyCode, e.EffectiveFrom }).IsUnique()` — FULL unique NO HasFilter (R7 effective-dated → TaxRate shape). Deactivate→re-add same key collides = accepted.
+
+FKs: Company/Supplier/Item all OnDelete(Restrict). Event: `ItemSupplierPriceCreated(ItemSupplierPriceId, CompanyId, OccurredOn)`.
+
+### 2. Templates — live, verified
+Closest whole-slice template = ItemPriceList (entity + config + validator, committed cbbe310) — PriceListId↔SupplierId only semantic diff. Config: snake table, HasPrecision(18,2), HasMaxLength(3) IsRequired, 5-col full unique NO HasFilter, 3 FKs Restrict, xmin last, NO explicit redundant FK HasIndex. Handlers = CreateItemPriceListHandler shape (repo + IUnitOfWork ONLY — NO IItemRepository/ISupplierRepository existence checks), Deactivate THROWS InvalidOperationException on missing, Get = one class both queries + private static Map. Controller thin no Domain usings, no ViewModel. Test template = ItemPriceListAggregateTests (26 Facts, `private static readonly DateOnly EffectiveFrom = new(2026, 1, 1);`).
+
+### 3. Ports
+Existing IItemRepository (4), ISupplierRepository (4) — NOT needed for this slice (FK Restrict backstop). Do NOT create FakeSupplierRepository. New port `IItemSupplierPriceRepository` child shape 3 members: GetByIdAsync, GetAllByCompanyAsync, AddAsync — NO GetByCodeAsync. EfItemSupplierPriceRepository: tracked GetById, AsNoTracking Where(CompanyId) OrderBy(SupplierId).ThenBy(ItemId).ThenBy(EffectiveFrom), AddAsync.
+
+### 4. Wiring slots (post-ItemReorderLevel — RE-READ before edit)
+DbContext: insert `public DbSet<ItemSupplierPrice> ItemSupplierPrices => Set<ItemSupplierPrice>();` after line 46 (ItemReorderLevels); insert `modelBuilder.Ignore<ItemSupplierPriceCreated>();` after line 108 (Ignore<ItemReorderLevelCreated>). DI: insert AddScoped<IItemSupplierPriceRepository, EfItemSupplierPriceRepository> after line 69 (IItemReorderLevelRepository). Fakes.cs: insert FakeItemSupplierPriceRepository after line 405 (FakeItemReorderLevelRepository end), before FakeUnitOfWork.
+
+### 5. File list — CREATE 15 + wiring EDIT 4
+Domain: ItemSupplierPrice.cs, ItemSupplierPriceCreated.cs, IItemSupplierPriceRepository.cs
+Infra: ItemSupplierPriceConfiguration.cs, EfItemSupplierPriceRepository.cs
+App: CreateItemSupplierPriceCommand.cs (+Result), DeactivateItemSupplierPriceCommand.cs (+Result), CreateItemSupplierPriceCommandValidator.cs, CreateItemSupplierPriceHandler.cs, DeactivateItemSupplierPriceHandler.cs, GetItemSupplierPriceHandler.cs, ItemSupplierPriceDto.cs, GetItemSupplierPriceQuery.cs (+GetItemSupplierPricesByCompanyQuery)
+Api: ItemSupplierPriceController.cs
+Tests: ItemSupplierPriceAggregateTests.cs
+EDIT: DbContext (DbSet+Ignore), DI (AddScoped), Fakes.cs (fake). NO entity appends. NO migration.
+
+Signatures: CreateItemSupplierPriceCommand(CompanyId FIRST, SupplierId, ItemId, UnitPrice, CurrencyCode, EffectiveFrom, EffectiveTo=null); DeactivateItemSupplierPriceCommand(long Id) + (bool Success); ItemSupplierPriceDto(8 fields); GetItemSupplierPriceQuery(long Id); GetItemSupplierPricesByCompanyQuery(long CompanyId).
+
+### 6. Tests — 26 Facts (+2 optional Get handlers)
+Ctor (14): valid+event, lowercase normalize "usd"→"USD", CompanyId 0/-1, SupplierId 0/-1, ItemId 0/-1, UnitPrice negative, CurrencyCode empty/2char/4char, EffectiveTo<EffectiveFrom, Deactivate sets false.
+Validator (8): valid passes, CompanyId/SupplierId/ItemId zero fails, UnitPrice negative fails, lowercase Matches fails, 2-char fails, EffectiveTo<EffectiveFrom fails.
+Handlers/repo (4): happy path SaveCalledCount==1, deactivate missing THROWS, deactivate happy Id=5 BEFORE AddAsync SaveCalledCount==1, GetAllByCompanyAsync filters by company.
+Optional (+2): GetById ReturnsDto, GetByCompany ReturnsList.
+
+Option A locked: ctor negatives = empty/2-char/4-char ONLY (never lowercase-throws); validator negative = lowercase.
+Usings: Application.Commands, Application.Handlers, Application.Validators, Domain.Entities, Domain.Events, Domain.Exceptions.
+
+### Verification criteria
+Focused: `--filter FullyQualifiedName~ItemSupplierPrice` = 26. Config has NO HasFilter; SupplierItem.cs byte-identical; handler deps repo+IUnitOfWork only; wiring exactly 1 each adjacent; deactivate missing THROWS; full unique 5-col.
