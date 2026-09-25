@@ -43,6 +43,10 @@ public class SmeAccountingDbContext : DbContext, IUnitOfWork
     public DbSet<ItemBarcode> ItemBarcodes => Set<ItemBarcode>();
     public DbSet<PriceList> PriceLists => Set<PriceList>();
     public DbSet<ItemPriceList> ItemPriceLists => Set<ItemPriceList>();
+    public DbSet<ItemReorderLevel> ItemReorderLevels => Set<ItemReorderLevel>();
+    public DbSet<ItemSupplierPrice> ItemSupplierPrices => Set<ItemSupplierPrice>();
+    public DbSet<ItemTaxClass> ItemTaxClasses => Set<ItemTaxClass>();
+    public DbSet<WarehouseLocation> WarehouseLocations => Set<WarehouseLocation>();
     public DbSet<ServiceItem> ServiceItems => Set<ServiceItem>();
     public DbSet<InventoryValuationPolicy> InventoryValuationPolicies => Set<InventoryValuationPolicy>();
     public DbSet<InventoryAdjustmentReason> InventoryAdjustmentReasons => Set<InventoryAdjustmentReason>();
@@ -104,6 +108,10 @@ public class SmeAccountingDbContext : DbContext, IUnitOfWork
         modelBuilder.Ignore<ItemBarcodeCreated>();
         modelBuilder.Ignore<PriceListCreated>();
         modelBuilder.Ignore<ItemPriceListCreated>();
+        modelBuilder.Ignore<ItemReorderLevelCreated>();
+        modelBuilder.Ignore<ItemSupplierPriceCreated>();
+        modelBuilder.Ignore<ItemTaxClassCreated>();
+        modelBuilder.Ignore<WarehouseLocationCreated>();
         modelBuilder.Ignore<ServiceItemCreated>();
         modelBuilder.Ignore<InventoryValuationPolicyCreated>();
         modelBuilder.Ignore<InventoryAdjustmentReasonCreated>();

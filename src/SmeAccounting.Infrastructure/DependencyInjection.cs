@@ -66,6 +66,10 @@ public static class DependencyInjection
         services.AddScoped<IItemBarcodeRepository, EfItemBarcodeRepository>();
         services.AddScoped<IPriceListRepository, EfPriceListRepository>();
         services.AddScoped<IItemPriceListRepository, EfItemPriceListRepository>();
+        services.AddScoped<IItemReorderLevelRepository, EfItemReorderLevelRepository>();
+        services.AddScoped<IItemSupplierPriceRepository, EfItemSupplierPriceRepository>();
+        services.AddScoped<IItemTaxClassRepository, EfItemTaxClassRepository>();
+        services.AddScoped<IWarehouseLocationRepository, EfWarehouseLocationRepository>();
         services.AddScoped<IServiceItemRepository, EfServiceItemRepository>();
         services.AddScoped<IInventoryValuationPolicyRepository, EfInventoryValuationPolicyRepository>();
         services.AddScoped<IInventoryAdjustmentReasonRepository, EfInventoryAdjustmentReasonRepository>();

@@ -385,6 +385,85 @@ internal sealed class FakeItemPriceListRepository : IItemPriceListRepository
     public IReadOnlyList<ItemPriceList> Stored => _items;
 }
 
+internal sealed class FakeItemReorderLevelRepository : IItemReorderLevelRepository
+{
+    private readonly List<ItemReorderLevel> _items = new();
+
+    public Task<ItemReorderLevel?> GetByIdAsync(long id)
+        => Task.FromResult(_items.FirstOrDefault(x => x.Id == id));
+
+    public Task<IReadOnlyList<ItemReorderLevel>> GetAllByCompanyAsync(long companyId)
+        => Task.FromResult<IReadOnlyList<ItemReorderLevel>>(_items.Where(x => x.CompanyId == companyId).ToList());
+
+    public Task AddAsync(ItemReorderLevel itemReorderLevel)
+    {
+        _items.Add(itemReorderLevel);
+        return Task.CompletedTask;
+    }
+
+    public IReadOnlyList<ItemReorderLevel> Stored => _items;
+}
+
+internal sealed class FakeItemSupplierPriceRepository : IItemSupplierPriceRepository
+{
+    private readonly List<ItemSupplierPrice> _items = new();
+
+    public Task<ItemSupplierPrice?> GetByIdAsync(long id)
+        => Task.FromResult(_items.FirstOrDefault(x => x.Id == id));
+
+    public Task<IReadOnlyList<ItemSupplierPrice>> GetAllByCompanyAsync(long companyId)
+        => Task.FromResult<IReadOnlyList<ItemSupplierPrice>>(_items.Where(x => x.CompanyId == companyId).ToList());
+
+    public Task AddAsync(ItemSupplierPrice itemSupplierPrice)
+    {
+        _items.Add(itemSupplierPrice);
+        return Task.CompletedTask;
+    }
+
+    public IReadOnlyList<ItemSupplierPrice> Stored => _items;
+}
+
+internal sealed class FakeItemTaxClassRepository : IItemTaxClassRepository
+{
+    private readonly List<ItemTaxClass> _items = new();
+
+    public Task<ItemTaxClass?> GetByIdAsync(long id)
+        => Task.FromResult(_items.FirstOrDefault(x => x.Id == id));
+
+    public Task<IReadOnlyList<ItemTaxClass>> GetAllByCompanyAsync(long companyId)
+        => Task.FromResult<IReadOnlyList<ItemTaxClass>>(_items.Where(x => x.CompanyId == companyId).ToList());
+
+    public Task AddAsync(ItemTaxClass itemTaxClass)
+    {
+        _items.Add(itemTaxClass);
+        return Task.CompletedTask;
+    }
+
+    public IReadOnlyList<ItemTaxClass> Stored => _items;
+}
+
+internal sealed class FakeWarehouseLocationRepository : IWarehouseLocationRepository
+{
+    private readonly List<WarehouseLocation> _items = new();
+
+    public Task<WarehouseLocation?> GetByIdAsync(long id)
+        => Task.FromResult(_items.FirstOrDefault(x => x.Id == id));
+
+    public Task<WarehouseLocation?> GetByCodeAsync(string code, long companyId, long warehouseId)
+        => Task.FromResult(_items.FirstOrDefault(x => x.CompanyId == companyId && x.WarehouseId == warehouseId && x.Code == code));
+
+    public Task<IReadOnlyList<WarehouseLocation>> GetAllByCompanyAsync(long companyId)
+        => Task.FromResult<IReadOnlyList<WarehouseLocation>>(_items.Where(x => x.CompanyId == companyId).ToList());
+
+    public Task AddAsync(WarehouseLocation warehouseLocation)
+    {
+        _items.Add(warehouseLocation);
+        return Task.CompletedTask;
+    }
+
+    public IReadOnlyList<WarehouseLocation> Stored => _items;
+}
+
 internal sealed class FakeUnitOfWork : IUnitOfWork
 {
     public int SaveCalledCount { get; private set; }
