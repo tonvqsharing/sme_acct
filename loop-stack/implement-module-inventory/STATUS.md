@@ -2,9 +2,9 @@
 ## State
 IN_PROGRESS
 ## Current Task
-G4: Consolidated migration #19 + full regression
+G5: Final reconciliation matrix + DoD + report (COMPLETE)
 ## Task Progress
-8 / 11 complete
+11 / 11 complete
 ## Attempts On Current Task
 2
 ## Completed Tasks
@@ -18,6 +18,8 @@ G4: Consolidated migration #19 + full regression
 - G3: ItemSupplierPrice vertical slice (VERIFIED_PASS — 26/26 focused, build 0/0, config: full unique 5-col NO HasFilter, Option A currency, handler deps repo+IUnitOfWork only)
 - G3: ItemTaxClass vertical slice (VERIFIED_PASS — 19/19 focused, build 0/0, config: full unique 4-col NO HasFilter, effective-dating, handler deps repo only)
 - G3: WarehouseLocation vertical slice (VERIFIED_PASS — 20/20 focused, build 0/0, config: full unique (CompanyId,WarehouseId,Code) NO HasFilter, BankBranch precedent, handler deps repo only)
+- G4: Migration #19 AddInventoryModule03 (VERIFIED_PASS — build 0/0, arch 22/22, BankTests 301/301, migration reviewed: 9 tables + 2 AddColumn + 4 HasFilter partial uniques, all FKs Restrict, snake_case, xmin, decimal(18,2/3))
+- G5: Final reconciliation matrix + DoD + report (COMPLETE)
 ## Skipped Tasks
 (none)
 ## Last Researcher Result
